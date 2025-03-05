@@ -1,0 +1,14 @@
+# Ignore virtual environments
+venv/
+ai_agents/.env
+tools/.env
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+agent-app/node_modules/
+agent-app/build/
+data/
