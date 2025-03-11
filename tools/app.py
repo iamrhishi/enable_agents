@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask,request
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
@@ -23,6 +23,8 @@ from scipy.spatial.distance import cosine
 import openai
 import nltk
 import pandas as pd
+import pickle
+import hashlib
 
 
 nltk.download('stopwords')
@@ -36,6 +38,8 @@ app = Flask(__name__)
 # 4. Retrieve: Given a user input, relevant splits are retrieved from storage using a Retriever.
 # 5. Generate: A ChatModel / LLM produces an answer using a prompt that includes both the question with the retrieved data
 
+cache = {}
+
 # Define state for application
 class State(TypedDict):
     question: str
@@ -45,6 +49,30 @@ class State(TypedDict):
 def get_credentials():
     load_dotenv()
     return os.getenv("OPENAI_API_KEY")
+
+def get_file_hash(file_path):
+    hasher = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        buf = f.read()
+        hasher.update(buf)
+    return hasher.hexdigest()
+
+def save_embeddings(file_hash, index, phrase_embeddings, page_chunks):
+    with open(f"{file_hash}_index.pkl", "wb") as f:
+        pickle.dump(index, f)
+    with open(f"{file_hash}_phrase_embeddings.pkl", "wb") as f:
+        pickle.dump(phrase_embeddings, f)
+    with open(f"{file_hash}_page_chunks.pkl", "wb") as f:
+        pickle.dump(page_chunks, f)
+
+def load_embeddings(file_hash):
+    with open(f"{file_hash}_index.pkl", "rb") as f:
+        index = pickle.load(f)
+    with open(f"{file_hash}_phrase_embeddings.pkl", "rb") as f:
+        phrase_embeddings = pickle.load(f)
+    with open(f"{file_hash}_page_chunks.pkl", "rb") as f:
+        page_chunks = pickle.load(f)
+    return index, phrase_embeddings, page_chunks
 
 def init_llm():
     llm = init_chat_model("gpt-4o-mini", model_provider="openai")
@@ -75,13 +103,6 @@ def web_loader():
     docs = loader.load()
     return docs
 
-# def splitter(docs, vector_store):  
-#     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=200)
-#     all_splits= text_splitter.split_documents(docs)
-#     #index_chunks
-#     _ = vector_store.add_documents(documents = all_splits)
-#     prompt = hub.pull("rlm/rag-prompt")
-
 def pdf_splitter(pdf_text):  
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1100, chunk_overlap=300)
     page_chunks = {}
@@ -91,11 +112,6 @@ def pdf_splitter(pdf_text):
         # print(f"Page {page} chunks: {len(chunks)}")  # Debug print for number of chunks
         page_chunks[page] = chunks
     return page_chunks
-
-# def retrieve(state: State):
-#     vector_store = init_vector_store(init_embeddings())
-#     retrieved_docs = vector_store.similarity_search(state["question"])
-#     return {"context": retrieved_docs}
 
 def extract_keywords_from_pdf(pdf_text):
     rake = Rake()
@@ -148,7 +164,6 @@ def get_embeddings_for_query(phrases):
     client.api_key = get_credentials()
     return [client.embeddings.create(model="text-embedding-ada-002", input=phrase).data[0].embedding for phrase in phrases]
 
-
 def get_cosine_similarity(embedding1, embedding2):
     return 1 - cosine(embedding1, embedding2)
 
@@ -174,7 +189,6 @@ def store_cosine_similarities(query_embeddings, phrase_embeddings, page_chunks):
         selected_chunks.append(page_chunks[page][chunk_number-1])
     return selected_chunks
 
-
 def retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks):
     query_embeddings_np = np.array(query_embeddings, dtype=np.float32)
     D, I = index.search(query_embeddings_np, k=5)  # Retrieve top 5 similar chunks
@@ -192,56 +206,9 @@ def retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chu
     return selected_chunks
 
 def generate(selected_chunks, query):
-    context = "\n\n".join(selected_chunks) 
-    prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:" 
-    response = openai.ChatCompletion.create(model="gpt-4", messages=[ {"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": prompt} ], max_tokens=300, temperature=0.1) 
-    # Extract the answer from the response 
-    answer = response['choices'][0]['message']['content'].strip() 
-    # Output the answer 
-    print(f"Answer:\n{answer}")
-    return answer
-
-# def generate(state: State):
-#     llm=init_llm();
-#     prompt = hub.pull("rlm/rag-prompt")
-#     docs_content = "\n\n".join(doc.page_content for doc in state["context"])
-#     messages = prompt.invoke({"question": state["question"], "context": docs_content})
-#     response = llm.invoke(messages)
-#     return {"answer": response.content}
-
-
-
-# def graph_compile():
-#     graph_builder = StateGraph(State).add_sequence([retrieve, generate])
-#     graph_builder.add_edge(START, "retrieve")
-#     graph = graph_builder.compile()
-#     response = graph.invoke({"question": "what is Tree-of-thoughts (ToT) in the whitepaper?"})
-#     return response
-
-
-@app.route('/')
-def rag_test():
-    openai.api_key = get_credentials();
-    # embeddings = init_embeddings();
-    # vector_store = init_vector_store(embeddings);
-    # docs = web_loader();
-    pdf_doc = pdf_loader("/Users/rhishikeshthakur/Downloads/RhishikeshThakurResume.pdf")
-    page_chunks = pdf_splitter(pdf_doc)
-   
-    page_phrases = extract_keywords_from_pdf(pdf_doc)
-    # print (page_phrases)
-    chunk_phrases = extract_keywords_from_chunks(page_chunks)
-    # print (chunk_phrases)
-    index, phrase_embeddings = store_embeddings(page_phrases, chunk_phrases)
-    query = "What is the GPA of the candidate and what is his experience in python?"
-    query_phrases = extract_phrases_from_query(query)
-    query_embeddings = get_embeddings_for_query(query_phrases)
-    # selected_chunks = store_cosine_similarities(query_embeddings, phrase_embeddings, page_chunks)
-    selected_chunks = retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks)
-    context = "\n\n".join(selected_chunks) 
-    prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:" 
-    # Use the OpenAI API to get a response 
     client = openai.OpenAI()
+    context = "\n\n".join(selected_chunks) 
+    prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:" 
     response = client.chat.completions.create( 
         model="gpt-4", 
         messages=[ {"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": prompt} ], 
@@ -249,7 +216,34 @@ def rag_test():
         temperature=0.1 ) 
     answer = response.choices[0].message.content 
     return answer
-    # return "Hello, World!"
+
+@app.route('/rag_test', methods=['GET'])
+def rag_test():
+    query = request.args.get('query')
+    file_name = request.args.get('file_name')
+    
+    openai.api_key = get_credentials();
+
+    file_hash = get_file_hash(file_name)
+    
+    if file_hash in cache:
+        index, phrase_embeddings, page_chunks = load_embeddings(file_hash)
+    else:
+        pdf_doc = pdf_loader(file_name)
+        page_chunks = pdf_splitter(pdf_doc)
+   
+        page_phrases = extract_keywords_from_pdf(pdf_doc)
+        chunk_phrases = extract_keywords_from_chunks(page_chunks)
+        index, phrase_embeddings = store_embeddings(page_phrases, chunk_phrases)
+        cache[file_hash] = (index, phrase_embeddings, page_chunks)
+        save_embeddings(file_hash, index, phrase_embeddings, page_chunks)
+        
+    query_phrases = extract_phrases_from_query(query)
+    query_embeddings = get_embeddings_for_query(query_phrases)
+    selected_chunks = retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks)
+
+    answer = generate(selected_chunks, query)
+    return answer
 
 if __name__ == '__main__':
     app.run(debug=True)
