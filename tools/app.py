@@ -1,4 +1,4 @@
-from flask import Flask,request
+from flask import Flask,request, jsonify
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
@@ -25,12 +25,15 @@ import nltk
 import pandas as pd
 import pickle
 import hashlib
-
+import http.client
+import json
+from flask_cors import CORS  # Import Flask-CORS
 
 nltk.download('stopwords')
 nltk.download('punkt_tab')
 
 app = Flask(__name__)
+CORS(app)
 
 # 1. Load: First we need to load our data. This is done with Document Loaders.
 # 2. Split: Text splitters break large Documents into smaller chunks. This is useful both for indexing data and passing it into a model, as large chunks are harder to search over and won't fit in a model's finite context window.
@@ -139,6 +142,7 @@ def get_embeddings(phrase):
     return response.data[0].embedding
 
 def store_embeddings(page_phrases, chunk_phrases):
+    print(page_phrases)
     phrase_embeddings = {}
     for (page, chunk_number), phrases in chunk_phrases.items():
         embeddings = [get_embeddings(phrase) for phrase in phrases]
@@ -231,12 +235,17 @@ def rag_test():
     else:
         pdf_doc = pdf_loader(file_name)
         page_chunks = pdf_splitter(pdf_doc)
-   
+
+        # print(page_chunks)
+
         page_phrases = extract_keywords_from_pdf(pdf_doc)
         chunk_phrases = extract_keywords_from_chunks(page_chunks)
+        
         index, phrase_embeddings = store_embeddings(page_phrases, chunk_phrases)
+    
         cache[file_hash] = (index, phrase_embeddings, page_chunks)
         save_embeddings(file_hash, index, phrase_embeddings, page_chunks)
+        print(save_embeddings)
         
     query_phrases = extract_phrases_from_query(query)
     query_embeddings = get_embeddings_for_query(query_phrases)
@@ -244,6 +253,154 @@ def rag_test():
 
     answer = generate(selected_chunks, query)
     return answer
+
+@app.route('/yfinance', methods=['GET'])
+def yfinance_test():
+    symbol = request.args.get('stock')
+    region = request.args.get('region')
+
+    if not symbol or not region:
+        return "Missing required parameters: 'stock' and 'region'", 400
+
+    conn = http.client.HTTPSConnection("yahoo-finance166.p.rapidapi.com")
+
+    headers = {
+        'x-rapidapi-key': "95cdd43379mshbd9483856442c47p1c2782jsn897449ebefb8",
+        'x-rapidapi-host': "yahoo-finance166.p.rapidapi.com"
+    }
+
+    endpoint = f"/api/stock/get-financial-data?region={region}&symbol={symbol}"
+    print(f"Requesting data from endpoint: {endpoint}")  # Debug statement
+    conn.request("GET", endpoint, headers=headers)
+
+    res = conn.getresponse()
+    data = res.read()
+    json_data = json.loads(data.decode("utf-8"))
+
+    print(json_data)  # Debug statement to print the entire response
+
+    if 'quoteSummary' not in json_data or 'result' not in json_data['quoteSummary'] or not json_data['quoteSummary']['result']:
+        return jsonify({"error": "No data found for the given stock symbol and region"}), 404
+
+    current_price = json_data['quoteSummary']['result'][0]['financialData']['currentPrice']['fmt']
+    operating_margins = json_data['quoteSummary']['result'][0]['financialData']['operatingMargins']['fmt']
+    netprofit_margins = json_data['quoteSummary']['result'][0]['financialData']['profitMargins']['fmt']
+    gross_margins = json_data['quoteSummary']['result'][0]['financialData']['grossMargins']['fmt']
+    revenue_growth = json_data['quoteSummary']['result'][0]['financialData']['revenueGrowth']['fmt']
+    debt_to_equity = json_data['quoteSummary']['result'][0]['financialData']['debtToEquity']['fmt']
+    quick_ratio = json_data['quoteSummary']['result'][0]['financialData']['quickRatio']['fmt']
+    current_ratio = json_data['quoteSummary']['result'][0]['financialData']['currentRatio']['fmt']
+    analyst_recommendation = json_data['quoteSummary']['result'][0]['financialData']['recommendationKey']
+    number_of_analysts = json_data['quoteSummary']['result'][0]['financialData']['numberOfAnalystOpinions']['fmt']
+    target_high_price = json_data['quoteSummary']['result'][0]['financialData']['targetHighPrice']['fmt']
+    target_low_price = json_data['quoteSummary']['result'][0]['financialData']['targetLowPrice']['fmt']
+    target_mean_price = json_data['quoteSummary']['result'][0]['financialData']['targetMeanPrice']['fmt']
+    target_median_price = json_data['quoteSummary']['result'][0]['financialData']['targetMedianPrice']['fmt']
+
+    financial_KPIs = {
+        "current_price": current_price,
+        "operating margin": operating_margins,
+        "netprofit_margins": netprofit_margins,
+        "gross_margins": gross_margins,
+        "revenue_growth": revenue_growth,
+        "debt_to_equity": debt_to_equity,
+        "quick_ratio": quick_ratio,
+        "current_ratio": current_ratio,
+        "number_of_analysts": number_of_analysts,
+        "analyst_recommendation": analyst_recommendation,
+        "target_high_price": target_high_price,
+        "target_low_price": target_low_price,
+        "target_mean_price": target_mean_price,
+        "target_median_price": target_median_price
+    }
+
+    return jsonify(financial_KPIs)
+
+@app.route('/generate-requirements', methods=['POST'])
+def generate_requirements():
+    openai.api_key = get_credentials();
+
+    data = request.get_json()
+    overview = data.get('overview', '')
+    keywords = data.get('keywords', [])
+
+    prompt = overview + "\n\n" + "Keywords: " + ", ".join(keywords) + "\n\n" + "Generate a list of requirements based on the above overview and keywords."
+    
+    client = openai.OpenAI()
+
+    response = client.chat.completions.create(
+    model="gpt-4",  # Or use "gpt-3.5-turbo"
+    messages=[
+        {"role": "system", "content": "You are a product manager assistant."},
+        {"role": "user", "content": prompt}
+    ],
+    temperature=0.7,
+    )
+    answer = response.choices[0].message.content
+    print(answer)  # Debug statement to print the generated answer
+    return jsonify({"requirements": answer})
+
+
+# @app.route('/AI_ML', methods=['GET'])
+# def yfinance_test()
+    
+#     return "Hello World!"
+
+
+# @app.route('/Location', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Transportation', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Business- Enterprise', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Visual Recognition', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Small Tools', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Text Analysis', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Weather', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Messaging', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Logistics', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/News', methods=['GET'])
+# def yfinance_test():
+    
+#     return "Hello World!"
+
+# @app.route('/Jobs', methods=['GET'])
+# def yfinance_test():
+    
+    return "Hello World!"
 
 if __name__ == '__main__':
     app.run(debug=True)

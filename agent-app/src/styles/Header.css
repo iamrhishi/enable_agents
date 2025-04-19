@@ -1,0 +1,22 @@
+.header {
+  display: flex;
+  align-items: left;
+  padding: 10px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.logo {
+  height: 40px; /* Adjust the height to make the logo smaller */
+  cursor: pointer;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+header + * {
+  margin-top: 20px; /* Add space below the header */
+}

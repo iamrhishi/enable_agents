@@ -1,0 +1,33 @@
+.agents-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+  
+  .agents-assembly {
+    max-width: 600px;
+    width: 100%;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .agents-assembly h2 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+  
+  .agents-assembly button {
+    padding: 10px 20px;
+    background-color: #ffc107;
+    color: #333;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .agents-assembly button:hover {
+    background-color: #e0a800;
+  }

@@ -1,0 +1,91 @@
+.requirements-container {
+    display: flex;
+    justify-content: space-between;
+    padding: 20px;
+    gap: 20px;
+  }
+  
+  .user-input,
+  .ai-assisted {
+    flex: 1;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  h2 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+  
+  .input-group {
+    margin-bottom: 15px;
+  }
+  
+  .input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+  
+  textarea,
+  input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin-bottom: 10px;
+  }
+  
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .tag {
+    display: flex;
+    align-items: center;
+    background: #f8f9fa;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 14px;
+  }
+  
+  .delete-tag {
+    background: none;
+    border: none;
+    color: red;
+    font-size: 16px;
+    margin-left: 5px;
+    cursor: pointer;
+  }
+  
+  button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .generate-button {
+    background-color: #28a745;
+    color: white;
+  }
+  
+  .generate-button:hover {
+    background-color: #218838;
+  }
+  
+  .ai-assisted ul {
+    list-style: none;
+    padding: 0;
+  }
+  
+  .ai-assisted li {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+  }
