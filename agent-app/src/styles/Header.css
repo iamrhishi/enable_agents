@@ -1,10 +1,12 @@
 .header {
   display: flex;
-  align-items: left;
+  justify-content: space-between; /* Space between logo and icons */
+  align-items: center;
   padding: 10px 20px;
   position: sticky;
   top: 0;
   z-index: 1000;
+  background-color: #fff; /* Optional: Add a background color */
 }
 
 .logo {
@@ -12,11 +14,13 @@
   cursor: pointer;
 }
 
-body {
-  margin: 0;
-  padding: 0;
+.header-icons {
+  display: flex;
+  gap: 15px; /* Add spacing between the icons */
 }
 
-header + * {
-  margin-top: 20px; /* Add space below the header */
+.header-icons .icon {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
 }

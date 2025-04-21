@@ -12,6 +12,10 @@ function Header() {
           className="logo"
         />
       </Link>
+      <div className="header-icons">
+        <img src="/assets/icons/user.png" alt="User" className="icon" />
+        <img src="/assets/icons/cart.png" alt="Cart" className="icon" />
+      </div>
     </header>
   );
 }

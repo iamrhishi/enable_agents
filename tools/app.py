@@ -1,4 +1,7 @@
 from flask import Flask,request, jsonify
+from datetime import datetime
+from uuid import uuid4
+import json
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
@@ -31,6 +34,8 @@ from flask_cors import CORS  # Import Flask-CORS
 
 nltk.download('stopwords')
 nltk.download('punkt_tab')
+
+PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/prompts.json"
 
 app = Flask(__name__)
 CORS(app)
@@ -254,6 +259,39 @@ def rag_test():
     answer = generate(selected_chunks, query)
     return answer
 
+@app.route('/save-prompt', methods=['POST'])
+def save_prompt():
+    data = request.get_json()
+    prompt_id = str(uuid4())  # Generate a unique ID for the prompt
+    data['id'] = prompt_id
+    data['timestamp'] = datetime.now().isoformat()
+
+    # Load existing prompts
+    if os.path.exists(PROMPTS_FILE):
+        with open(PROMPTS_FILE, 'r') as file:
+            prompts = json.load(file)
+    else:
+        prompts = []
+
+    # Add the new prompt
+    prompts.append(data)
+
+    # Save back to the file
+    with open(PROMPTS_FILE, 'w') as file:
+        json.dump(prompts, file, indent=4)
+
+    return jsonify({"message": "Prompt saved successfully", "id": prompt_id})
+
+@app.route('/previous-prompts', methods=['GET'])
+def previous_prompts():
+    if os.path.exists(PROMPTS_FILE):
+        with open(PROMPTS_FILE, 'r') as file:
+            prompts = json.load(file)
+    else:
+        prompts = []
+
+    return jsonify({"prompts": prompts})
+
 @app.route('/yfinance', methods=['GET'])
 def yfinance_test():
     symbol = request.args.get('stock')
@@ -318,28 +356,69 @@ def yfinance_test():
 
 @app.route('/generate-requirements', methods=['POST'])
 def generate_requirements():
-    openai.api_key = get_credentials();
+    openai.api_key = get_credentials()
 
     data = request.get_json()
     overview = data.get('overview', '')
-    keywords = data.get('keywords', [])
+    context = data.get('context', '')  # Get the context from the payload
+    country = data.get('countries', '')
+    industries = data.get('industries', '')
+    function = data.get('businessFunction', '')
+    frameworks = data.get('frameworks', [])
 
-    prompt = overview + "\n\n" + "Keywords: " + ", ".join(keywords) + "\n\n" + "Generate a list of requirements based on the above overview and keywords."
+    format = data.get('responseFormat', '')
     
+
+    prompt = f"""
+    Here is an overview of business requirements: {overview}.
+    Consider {context} as context, {country} for region specific insights, 
+    {industries} for industry focus, {function} for business function and role of the requester,
+    research based on these analysis frameworks: {frameworks} for one valuable and rare resource each using the VRIO, market forces for and against the startup using PESTLE, and product readiness using Mckinsey's 3 Horizon and use response format as reference: {format}.
+    """
+
+    print(prompt)
+
     client = openai.OpenAI()
 
-    response = client.chat.completions.create(
-    model="gpt-4",  # Or use "gpt-3.5-turbo"
-    messages=[
-        {"role": "system", "content": "You are a product manager assistant."},
-        {"role": "user", "content": prompt}
-    ],
-    temperature=0.7,
-    )
-    answer = response.choices[0].message.content
-    print(answer)  # Debug statement to print the generated answer
-    return jsonify({"requirements": answer})
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a research assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.6
+        )
 
+        answer = response.choices[0].message.content
+        return jsonify({"requirements": answer})
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/save-requirements', methods=['POST'])
+def save_requirements():
+    data = request.get_json()
+    requirements = data.get('requirements', [])
+    export_option = data.get('exportOption', 'Unknown')  # Get the export option
+
+    if not requirements:
+        return jsonify({"error": "No requirements to save"}), 400
+
+    # Define the folder path
+    folder_path = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/requirements_versions"
+    os.makedirs(folder_path, exist_ok=True)  # Create the folder if it doesn't exist
+
+    # Create a unique file name with the export option and timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join(folder_path, f"requirements_{export_option}_{timestamp}.txt")
+
+    # Save the requirements to the file
+    with open(file_path, "w") as file:
+        file.write("\n".join(requirements))
+
+    return jsonify({"message": f"Requirements saved successfully via {export_option}", "file_path": file_path})
 
 # @app.route('/AI_ML', methods=['GET'])
 # def yfinance_test()
