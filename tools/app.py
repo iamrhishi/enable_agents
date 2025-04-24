@@ -1,6 +1,7 @@
 from flask import Flask,request, jsonify
 from datetime import datetime
 from uuid import uuid4
+from time import time
 import json
 import os
 from dotenv import load_dotenv
@@ -80,6 +81,7 @@ def load_embeddings(file_hash):
         phrase_embeddings = pickle.load(f)
     with open(f"{file_hash}_page_chunks.pkl", "rb") as f:
         page_chunks = pickle.load(f)
+    print("Embeddings loaded successfully.")
     return index, phrase_embeddings, page_chunks
 
 def init_llm():
@@ -223,22 +225,59 @@ def generate(selected_chunks, query):
         messages=[ {"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": prompt} ], 
         max_tokens=300, 
         temperature=0.1 ) 
+    
+    print(response)
     answer = response.choices[0].message.content 
+    # usage = response.usage
     return answer
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({"error": "No file selected for uploading"}), 400
+
+    # Define the directory to save the file
+    upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data"
+    os.makedirs(upload_folder, exist_ok=True)  # Create the directory if it doesn't exist
+
+    # Check if the file already exists
+    file_path = os.path.join(upload_folder, file.filename)
+    if os.path.exists(file_path):
+        return jsonify({"message": "File already exists", "file_path": file_path}), 200
+
+    # Save the file
+    file.save(file_path)
+
+    return jsonify({"message": "File uploaded successfully", "file_path": file_path}), 200
 
 @app.route('/rag_test', methods=['GET'])
 def rag_test():
     query = request.args.get('query')
     file_name = request.args.get('file_name')
+
+    upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data"
+    file_path = os.path.join(upload_folder, file_name)
+    
+    if not os.path.exists(file_path):
+        return jsonify({"error": f"File '{file_name}' not found"}), 404
+
+    print(f"Absolute file path: {file_path}")
     
     openai.api_key = get_credentials();
 
-    file_hash = get_file_hash(file_name)
-    
+    file_hash = get_file_hash(file_path)
+
     if file_hash in cache:
+        print(f"Using cached embeddings for file hash: {file_hash}")
         index, phrase_embeddings, page_chunks = load_embeddings(file_hash)
     else:
-        pdf_doc = pdf_loader(file_name)
+        print(f"Processing file and saving embeddings for file hash: {file_hash}")
+        pdf_doc = pdf_loader(file_path)
         page_chunks = pdf_splitter(pdf_doc)
 
         # print(page_chunks)
@@ -257,7 +296,9 @@ def rag_test():
     selected_chunks = retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks)
 
     answer = generate(selected_chunks, query)
-    return answer
+
+
+    return jsonify({"answer": answer})  # Always return a JSON object
 
 @app.route('/save-prompt', methods=['POST'])
 def save_prompt():
@@ -370,7 +411,7 @@ def generate_requirements():
     
 
     prompt = f"""
-    Here is an overview of business requirements: {overview}.
+    Provide an analysis based on the requirements {overview}.
     Consider {context} as context, {country} for region specific insights, 
     {industries} for industry focus, {function} for business function and role of the requester,
     research based on these analysis frameworks: {frameworks} for one valuable and rare resource each using the VRIO, market forces for and against the startup using PESTLE, and product readiness using Mckinsey's 3 Horizon and use response format as reference: {format}.
@@ -387,7 +428,7 @@ def generate_requirements():
                 {"role": "system", "content": "You are a research assistant."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=500,
+            max_tokens=800,
             temperature=0.6
         )
 
