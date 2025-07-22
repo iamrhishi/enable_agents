@@ -12,7 +12,7 @@ function RequirementsGathering() {
   const [responseFormat, setResponseFormat] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [aiRequirements, setAiRequirements] = useState([]);
-  const [frameworkAnalysis, setFrameworkAnalysis] = useState('');
+  // const [frameworkAnalysis, setFrameworkAnalysis] = useState('');
   const [previousPrompts, setPreviousPrompts] = useState([]); // State to store previous prompts
   const [showPromptsPopup, setShowPromptsPopup] = useState(false); // State to control prompts popup visibility
   const [showPopup, setShowPopup] = useState(false); // State to control popup visibility

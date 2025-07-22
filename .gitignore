@@ -1,16 +1,24 @@
-
-
-
-# Ignore compiled Python files
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
+# Node.js
 agent-app/node_modules/
 agent-app/build/
-data/
 
+# Environment files
 tools/.env
 tools/.venv
-data/requirements_versions
+tools/venv
+
+# Data files (consolidated - no duplicates)
+data/
+*.pkl
+*.faiss
+*.json
+
+# Temporary files
+temp_files/
+uploads/

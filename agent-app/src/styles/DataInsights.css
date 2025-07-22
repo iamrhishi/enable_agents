@@ -116,3 +116,12 @@
   border-radius: 5px;
   margin-top: 5px;
 }
+
+.operation-summary {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #333;
+}
+.operation-summary strong {
+  color: #007bff;
+}
