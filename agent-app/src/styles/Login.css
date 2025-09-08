@@ -1,5 +1,6 @@
 .login-page {
   min-height: 100vh;
+  /* Smooth crossfade for background images */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -39,6 +40,7 @@
   border-radius: 20px;
   box-shadow: 
     0 8px 32px rgba(0, 0, 0, 0.1),
+    /* Enhanced login card alignment and spacing */
     0 2px 16px rgba(0, 0, 0, 0.08);
   text-align: center;
   width: 400px;
@@ -49,16 +51,16 @@
 
 
   .logo {
-    height: 40px; /* Adjust the height to make the logo smaller */
+    height: 32px !important; /* Adjust the height to make the logo smaller */
+    width: auto;
     cursor: pointer;
     margin: auto;
   }
   .logo-wrapper {
-  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 20px; /* Space between logo and form */
+  margin-bottom: 10px; /* Space between logo and form */
 }
   
   .login h2 {
@@ -107,4 +109,37 @@
 .logo-wrapper {
   text-align: center;
   margin-bottom: 20px;
+}
+
+.enhanced-card {
+  background: rgba(255,255,255,0.68);
+  box-shadow: 0 8px 32px rgba(30,60,114,0.18);
+  border-radius: 18px;
+  padding: 40px 32px 32px 32px;
+  width: 350px;
+  min-width: 350px;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.login-input {
+  font-size: 1rem;
+  font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+  color: #1e3c72;
+  padding: 10px 12px;
+  border-radius: 8px;
+  width: 70%;
+  min-width: 120px;
+  max-width: 220px;
+  margin: 0 auto;
+  display: block;
+  border: 1px solid #2a5298;
+  background: #f7faff;
+  transition: border 0.2s;
+  outline: none;
+  margin-bottom: 0;
+  text-align: center;
 }

@@ -10,6 +10,23 @@ function Header() {
   const [bulkFiles, setBulkFiles] = useState([]);
   const firstName = localStorage.getItem('firstName'); 
   const [showModal, setShowModal] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [selectedSystemTab, setSelectedSystemTab] = useState(0);
+  const handleUserIconClick = () => {
+    setShowUserDropdown((prev) => !prev);
+  };
+
+  const handleProfileClick = () => {
+    // Implement navigation or modal for profile
+    alert('Profile clicked!');
+    setShowUserDropdown(false);
+  };
+
+  const handleSignOutClick = () => {
+    // Implement sign out logic here
+    alert('Sign out clicked!');
+    setShowUserDropdown(false);
+  };
   const [testResult, setTestResult] = useState('');
   const [dbRows, setDbRows] = useState([]);
   const [selectedSource, setSelectedSource] = useState('Database');
@@ -40,7 +57,7 @@ function Header() {
     setIsLoadingHistory(true);
     
     try {
-      const response = await fetch('http://localhost:5000/chrome_history');
+      const response = await fetch('http://localhost:5000/chrome_history?user_id='+firstName);
       const result = await response.json();
       
       if (result.success) {
@@ -253,6 +270,90 @@ function Header() {
     alert('Create Connection clicked!');
   };
 
+  const [showSystemModal, setShowSystemModal] = useState(false);
+  const [systemTools, setSystemTools] = useState([]);
+  const [toolsSortAsc, setToolsSortAsc] = useState(true);
+  const [business, setBusiness] = useState('');
+  const [role, setRole] = useState('');
+  const [businessDesc, setBusinessDesc] = useState('');
+  const [contextStep, setContextStep] = useState(0);
+  const [contextConfirmed, setContextConfirmed] = useState(false);
+  const [editingContext, setEditingContext] = useState(false);
+  const [recommendedAgents, setRecommendedAgents] = useState('');
+
+  function handleBusinessSubmit(e) {
+    e.preventDefault();
+    setContextStep(1);
+  }
+  function handleBusinessDescSubmit(e) {
+    e.preventDefault();
+    setContextStep(2);
+  }
+  function handleRoleSubmit(e) {
+    e.preventDefault();
+    setContextStep(3);
+  }
+  function handleContextConfirm() {
+    setContextConfirmed(true);
+  }
+  function handleContextEdit() {
+    setContextStep(0);
+    setContextConfirmed(false);
+  }
+
+  function handleContextSave(e) {
+    e.preventDefault();
+    setEditingContext(false);
+    // Optionally, save to API or localStorage here
+  }
+
+  const handleSystemClick = async () => {
+    setShowSystemModal(true);
+    try {
+      const toolsRes = await fetch('http://localhost:5000/get_tools_landscape');
+      const toolsResult = await toolsRes.json();
+      let tools = Array.isArray(toolsResult.tools) ? toolsResult.tools : [];
+      setSystemTools(tools);
+
+      // Get business, role, and description from state (or default)
+      const payload = {
+        tools_landscape: tools,
+        industry: business,
+        role: role,
+        business_description: businessDesc
+      };
+      const agentsRes = await fetch('http://localhost:5000/recommend_agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const agentsResult = await agentsRes.json();
+      setRecommendedAgents(agentsResult.recommendations || 'No recommendations found.');
+    } catch (error) {
+      setSystemTools([]);
+      setRecommendedAgents('Error fetching recommendations.');
+    }
+  };
+  const handleCloseSystemModal = () => {
+    setShowSystemModal(false);
+  };
+
+  const roleOptionsByIndustry = {
+    Finance: ['Manager', 'Analyst', 'Accountant', 'Auditor', 'Consultant', 'Other'],
+    Healthcare: ['Doctor', 'Nurse', 'Administrator', 'Technician', 'Consultant', 'Other'],
+    Education: ['Teacher', 'Principal', 'Administrator', 'Counselor', 'Other'],
+    Technology: ['Developer', 'Product Manager', 'Designer', 'QA Engineer', 'Consultant', 'Other'],
+    Retail: ['Store Manager', 'Sales Associate', 'Inventory Specialist', 'Buyer', 'Other'],
+    Other: ['Manager', 'Consultant', 'Specialist', 'Other']
+  };
+
+  const getRoleOptions = () => {
+    if (!business || !roleOptionsByIndustry[business]) {
+      return ['Manager', 'Analyst', 'Developer', 'Consultant', 'Other'];
+    }
+    return roleOptionsByIndustry[business];
+  };
+
   return (
     <>
       <header className="header">
@@ -274,20 +375,179 @@ function Header() {
             />
             <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>connection</span>
           </div>
+          {/* NEW SYSTEM OPTION */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <img src="/assets/icons/layout-grid.png"  onClick={handleLandscapeClick}alt="Landscape" className="icon" />
+            <img
+              src="/assets/icons/puzzle.png"
+              alt="Agent System"
+              className="icon"
+              style={{ cursor: 'pointer' }}
+              onClick={handleSystemClick}
+            />
+            <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>system</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <img 
+              src="/assets/icons/layout-grid.png"  
+              onClick={handleLandscapeClick}
+              alt="Landscape" 
+              className="icon"
+              style={{ cursor: 'pointer' }}
+            />
             <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>landscape</span>
           </div>
-          <div className="user-icon-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <img src="/assets/icons/user.png" alt="User" className="icon" />
+          <div className="user-icon-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            <img src="/assets/icons/user.png" alt="User" className="icon" style={{ cursor: 'pointer' }} onClick={handleUserIconClick} />
             {firstName && (
               <span className="user-first-name" style={{ fontSize: '0.95em', marginTop: '2px' }}>
                 {firstName}
               </span>
             )}
+            {showUserDropdown && (
+              <div className="user-dropdown-menu">
+                <button className="user-dropdown-item" onClick={handleProfileClick}>Profile</button>
+                <button className="user-dropdown-item" onClick={handleSignOutClick}>Sign Out</button>
+              </div>
+            )}
           </div>
         </div>
       </header>
+
+      {showSystemModal && (
+        <div className="history-modal">
+          <div className="history-modal-content system-modal-content">
+            <div className="history-modal-header">
+              <h2 className="history-modal-title">System Overview</h2>
+              <button className="close-modal" onClick={handleCloseSystemModal}>×</button>
+            </div>
+            <div className="system-tabs">
+              {['Existing Software Tools', 'Business & Role Context', 'Recommended Agents'].map((tab, idx) => (
+                <button
+                  key={tab}
+                  className={`system-tab${selectedSystemTab === idx ? ' active' : ''}`}
+                  onClick={() => setSelectedSystemTab(idx)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="system-tab-content">
+              {selectedSystemTab === 0 && (
+                <div className="system-section-content">
+                  {systemTools.length === 0 ? (
+                    <div>No tools found.</div>
+                  ) : (
+                    <>
+                      <div className="tools-analytics-summary">
+                        <div className="tools-analytics-item">Total Tools: {systemTools.length}</div>
+                        <div className="tools-analytics-item">Categories: {Array.from(new Set(systemTools.map(t => t.category))).length}</div>
+                      </div>
+                      <div className="tools-list-row-wrapper">
+                        <div className="tools-list-row-header">
+                          <span className="tools-list-row-title">Tool Name</span>
+                          <span className="tools-list-row-category" style={{cursor: 'pointer'}} onClick={() => setToolsSortAsc((asc) => !asc)}>
+                            Category {toolsSortAsc ? '▲' : '▼'}
+                          </span>
+                          <span className="tools-list-row-description">Description</span>
+                        </div>
+                        <div className="tools-list-row-scroll">
+                          {[...systemTools]
+                            .sort((a, b) => {
+                              if (!a.category) return 1;
+                              if (!b.category) return -1;
+                              if (a.category.toLowerCase() < b.category.toLowerCase()) return toolsSortAsc ? -1 : 1;
+                              if (a.category.toLowerCase() > b.category.toLowerCase()) return toolsSortAsc ? 1 : -1;
+                              return 0;
+                            })
+                            .map((tool, idx) => (
+                              <div key={idx} className="tools-list-row">
+                                <span className="tools-list-row-title">{tool.tool_name}</span>
+                                <span className="tools-list-row-category">{tool.category}</span>
+                                <span className="tools-list-row-description">{tool.description}</span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {selectedSystemTab === 1 && (
+                <div className="system-section-content">
+                  {!contextConfirmed ? (
+                    <>
+                      {contextStep === 0 && (
+                        <form className="context-form" onSubmit={handleBusinessSubmit}>
+                          <div className="context-chat-bubble bot">Hi! Let's set up your business context. What industry are you in?</div>
+                          <select value={business} onChange={e => setBusiness(e.target.value)} className="context-select">
+                            <option value="">Select your industry...</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Education">Education</option>
+                            <option value="Technology">Technology</option>
+                            <option value="Retail">Retail</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          <input type="text" className="context-input" placeholder="Or type your business..." value={business} onChange={e => setBusiness(e.target.value)} />
+                          <button type="submit" className="context-save-btn">Next</button>
+                        </form>
+                      )}
+                      {contextStep === 1 && (
+                        <form className="context-form" onSubmit={handleBusinessDescSubmit}>
+                          <div className="context-chat-bubble bot">Can you briefly describe your main product or service? This helps us recommend agents for your entire business, not just your role.</div>
+                          <textarea className="context-input" placeholder="Describe your product or service..." value={businessDesc} onChange={e => setBusinessDesc(e.target.value)} rows={3} />
+                          <button type="submit" className="context-save-btn">Next</button>
+                        </form>
+                      )}
+                      {contextStep === 2 && (
+                        <form className="context-form" onSubmit={handleRoleSubmit}>
+                          <div className="context-chat-bubble bot">Great! And what is your role?</div>
+                          <select value={role} onChange={e => setRole(e.target.value)} className="context-select">
+                            <option value="">Select your role...</option>
+                            {getRoleOptions().map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          <input type="text" className="context-input" placeholder="Or type your role..." value={role} onChange={e => setRole(e.target.value)} />
+                          <button type="submit" className="context-save-btn">Next</button>
+                        </form>
+                      )}
+                      {contextStep === 3 && (
+                        <div className="context-chat-bubble bot">Awesome! You're a <strong>{role || '...'}</strong> in <strong>{business || '...'}</strong>.<br />Your business offers: <strong>{businessDesc || '...'}</strong><br />Is this correct?</div>
+                      )}
+                      {contextStep === 3 && (
+                        <div style={{marginTop: '18px'}}>
+                          <button className="context-save-btn" onClick={handleContextConfirm}>Yes, Confirm</button>
+                          <button className="context-edit-btn" style={{marginLeft: '12px'}} onClick={handleContextEdit}>Edit</button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="context-summary">
+                      <div className="context-chat-bubble bot">✅ Your business context is set!</div>
+                      <div><span className="icon-briefcase" /> Business: <strong>{business}</strong></div>
+                      <div><span className="icon-user" /> Role: <strong>{role}</strong></div>
+                      <div><span className="icon-briefcase" /> Product/Service: <strong>{businessDesc}</strong></div>
+                      <button className="context-edit-btn" onClick={handleContextEdit}>Edit</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {selectedSystemTab === 2 && (
+                <div className="system-section-content">
+                  <div className="agents-recommendations">
+                    {recommendedAgents ? (
+                      <pre style={{whiteSpace: 'pre-wrap', fontSize: '1.05em', color: '#334155', background: '#f8fafc', borderRadius: '8px', padding: '18px', border: '1px solid #e2e8f0'}}>{recommendedAgents}</pre>
+                    ) : (
+                      <div>Loading recommendations...</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">

@@ -7,6 +7,7 @@ import AgentsAssembly from './components/AgentsAssembly';
 import DataInsights from './components/DataInsights'; 
 import Chatbot from './components/Chatbot';
 import CommunityNetworkAgent from './components/CommunityNetworkAgent';
+import SalesHelperAgent from './components/SalesHelperAgent';
 
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
           <Route path="/datainsights" element={<DataInsights />} /> 
           <Route path="/aichatbot" element={<Chatbot />} />
           <Route path="/community-network" element={<CommunityNetworkAgent />} />
+          <Route path="/sales-helper" element={<SalesHelperAgent />} />
         </Routes>
       </div>
     </Router>

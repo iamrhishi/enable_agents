@@ -44,6 +44,19 @@ from langchain.chat_models import init_chat_model
 from langchain.vectorstores import FAISS
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import ChatOpenAI
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from datetime import datetime, timedelta
+import re
 
 
 load_dotenv()
@@ -93,6 +106,34 @@ class State(TypedDict):
     question: str
     context: List[Document]
     answer: str
+def setup_driver(headless=True):
+    """Setup Chrome WebDriver for interactive scraping with popup handling"""
+    chrome_options = Options()
+    
+    if headless:
+        chrome_options.add_argument('--headless')
+    
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    # Disable notifications and popups
+    prefs = {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_settings.popups": 0,
+        "profile.managed_default_content_settings.images": 2  # Block images for faster loading
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+    
+    # Additional options to handle consent and cookies
+    chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-plugins')
+    
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=chrome_options)
 
 def get_chrome_history_path():
     """Get Chrome history file path based on OS"""
@@ -107,14 +148,17 @@ def identify_saas_tools_with_openai(history_data):
     """Use OpenAI to identify which URLs are web applications, tools, SaaS, PaaS, or productivity platforms"""
     try:
         # Extract URLs for analysis (limit to avoid token limits)
-        urls_to_analyze = [item['url'] for item in history_data[:30]]  # Analyze top 30 URLs
+        urls_to_analyze = [item['url'] for item in history_data[:50]]  # Analyze top 50 URLs
         urls_text = "\n".join([f"{i+1}. {url}" for i, url in enumerate(urls_to_analyze)])
         
-        prompt = f"""Analyze the following URLs and identify which ones are web applications, tools, or platforms. This includes:
+        prompt = f"""Analyze the following URLs and identify which ones are web applications, tools, websites, or platforms. This includes:
 
-- SaaS (Software as a Service) tools
-- PaaS (Platform as a Service) platforms  
-- Web-based productivity tools (Google Workspace, Microsoft 365, etc.)
+- Web Applications
+- Websites
+- Tools
+- Platforms
+- PaaS (Platform as a Service) platforms of any kind
+- Web-based productivity tools 
 - Cloud platforms and services
 - Development tools and platforms
 - Business applications and tools
@@ -125,6 +169,9 @@ def identify_saas_tools_with_openai(history_data):
 - CRM and business software
 - Educational and learning platforms
 - Entertainment and media platforms (if they're tools/apps)
+- Social media platforms (if used as business tools)
+- Storage and file-sharing platforms
+- Any other web-based tools or platforms not mentioned above
 
 For each URL, return a JSON array with this structure:
 [
@@ -137,7 +184,7 @@ URLs to analyze:
 {urls_text}
 
 Rules:
-- Identify ANY web-based tool, application, or platform (not just traditional SaaS)
+- Identify ANY website, web-based tool, application, or platform
 - Include Google Workspace (Docs, Sheets, Drive, Gmail), Microsoft 365, Slack, Zoom, etc.
 - Include development platforms (GitHub, GitLab, Heroku, Vercel)
 - Include cloud platforms (AWS, Azure, GCP)  
@@ -145,7 +192,8 @@ Rules:
 - Include business tools (Salesforce, HubSpot, Trello, Asana)
 - Include social media platforms if used as business tools
 - Categories: Development, Communication, Productivity, Design, Analytics, Cloud Platform, CRM, Project Management, Storage, Entertainment, Education, Social Media, Other
-- Types: SaaS, PaaS, Web App, Platform, Tool
+- Types: PaaS, Web App, Platform, Tool, Website
+- Differentiate between a tool, WebApp, Website, and Platform
 - Keep descriptions short (under 60 characters)
 - Only mark as "false" if it's clearly a regular informational website
 - Return valid JSON only"""
@@ -159,16 +207,20 @@ Rules:
                 {"role": "system", "content": "You are a web application and tool identifier. You identify ALL types of web-based tools, applications, and platforms. Return only valid JSON arrays."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=2500,  # Increased for more detailed analysis
+            max_tokens=3000,  # Increased for more detailed analysis
             temperature=0.1
         )
         
         response_text = response.choices[0].message.content.strip()
         response_text = response_text.replace('```json', '').replace('```', '').strip()
         
+        print(response_text)
+
         try:
             tools_analysis = json.loads(response_text)
+
             
+    
             # Create a mapping from URL index to tool info
             tools_mapping = {}
             for item in tools_analysis:
@@ -200,282 +252,54 @@ Rules:
             'error': f'OpenAI error: {str(e)}'
         }
 
-def read_chrome_history_safe():
-    """Read Chrome browser history with comprehensive web tool identification"""
-    try:
-        history_path = get_chrome_history_path()
-        
-        if not os.path.exists(history_path):
-            return {
-                'success': False,
-                'error': 'Chrome history file not found. Make sure Chrome is installed.'
-            }
-        
-        # Try multiple approaches
-        for attempt in range(3):
-            try:
-                # Method 1: Direct copy (works if Chrome is closed)
-                temp_dir = tempfile.mkdtemp()
-                temp_history = os.path.join(temp_dir, 'History')
-                
-                # Try to copy the file
-                shutil.copy2(history_path, temp_history)
-                
-                # Connect to history database
-                conn = sqlite3.connect(temp_history)
-                cursor = conn.cursor()
-                
-                # Get top 60 latest URLs (we'll analyze 30 for tools)
-                query = """
-                SELECT 
-                    url, 
-                    title, 
-                    visit_count,
-                    last_visit_time,
-                    datetime(last_visit_time/1000000 + (strftime('%s', '1601-01-01')), 'unixepoch', 'localtime') as visit_date
-                FROM urls 
-                ORDER BY last_visit_time DESC 
-                LIMIT 60
-                """
-                
-                cursor.execute(query)
-                rows = cursor.fetchall()
-                
-                history_data = []
-                for row in rows:
-                    history_data.append({
-                        'url': row[0],
-                        'title': row[1] if row[1] else 'No Title',
-                        'visit_count': row[2],
-                        'last_visit_time': row[3],
-                        'visit_date': row[4]
-                    })
-                
-                conn.close()
-                
-                # Clean up temp files
-                os.remove(temp_history)
-                os.rmdir(temp_dir)
-                
-                # Analyze URLs with OpenAI to identify web tools and applications
-                print("Analyzing URLs for web applications and tools...")
-                tools_result = identify_saas_tools_with_openai(history_data)
-                
-                # Add tool information to history data
-                if tools_result['success']:
-                    tools_mapping = tools_result['mapping']
-                    for i, item in enumerate(history_data):
-                        if i in tools_mapping:
-                            # Update with new field names
-                            item.update({
-                                'is_tool': tools_mapping[i]['is_tool'],
-                                'tool_name': tools_mapping[i]['tool_name'],
-                                'category': tools_mapping[i]['category'],
-                                'tool_type': tools_mapping[i]['type'],  # SaaS, PaaS, Web App, etc.
-                                'description': tools_mapping[i]['description'],
-                                # Keep old fields for backward compatibility
-                                'is_saas': tools_mapping[i]['is_tool']  
-                            })
-                        else:
-                            # Default values for URLs not analyzed
-                            item.update({
-                                'is_tool': False,
-                                'tool_name': None,
-                                'category': None,
-                                'tool_type': None,
-                                'description': None,
-                                'is_saas': False  # Backward compatibility
-                            })
-                else:
-                    # If analysis fails, add default values
-                    print(f"Tools analysis failed: {tools_result.get('error', 'Unknown error')}")
-                    for item in history_data:
-                        item.update({
-                            'is_tool': None,  # null indicates analysis failed
-                            'tool_name': None,
-                            'category': None,
-                            'tool_type': None,
-                            'description': 'Tool analysis unavailable',
-                            'is_saas': None  # Backward compatibility
-                        })
-                
-                # Count tools found (using new field name)
-                web_tools = [item for item in history_data if item.get('is_tool') == True]
-                
-                # Count by type
-                tool_types = {}
-                categories = {}
-                for item in history_data:
-                    if item.get('is_tool'):
-                        tool_type = item.get('tool_type', 'Unknown')
-                        category = item.get('category', 'Unknown')
-                        tool_types[tool_type] = tool_types.get(tool_type, 0) + 1
-                        categories[category] = categories.get(category, 0) + 1
-                
-                return {
-                    'success': True,
-                    'data': history_data,
-                    'total_urls': len(history_data),
-                    'web_tools_found': len(web_tools),
-                    'saas_tools_found': len(web_tools),  # Backward compatibility
-                    'tool_types': tool_types,
-                    'categories': categories,
-                    'analysis_status': 'completed' if tools_result['success'] else 'failed',
-                    'method': 'direct_copy'
-                }
-                
-            except (PermissionError, sqlite3.OperationalError) as e:
-                # Method 2: Try reading directly with WAL mode
-                try:
-                    conn = sqlite3.connect(f'file:{history_path}?mode=ro', uri=True)
-                    cursor = conn.cursor()
-                    
-                    query = """
-                    SELECT 
-                        url, 
-                        title, 
-                        visit_count,
-                        last_visit_time,
-                        datetime(last_visit_time/1000000 + (strftime('%s', '1601-01-01')), 'unixepoch', 'localtime') as visit_date
-                    FROM urls 
-                    ORDER BY last_visit_time DESC 
-                    LIMIT 30
-                    """
-                    
-                    cursor.execute(query)
-                    rows = cursor.fetchall()
-                    
-                    history_data = []
-                    for row in rows:
-                        history_data.append({
-                            'url': row[0],
-                            'title': row[1] if row[1] else 'No Title',
-                            'visit_count': row[2],
-                            'last_visit_time': row[3],
-                            'visit_date': row[4]
-                        })
-                    
-                    conn.close()
-                    
-                    # Analyze URLs with OpenAI to identify web tools
-                    print("Analyzing URLs for web applications and tools...")
-                    tools_result = identify_saas_tools_with_openai(history_data)
-                    
-                    # Add tool information to history data
-                    if tools_result['success']:
-                        tools_mapping = tools_result['mapping']
-                        for i, item in enumerate(history_data):
-                            if i in tools_mapping:
-                                item.update({
-                                    'is_tool': tools_mapping[i]['is_tool'],
-                                    'tool_name': tools_mapping[i]['tool_name'],
-                                    'category': tools_mapping[i]['category'],
-                                    'tool_type': tools_mapping[i]['type'],
-                                    'description': tools_mapping[i]['description'],
-                                    'is_saas': tools_mapping[i]['is_tool']  # Backward compatibility
-                                })
-                            else:
-                                item.update({
-                                    'is_tool': False,
-                                    'tool_name': None,
-                                    'category': None,
-                                    'tool_type': None,
-                                    'description': None,
-                                    'is_saas': False
-                                })
-                    else:
-                        for item in history_data:
-                            item.update({
-                                'is_tool': None,
-                                'tool_name': None,
-                                'category': None,
-                                'tool_type': None,
-                                'description': 'Tool analysis unavailable',
-                                'is_saas': None
-                            })
-                    
-                    web_tools = [item for item in history_data if item.get('is_tool') == True]
-                    
-                    # Count by type and category
-                    tool_types = {}
-                    categories = {}
-                    for item in history_data:
-                        if item.get('is_tool'):
-                            tool_type = item.get('tool_type', 'Unknown')
-                            category = item.get('category', 'Unknown')
-                            tool_types[tool_type] = tool_types.get(tool_type, 0) + 1
-                            categories[category] = categories.get(category, 0) + 1
-                    
-                    return {
-                        'success': True,
-                        'data': history_data,
-                        'total_urls': len(history_data),
-                        'web_tools_found': len(web_tools),
-                        'saas_tools_found': len(web_tools),  # Backward compatibility
-                        'tool_types': tool_types,
-                        'categories': categories,
-                        'analysis_status': 'completed' if tools_result['success'] else 'failed',
-                        'method': 'readonly_direct'
-                    }
-                    
-                except Exception as e2:
-                    if attempt < 2:  # Not the last attempt
-                        import time
-                        time.sleep(1)  # Wait 1 second before retry
-                        continue
-                    else:
-                        # Clean up if temp files were created
-                        try:
-                            if 'temp_history' in locals() and os.path.exists(temp_history):
-                                os.remove(temp_history)
-                            if 'temp_dir' in locals() and os.path.exists(temp_dir):
-                                os.rmdir(temp_dir)
-                        except:
-                            pass
-                            
-                        return {
-                            'success': False,
-                            'error': 'Chrome is currently running. Please close Chrome completely and try again.',
-                            'detailed_error': f'Attempt {attempt + 1}: {str(e)} | {str(e2)}',
-                            'suggestions': [
-                                'Close Chrome completely (check system tray)',
-                                'Wait a few seconds after closing Chrome',
-                                'Make sure no Chrome processes are running in Task Manager'
-                            ]
-                        }
-        
-    except Exception as e:
-        return {
-            'success': False,
-            'error': f'Unexpected error reading Chrome history: {str(e)}'
-        }
 
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def clean_dataframe(df):
-    """Clean dataframe by handling merged cells and missing values"""
-    # Replace NaN values with empty strings
-    df = df.fillna('')
+def clean_dataframe_strict(df, required_field_groups=None):
+    """Clean dataframe with strict field group requirements"""
+    # ... existing cleaning code ...
     
-    # Clean column names (remove extra spaces, special characters)
-    df.columns = df.columns.astype(str).str.strip()
-    
-    # Remove completely empty rows
-    df = df.dropna(how='all')
-    
-    # Convert all values to strings and strip whitespace
-    for col in df.columns:
-        df[col] = df[col].astype(str).str.strip()
-        # Replace 'nan' string with empty string
-        df[col] = df[col].replace('nan', '')
+    if required_field_groups:
+        condition = pd.Series([True] * len(df))
+        
+        for group_name, field_list in required_field_groups.items():
+            # Find which fields from this group exist in the dataframe
+            existing_fields = [field for field in field_list if field in df.columns]
+            
+            if existing_fields:
+                # For this group, at least one field must have data
+                group_condition = pd.Series([False] * len(df))
+                
+                for field in existing_fields:
+                    field_condition = (df[field] != '') & (df[field].str.lower() != 'n/a') & (df[field].str.lower() != 'na') & (df[field].str.lower() != 'none') & (df[field].str.lower() != 'null')
+                    group_condition = group_condition | field_condition
+                
+                # All groups must have at least one field with data
+                condition = condition & group_condition
+        
+        df = df[condition]
+        print(f"After strict filtering: {len(df)} rows remaining")
     
     return df
 
+
+def clean_csv(df, required_columns=None):
+    """Remove rows where any specified columns have blank/missing values"""
+    if required_columns is None:
+        required_columns = df.columns
+    
+    # Replace empty strings and common null representations with NaN
+    df[required_columns] = df[required_columns].replace(['', ' ', 'N/A', 'n/a', 'NA', 'na', 'null', 'NULL'], pd.NA)
+    
+    # Drop rows with any NaN in required columns
+    return df.dropna(subset=required_columns, how='any')
+
+
 def csv_to_json(file_path):
-    """Convert CSV file to JSON object"""
+    """Convert CSV file to JSON object with row filtering"""
     try:
         # Read CSV with error handling for different encodings
         try:
@@ -486,8 +310,18 @@ def csv_to_json(file_path):
             except UnicodeDecodeError:
                 df = pd.read_csv(file_path, encoding='cp1252')
         
-        # Clean the dataframe
-        df = clean_dataframe(df)
+        original_count = len(df)
+        
+        # Clean the dataframe - specify required columns or clean all
+        required_columns = ['company', 'Company', 'name', 'Name', 'title', 'Title']
+        existing_required = [col for col in required_columns if col in df.columns]
+        
+        if existing_required:
+            df = clean_csv(df, existing_required)
+        else:
+            df = clean_csv(df)  # Clean all columns if no specific ones found
+        
+        filtered_count = len(df)
         
         # Convert to JSON
         json_data = df.to_dict('records')
@@ -496,8 +330,11 @@ def csv_to_json(file_path):
             'success': True,
             'data': json_data,
             'total_records': len(json_data),
+            'original_records': original_count,
+            'filtered_records': filtered_count,
+            'rows_removed': original_count - filtered_count,
             'columns': list(df.columns),
-            'message': f'Successfully converted {len(json_data)} records'
+            'message': f'Successfully converted {len(json_data)} records (removed {original_count - filtered_count} empty rows)'
         }
         
     except Exception as e:
@@ -508,13 +345,24 @@ def csv_to_json(file_path):
         }
 
 def xlsx_to_json(file_path):
-    """Convert XLSX file to JSON object"""
+    """Convert XLSX file to JSON object with row filtering"""
     try:
         # Read Excel file (first sheet by default)
         df = pd.read_excel(file_path, engine='openpyxl')
         
-        # Clean the dataframe
-        df = clean_dataframe(df)
+        original_count = len(df)
+        
+        # Define important columns that should not be empty
+        required_columns = [
+            'company', 'Company', 'organization', 'Organization', 'employer', 'Employer',
+            'title', 'Title', 'position', 'Position', 'job_title', 'Job Title', 'role', 'Role',
+            'name', 'Name', 'full_name', 'Full Name', 'first_name', 'First Name', 'last_name', 'Last Name'
+        ]
+        
+        # Clean the dataframe with filtering
+        df = clean_dataframe(df, required_columns)
+        
+        filtered_count = len(df)
         
         # Convert to JSON
         json_data = df.to_dict('records')
@@ -523,8 +371,11 @@ def xlsx_to_json(file_path):
             'success': True,
             'data': json_data,
             'total_records': len(json_data),
+            'original_records': original_count,
+            'filtered_records': filtered_count,
+            'rows_removed': original_count - filtered_count,
             'columns': list(df.columns),
-            'message': f'Successfully converted {len(json_data)} records'
+            'message': f'Successfully converted {len(json_data)} records (removed {original_count - filtered_count} empty rows)'
         }
         
     except Exception as e:
@@ -533,24 +384,43 @@ def xlsx_to_json(file_path):
             'error': f'Error processing XLSX file: {str(e)}',
             'data': []
         }
-    
+
 def xlsx_to_json_multiple_sheets(file_path):
-    """Convert XLSX file with multiple sheets to JSON object"""
+    """Convert XLSX file with multiple sheets to JSON object with row filtering"""
     try:
         # Read all sheets
         excel_file = pd.ExcelFile(file_path)
         sheets_data = {}
+        total_original = 0
+        total_filtered = 0
+        
+        # Define important columns that should not be empty
+        required_columns = [
+            'company', 'Company', 'organization', 'Organization', 'employer', 'Employer',
+            'title', 'Title', 'position', 'Position', 'job_title', 'Job Title', 'role', 'Role',
+            'name', 'Name', 'full_name', 'Full Name', 'first_name', 'First Name', 'last_name', 'Last Name'
+        ]
         
         for sheet_name in excel_file.sheet_names:
             df = pd.read_excel(file_path, sheet_name=sheet_name, engine='openpyxl')
-            df = clean_dataframe(df)
+            original_count = len(df)
+            total_original += original_count
+            
+            df = clean_dataframe(df, required_columns)
+            filtered_count = len(df)
+            total_filtered += filtered_count
+            
             sheets_data[sheet_name] = df.to_dict('records')
         
         return {
             'success': True,
             'data': sheets_data,
             'sheets': list(excel_file.sheet_names),
-            'message': f'Successfully converted {len(excel_file.sheet_names)} sheets'
+            'total_records': total_filtered,
+            'original_records': total_original,
+            'filtered_records': total_filtered,
+            'rows_removed': total_original - total_filtered,
+            'message': f'Successfully converted {len(excel_file.sheet_names)} sheets with {total_filtered} total records (removed {total_original - total_filtered} empty rows)'
         }
         
     except Exception as e:
@@ -929,26 +799,48 @@ def get_embeddings_batch(phrases):
     return [data.embedding for data in response.data]
 
 def store_embeddings(page_phrases, chunk_phrases):
-    print(page_phrases)
+    """Store embeddings with better error handling"""
+    print("Processing embeddings...")
+    print(f"Page phrases: {page_phrases}")
+    print(f"Chunk phrases keys: {list(chunk_phrases.keys())}")
+    
     phrase_embeddings = {}
-    # for (page, chunk_number), phrases in chunk_phrases.items():
-    #     embeddings = [get_embeddings(phrase) for phrase in phrases]
-    #     phrase_embeddings[(page, chunk_number)] = list(zip(phrases, embeddings))
+    all_embeddings = []  # Store all embeddings for FAISS index
+    
+    # Process chunk phrases and get embeddings
     for (page, chunk_number), phrases in chunk_phrases.items():
-        if phrases:
-            embeddings = get_embeddings_batch(phrases)
-            phrase_embeddings[(page, chunk_number)] = list(zip(phrases, embeddings))
+        if phrases:  # Only process if there are phrases
+            try:
+                embeddings = get_embeddings_batch(phrases)
+                phrase_embeddings[(page, chunk_number)] = list(zip(phrases, embeddings))
+                # Collect all embeddings for FAISS index
+                all_embeddings.extend(embeddings)
+            except Exception as e:
+                print(f"Error getting embeddings for page {page}, chunk {chunk_number}: {e}")
+                phrase_embeddings[(page, chunk_number)] = []
         else:
             phrase_embeddings[(page, chunk_number)] = []
-
-    # Initialise FAISS index
-    dimension = len(phrase_embeddings[(1, 1)][0][1])
+    
+    # Check if we have any embeddings
+    if not all_embeddings:
+        print("Warning: No embeddings were created. Using dummy embeddings.")
+        # Create a dummy embedding for testing
+        dummy_embedding = [0.0] * 1536  # OpenAI ada-002 embedding dimension
+        all_embeddings = [dummy_embedding]
+        # Add dummy phrase_embeddings entry
+        phrase_embeddings[(1, 1)] = [("no content found", dummy_embedding)]
+    
+    # Initialize FAISS index
+    dimension = len(all_embeddings[0])
+    print(f"Creating FAISS index with dimension: {dimension}")
     index = faiss.IndexFlatIP(dimension)
+    
     # Add all embeddings to the index
-    for (page, chunk_number), phrases in phrase_embeddings.items():
-       for phrase, embedding in phrases:
-           index.add(np.array([embedding], dtype=np.float32))
-
+    if all_embeddings:
+        embeddings_array = np.array(all_embeddings, dtype=np.float32)
+        index.add(embeddings_array)
+        print(f"Added {len(all_embeddings)} embeddings to FAISS index")
+    
     return index, phrase_embeddings
 
 def extract_phrases_from_query(query):
@@ -987,21 +879,1912 @@ def store_cosine_similarities(query_embeddings, phrase_embeddings, page_chunks):
     return selected_chunks
 
 def retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks):
-    query_embeddings_np = np.array(query_embeddings, dtype=np.float32)
-    D, I = index.search(query_embeddings_np, k=5)  # Retrieve top 5 similar chunks
-
-    selected_chunks = []
-    for i in range(len(I)):
-        for j in range(len(I[i])):
-            chunk_id = int(I[i][j])
-            # Fix: Use the correct key structure (page, chunk_number) instead of (file_hash, page, chunk_number)
-            for (page, chunk_number), phrases in phrase_embeddings.items():
-                for phrase, embedding in phrases:
-                    if np.array_equal(embedding, index.reconstruct(chunk_id)):
-                        selected_chunks.append(page_chunks[page][chunk_number-1])
+    """Retrieve similar chunks with better error handling"""
+    try:
+        if not query_embeddings or not phrase_embeddings:
+            print("Warning: No query embeddings or phrase embeddings available")
+            return ["No relevant content found."]
+        
+        query_embeddings_np = np.array(query_embeddings, dtype=np.float32)
+        
+        # Ensure we don't search for more chunks than available
+        available_chunks = index.ntotal
+        k = min(5, available_chunks) if available_chunks > 0 else 1
+        
+        print(f"Searching for {k} similar chunks from {available_chunks} total")
+        
+        if available_chunks == 0:
+            return ["No indexed content available for search."]
+        
+        D, I = index.search(query_embeddings_np, k=k)
+        
+        selected_chunks = []
+        processed_indices = set()
+        
+        # Map FAISS indices back to chunks
+        embedding_index = 0
+        index_to_chunk_map = {}
+        
+        # Create mapping from FAISS index to chunk content
+        for (page, chunk_number), phrases in phrase_embeddings.items():
+            for phrase, embedding in phrases:
+                index_to_chunk_map[embedding_index] = (page, chunk_number)
+                embedding_index += 1
+        
+        # Retrieve chunks based on similarity
+        for i in range(len(I)):
+            for j in range(len(I[i])):
+                chunk_idx = int(I[i][j])
+                
+                if chunk_idx in index_to_chunk_map and chunk_idx not in processed_indices:
+                    page, chunk_number = index_to_chunk_map[chunk_idx]
+                    
+                    # Get the actual chunk content
+                    if page in page_chunks and chunk_number - 1 < len(page_chunks[page]):
+                        chunk_content = page_chunks[page][chunk_number - 1]
+                        selected_chunks.append(chunk_content)
+                        processed_indices.add(chunk_idx)
+                        
+                        if len(selected_chunks) >= 5:  # Limit to 5 chunks
+                            break
+            
+            if len(selected_chunks) >= 5:
+                break
+        
+        # Fallback: if no chunks found, return some content from page_chunks
+        if not selected_chunks and page_chunks:
+            print("Using fallback: returning first available chunks")
+            for page, chunks in page_chunks.items():
+                for chunk in chunks[:2]:  # Take first 2 chunks from each page
+                    selected_chunks.append(chunk)
+                    if len(selected_chunks) >= 3:
                         break
+                if len(selected_chunks) >= 3:
+                    break
+        
+        if not selected_chunks:
+            selected_chunks = ["Unable to find relevant content in the document."]
+        
+        print(f"Retrieved {len(selected_chunks)} chunks for context")
+        return selected_chunks
+        
+    except Exception as e:
+        print(f"Error in retrieve_similar_chunks: {e}")
+        return [f"Error retrieving content: {str(e)}"]
 
-    return selected_chunks
+def extract_keywords_from_chunks(page_chunks):
+    """Extract keywords from chunks with better error handling"""
+    rake = Rake()
+    chunk_phrases = {}
+    
+    for page, chunks in page_chunks.items():
+        for chunk_number, chunk in enumerate(chunks, start=1):
+            try:
+                if chunk and chunk.strip():  # Only process non-empty chunks
+                    rake.extract_keywords_from_text(chunk)
+                    phrases = rake.get_ranked_phrases()[:5]
+                    chunk_phrases[(page, chunk_number)] = phrases
+                else:
+                    chunk_phrases[(page, chunk_number)] = []
+            except Exception as e:
+                print(f"Error extracting keywords from page {page}, chunk {chunk_number}: {e}")
+                chunk_phrases[(page, chunk_number)] = []
+    
+    print(f"Extracted keywords from {len(chunk_phrases)} chunks")
+    return chunk_phrases
+
+
+def parse_simple_query_enhanced(user_query):
+    """Enhanced keyword extraction using OpenAI function calling with special commands support"""
+    try:
+        # Define the function schema for OpenAI with special commands
+        extract_function = {
+            "name": "extract_search_criteria",
+            "description": "Extract search criteria from natural language query, including special commands",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Company names, organizations, or employers mentioned"
+                    },
+                    "title": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Job titles, positions, or roles mentioned"
+                    },
+                    "name": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Person names mentioned"
+                    },
+                    "skills": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Technical skills, technologies, or expertise mentioned"
+                    },
+                    "location": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Cities, countries, or geographic locations mentioned"
+                    },
+                    "phrases": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "show_all_companies",
+                                "show_all_titles", 
+                                "show_all_locations",
+                                "show_all_skills",
+                                "show_favorites",
+                                "list_companies",
+                                "list_titles",
+                                "list_locations", 
+                                "list_skills",
+                                "my_favorites",
+                                "saved_profiles",
+                                "all_companies",
+                                "all_titles",
+                                "all_locations",
+                                "all_skills"
+                            ]
+                        },
+                        "description": "Special command phrases detected in the query like 'show all companies', 'show my favorites', 'list all titles', etc."
+                    }
+                },
+                "required": []
+            }
+        }
+
+        client = openai.OpenAI()
+        client.api_key = os.environ['OPENAI_API_KEY']
+        
+        # Enhanced system prompt to detect special commands while maintaining your existing logic
+        system_prompt = """You are a search query parser that extracts search criteria accurately from user queries. Extract search criteria accurately from user queries. Include information that is explicitly mentioned but also matching terms that are close to what is mentioned. They could be singular or plural forms, sub-strings or variations, etc.
+
+SPECIAL COMMANDS TO DETECT:
+- "show all companies" / "list companies" / "all companies" → show_all_companies
+- "show all titles" / "list titles" / "all titles" / "job titles" → show_all_titles  
+- "show all locations" / "list locations" / "all locations" → show_all_locations
+- "show all skills" / "list skills" / "all skills" → show_all_skills
+- "show favorites" / "my favorites" / "show saved" / "saved profiles" → show_favorites
+
+Extract both specific search terms AND any special commands detected. If the query contains both search terms and special commands, include both in the response."""
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": system_prompt
+                },
+                {
+                    "role": "user", 
+                    "content": f"Extract search criteria and special commands from this query: '{user_query}'"
+                }
+            ],
+            functions=[extract_function],
+            function_call={"name": "extract_search_criteria"},
+            temperature=0.1
+        )
+        
+        # Extract function call result
+        function_call = response.choices[0].message.function_call
+        keywords = json.loads(function_call.arguments)
+        
+        # Clean up empty arrays
+        keywords = {k: v for k, v in keywords.items() if v and len(v) > 0}
+        
+        # Check if this is a special command
+        special_phrases = keywords.get('phrases', [])
+        is_special_command = len(special_phrases) > 0
+        
+        # Determine command type from phrases
+        command_type = None
+        if is_special_command:
+            phrase = special_phrases[0]  # Use first detected phrase
+            if phrase in ['show_all_companies', 'list_companies', 'all_companies']:
+                command_type = 'show_companies'
+            elif phrase in ['show_all_titles', 'list_titles', 'all_titles']:
+                command_type = 'show_titles'
+            elif phrase in ['show_all_locations', 'list_locations', 'all_locations']:
+                command_type = 'show_locations'
+            elif phrase in ['show_all_skills', 'list_skills', 'all_skills']:
+                command_type = 'show_skills'
+            elif phrase in ['show_favorites', 'my_favorites', 'saved_profiles']:
+                command_type = 'show_favorites'
+        
+        print(f"OpenAI extracted keywords: {keywords}")
+        print(f"Special command detected: {is_special_command}, Type: {command_type}")
+        
+        return {
+            'success': True, 
+            'keywords': keywords,
+            'special_command': is_special_command,
+            'command_type': command_type,
+            'phrases': special_phrases
+        }
+        
+    except Exception as e:
+        print(f"OpenAI parsing error: {e}")
+        return {
+            'success': False, 
+            'keywords': {}, 
+            'special_command': False,
+            'command_type': None,
+            'phrases': [],
+            'error': str(e)
+        }
+
+
+def simple_search_json(json_data, keywords):
+    """Simple search function with substring matching for both keys and values"""
+    results = []
+    print(f"Searching with keywords: {keywords}")
+    
+    for record in json_data:
+        match = True
+        
+        # Check each keyword type
+        for field, values in keywords.items():
+            if not values:  # Skip empty fields
+                continue
+                
+            field_match = False
+            
+            # Map search fields to possible record fields with substring matching
+            if field == 'company':
+                record_fields = ['company', 'Company', 'organization', 'Organization', 'employer', 'Employer']
+            elif field == 'title':
+                record_fields = ['title', 'Title', 'position', 'Position', 'job_title', 'Job Title', 'role', 'Role']
+            elif field == 'name':
+                record_fields = ['name', 'Name', 'full_name', 'Full Name', 'first_name', 'First Name', 'last_name', 'Last Name']
+            elif field == 'location':
+                record_fields = ['location', 'Location', 'city', 'City', 'country', 'Country']
+            elif field == 'skills':
+                record_fields = ['skills', 'Skills', 'required_skills', 'technologies', 'Technologies']
+            else:
+                record_fields = [field]
+            
+            # First try exact field matching
+            for record_field in record_fields:
+                if record_field in record and record[record_field]:
+                    record_value = str(record[record_field]).lower()
+                    
+                    for search_value in values:
+                        search_value_lower = search_value.lower()
+                        
+                        # Check if search value is substring of record value
+                        if search_value_lower in record_value:
+                            field_match = True
+                            print(f"Exact match: '{search_value}' found in '{record_value}' (field: {record_field})")
+                            break
+                        
+                        # Check if record value is substring of search value (reverse match)
+                        if record_value in search_value_lower:
+                            field_match = True
+                            print(f"Reverse match: '{record_value}' found in '{search_value}' (field: {record_field})")
+                            break
+                    
+                    if field_match:
+                        break
+            
+            # If no exact field match, try substring matching on field names
+            if not field_match:
+                for record_field in record.keys():
+                    # Check if search field is substring of record field or vice versa
+                    field_lower = field.lower()
+                    record_field_lower = record_field.lower()
+                    
+                    # Match if field names have substring relationship
+                    if (field_lower in record_field_lower or record_field_lower in field_lower) and record[record_field]:
+                        record_value = str(record[record_field]).lower()
+                        
+                        for search_value in values:
+                            search_value_lower = search_value.lower()
+                            
+                            # Check substring matches in both directions
+                            if search_value_lower in record_value:
+                                field_match = True
+                                print(f"Field substring match: '{search_value}' found in '{record_value}' (field: {record_field})")
+                                break
+                            
+                            if record_value in search_value_lower:
+                                field_match = True
+                                print(f"Field reverse substring match: '{record_value}' found in '{search_value}' (field: {record_field})")
+                                break
+                        
+                        if field_match:
+                            break
+            
+            # If still no match, try word-level substring matching
+            if not field_match:
+                for record_field in record_fields:
+                    if record_field in record and record[record_field]:
+                        record_value = str(record[record_field]).lower()
+                        
+                        for search_value in values:
+                            search_value_lower = search_value.lower()
+                            
+                            # Split search value into words and check each word
+                            search_words = [word.strip() for word in search_value_lower.replace('-', ' ').split() if len(word.strip()) > 2]
+                            
+                            for word in search_words:
+                                if word in record_value:
+                                    field_match = True
+                                    print(f"Word substring match: '{word}' from '{search_value}' found in '{record_value}' (field: {record_field})")
+                                    break
+                            
+                            # Also split record value and check against search value
+                            if not field_match:
+                                record_words = [word.strip() for word in record_value.replace('-', ' ').split() if len(word.strip()) > 2]
+                                
+                                for word in record_words:
+                                    if word in search_value_lower:
+                                        field_match = True
+                                        print(f"Record word substring match: '{word}' from '{record_value}' found in '{search_value}' (field: {record_field})")
+                                        break
+                            
+                            if field_match:
+                                break
+                    
+                    if field_match:
+                        break
+            
+            # If this field didn't match, exclude the record
+            if not field_match:
+                match = False
+                break
+        
+        
+        if match:
+            results.append(record)
+    print(match)
+    return results
+
+def make_request(url, config):
+    """Centralized HTTP request handler"""
+    headers = config.get('headers', {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    })
+    
+    timeout = config.get('timeout', 30)
+    
+    response = requests.get(url, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    
+    return response
+
+def parse_html(response):
+    """Centralized HTML parsing"""
+    return BeautifulSoup(response.text, 'html.parser')
+
+def get_page_metadata(soup, url):
+    """Extract basic page metadata"""
+    title = None
+    title_tag = soup.find('title')
+    if title_tag:
+        title = title_tag.get_text(strip=True)
+    
+    meta_description = None
+    meta_desc = soup.find('meta', attrs={'name': 'description'})
+    if meta_desc:
+        meta_description = meta_desc.get('content', '')
+    
+    return {
+        'page_title': title,
+        'meta_description': meta_description,
+        'url': url
+    }
+
+def scrape_basic_content(url, config):
+    """Basic content scraping - common elements"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        # Get page metadata
+        result = get_page_metadata(soup, url)
+        result['status_code'] = response.status_code
+        
+        # Get selectors from config or use defaults
+        selectors = config.get('selectors', {})
+        
+        if selectors:
+            # Use custom selectors
+            for name, selector_config in selectors.items():
+                result[name] = extract_with_selector(soup, selector_config)
+        else:
+            # Default extraction
+            result.update(extract_common_elements(soup))
+        
+        return {
+            'success': True,
+            'type': 'basic',
+            'data': result,
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except requests.exceptions.RequestException as e:
+        return {
+            'success': False,
+            'error': f'Request failed: {str(e)}',
+            'url': url
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Scraping error: {str(e)}'
+        }
+
+def scrape_text_content(url, config):
+    """Text-only content scraping"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        selector = config.get('selector')
+        max_length = config.get('max_length')
+        clean_text = config.get('clean_text', True)
+        
+        if selector:
+            # Extract text from specific selector
+            element = soup.select_one(selector)
+            text = element.get_text(strip=clean_text) if element else None
+        else:
+            # Extract all text
+            text = soup.get_text()
+            if clean_text:
+                text = ' '.join(text.split())
+        
+        # Apply length limit
+        if text and max_length and len(text) > max_length:
+            text = text[:max_length] + '...'
+        
+        return {
+            'success': True,
+            'type': 'text',
+            'url': url,
+            'selector': selector if selector else 'entire_page',
+            'text': text,
+            'text_length': len(text) if text else 0,
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def scrape_json_ld_content(url, config):
+    """JSON-LD structured data scraping"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        # Extract JSON-LD scripts
+        json_ld_data = []
+        scripts = soup.find_all("script", type="application/ld+json")
+        
+        filters = config.get('filters', {})
+        schema_type = filters.get('schema_type')
+        keywords = filters.get('keywords', [])
+        
+        for script in scripts:
+            try:
+                if script.string:
+                    data_obj = json.loads(script.string)
+                    
+                    # Apply filters
+                    if schema_type and data_obj.get('@type', '').lower() != schema_type.lower():
+                        continue
+                    
+                    if keywords:
+                        data_str = str(data_obj).lower()
+                        if not any(keyword.lower() in data_str for keyword in keywords):
+                            continue
+                    
+                    json_ld_data.append(data_obj)
+            except json.JSONDecodeError:
+                continue
+        
+        return {
+            'success': True,
+            'type': 'json_ld',
+            'url': url,
+            'json_ld': json_ld_data,
+            'count': len(json_ld_data),
+            'filters_applied': filters,
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def scrape_product_content(url, config):
+    """Enhanced product data scraping"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        result = get_page_metadata(soup, url)
+        
+        # Product-specific selectors
+        product_selectors = {
+            'name': [
+                'h1.product-title', 'h1.product-name', '.product-title', '.pdp-product-name',
+                'h1[data-testid="product-title"]', '.product-info h1'
+            ],
+            'price': [
+                '.price', '.current-price', '.product-price', '[data-testid="price"]',
+                '.price-current', '.final-price'
+            ],
+            'description': [
+                '.product-description', '.pdp-description', '.product-details-description',
+                '[data-testid="product-description"]', '.product-info-description'
+            ],
+            'brand': [
+                '.brand', '.product-brand', '[data-testid="brand"]', '.manufacturer'
+            ],
+            'availability': [
+                '.availability', '.stock-status', '[data-testid="availability"]', '.in-stock'
+            ],
+            'images': [
+                '.product-image img', '.product-gallery img', '.pdp-images img'
+            ]
+        }
+        
+        # Override with custom selectors if provided
+        custom_selectors = config.get('selectors', {})
+        if custom_selectors:
+            product_selectors.update(custom_selectors)
+        
+        # Extract product data
+        product_data = {}
+        for field, selector_list in product_selectors.items():
+            if field == 'images':
+                # Handle images specially
+                images = []
+                for selector in selector_list:
+                    elements = soup.select(selector)
+                    for img in elements[:5]:  # Limit to 5 images
+                        src = img.get('src') or img.get('data-src')
+                        if src:
+                            images.append({
+                                'src': src,
+                                'alt': img.get('alt', '')
+                            })
+                    if images:
+                        break
+                product_data[field] = images
+            else:
+                # Handle text fields
+                for selector in selector_list:
+                    element = soup.select_one(selector)
+                    if element:
+                        product_data[field] = element.get_text(strip=True)
+                        break
+        
+        result['product_data'] = product_data
+        
+        return {
+            'success': True,
+            'type': 'product',
+            'data': result,
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def scrape_table_content(url, config):
+    """Table data scraping"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        table_selector = config.get('table_selector', 'table')
+        include_headers = config.get('include_headers', True)
+        max_rows = config.get('max_rows')
+        
+        tables = soup.select(table_selector)
+        tables_data = []
+        
+        for i, table in enumerate(tables):
+            table_data = {
+                'table_index': i + 1,
+                'headers': [],
+                'rows': []
+            }
+            
+            # Extract headers
+            if include_headers:
+                header_row = table.find('thead') or table.find('tr')
+                if header_row:
+                    headers = header_row.find_all(['th', 'td'])
+                    table_data['headers'] = [th.get_text(strip=True) for th in headers]
+            
+            # Extract rows
+            body = table.find('tbody') or table
+            rows = body.find_all('tr')
+            
+            if include_headers and table_data['headers']:
+                rows = rows[1:]  # Skip header row
+            
+            for row_idx, row in enumerate(rows):
+                if max_rows and row_idx >= max_rows:
+                    break
+                    
+                cells = row.find_all(['td', 'th'])
+                if cells:  # Skip empty rows
+                    row_data = [cell.get_text(strip=True) for cell in cells]
+                    table_data['rows'].append(row_data)
+            
+            if table_data['headers'] or table_data['rows']:
+                tables_data.append(table_data)
+        
+        return {
+            'success': True,
+            'type': 'tables',
+            'url': url,
+            'tables': tables_data,
+            'total_tables': len(tables_data),
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def scrape_custom_selectors(url, config):
+    """Custom selector-based scraping"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        selectors = config.get('selectors', {})
+        if not selectors:
+            return {
+                'success': False,
+                'error': 'No selectors provided for custom scraping'
+            }
+        
+        result = get_page_metadata(soup, url)
+        
+        for name, selector_config in selectors.items():
+            result[name] = extract_with_selector(soup, selector_config)
+        
+        return {
+            'success': True,
+            'type': 'custom',
+            'data': result,
+            'scraped_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+def extract_with_selector(soup, selector_config):
+    """Universal selector extraction handler"""
+    try:
+        if isinstance(selector_config, str):
+            # Simple string selector
+            element = soup.select_one(selector_config)
+            return element.get_text(strip=True) if element else None
+        
+        elif isinstance(selector_config, dict):
+            # Advanced selector with options
+            selector = selector_config.get('selector')
+            attribute = selector_config.get('attribute', 'text')
+            multiple = selector_config.get('multiple', False)
+            
+            if multiple:
+                elements = soup.select(selector)
+                if attribute == 'text':
+                    return [el.get_text(strip=True) for el in elements]
+                else:
+                    return [el.get(attribute) for el in elements if el.get(attribute)]
+            else:
+                element = soup.select_one(selector)
+                if element:
+                    if attribute == 'text':
+                        return element.get_text(strip=True)
+                    else:
+                        return element.get(attribute)
+                return None
+        
+        return None
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def extract_common_elements(soup):
+    """Extract common page elements when no specific selectors provided"""
+    common_data = {}
+    
+    try:
+        # Headings (limit to first 10)
+        headings = []
+        for i in range(1, 7):  # h1 to h6
+            heading_elements = soup.find_all(f'h{i}')
+            for h in heading_elements[:3]:  # Max 3 per level
+                text = h.get_text(strip=True)
+                if text:
+                    headings.append({
+                        'level': i,
+                        'text': text
+                    })
+        common_data['headings'] = headings[:10]
+        
+        # Paragraphs (first 5 meaningful ones)
+        paragraphs = []
+        p_elements = soup.find_all('p')
+        for p in p_elements:
+            text = p.get_text(strip=True)
+            if text and len(text) > 30:  # Only meaningful paragraphs
+                paragraphs.append(text)
+                if len(paragraphs) >= 5:
+                    break
+        common_data['paragraphs'] = paragraphs
+        
+        # Links (first 10)
+        links = []
+        a_elements = soup.find_all('a', href=True)
+        for a in a_elements[:10]:
+            href = a.get('href')
+            text = a.get_text(strip=True)
+            if href and text:
+                links.append({
+                    'url': href,
+                    'text': text
+                })
+        common_data['links'] = links
+        
+        # Images (first 5)
+        images = []
+        img_elements = soup.find_all('img')
+        for img in img_elements[:5]:
+            src = img.get('src') or img.get('data-src')
+            if src:
+                images.append({
+                    'src': src,
+                    'alt': img.get('alt', '')
+                })
+        common_data['images'] = images
+        
+    except Exception as e:
+        common_data['error'] = f"Error extracting common elements: {str(e)}"
+    
+    return common_data
+
+def handle_cookie_consent_and_popups(driver):
+    """Enhanced cookie consent handler specifically for ZARA and similar sites"""
+    try:
+        # Wait a moment for popups to appear
+        time.sleep(3)
+        
+        # Specific selectors for ZARA and other fashion sites
+        zara_selectors = [
+            # ZARA specific
+            'button[data-qa-action="accept-all"]',
+            'button[data-qa-action="accept"]',
+            '#onetrust-accept-btn-handler',
+            '.ot-pc-refuse-all-handler',
+            
+            # Common cookie consent buttons
+            'button:contains("Accept All")',
+            'button:contains("Alle akzeptieren")',  # German
+            'button:contains("Aceptar todo")',      # Spanish
+            'button:contains("Accepter tout")',     # French
+            'button:contains("Accept")',
+            'button:contains("Akzeptieren")',
+            'button:contains("I Accept")',
+            'button:contains("Agree")',
+            'button:contains("Einverstanden")',
+            'button:contains("OK")',
+            'button:contains("Continue")',
+            'button:contains("Weiter")',
+            'button:contains("Got it")',
+            
+            # Common class names and IDs
+            '.accept-all',
+            '.accept-cookies',
+            '.accept-btn',
+            '.cookie-accept',
+            '.consent-accept',
+            '.terms-accept',
+            '#accept-all',
+            '#accept-cookies',
+            '#cookie-accept',
+            '.onetrust-close-btn-handler',
+            '.optanon-allow-all',
+            
+            # Data attributes
+            '[data-accept="all"]',
+            '[data-cookie-accept]',
+            '[data-consent="accept"]',
+            '[data-testid="accept"]',
+            '[data-testid="accept-all"]',
+            '[data-qa-action="accept-all"]',
+            
+            # OneTrust specific (used by ZARA)
+            '#onetrust-accept-btn-handler',
+            '.onetrust-close-btn-handler',
+            '.ot-pc-refuse-all-handler',
+            
+            # ARIA labels
+            '[aria-label*="Accept"]',
+            '[aria-label*="Agree"]',
+            '[aria-label*="akzeptieren"]',
+            '[role="button"][aria-label*="Accept"]'
+        ]
+        
+        print("Looking for cookie consent buttons...")
+        
+        # Try each selector
+        for selector in zara_selectors:
+            try:
+                if ':contains(' in selector:
+                    # Handle text-based selectors with XPath
+                    text = selector.split(':contains("')[1].split('")')[0]
+                    tag = selector.split(':contains(')[0]
+                    xpath = f"//{tag}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{text.lower()}')]"
+                    elements = driver.find_elements(By.XPATH, xpath)
+                else:
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for element in elements:
+                    if element.is_displayed() and element.is_enabled():
+                        print(f"Found and clicking accept button: {selector}")
+                        # Scroll to element first
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                        time.sleep(1)
+                        
+                        # Try multiple click methods
+                        try:
+                            element.click()
+                        except Exception:
+                            try:
+                                driver.execute_script("arguments[0].click();", element)
+                            except Exception:
+                                # Force click using coordinates
+                                from selenium.webdriver.common.action_chains import ActionChains
+                                ActionChains(driver).move_to_element(element).click().perform()
+                        
+                        time.sleep(3)  # Wait for dialog to close
+                        print(f"Successfully clicked consent button")
+                        return True
+                        
+            except Exception as e:
+                print(f"Error trying selector {selector}: {e}")
+                continue
+        
+        print("No cookie consent button found or clicked")
+        return False
+        
+    except Exception as e:
+        print(f"Error handling popups: {e}")
+        return False
+
+def setup_driver(headless=True):
+    """Setup Chrome WebDriver for interactive scraping with popup handling"""
+    chrome_options = Options()
+    
+    if headless:
+        chrome_options.add_argument('--headless')
+    
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    # Disable notifications and popups
+    prefs = {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_settings.popups": 0,
+        "profile.managed_default_content_settings.images": 2  # Block images for faster loading
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+    
+    # Additional options to handle consent and cookies
+    chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-plugins')
+    
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=chrome_options)
+
+def scrape_with_interaction(url, headless, config):
+    """Scrape product information with interactive capabilities and popup handling"""
+    driver = None
+    try:
+        driver = setup_driver(headless)
+        
+        # Set page load timeout
+        driver.set_page_load_timeout(30)
+        
+        print(f"Loading page: {url}")
+        driver.get(url)
+        
+        # Handle cookie consent and terms acceptance first
+        print("Handling cookie consent and popups...")
+        popup_handled = handle_cookie_consent_and_popups(driver)
+        if popup_handled:
+            print("Successfully handled popup/consent dialog")
+        else:
+            print("No popup found or couldn't handle it")
+        
+        # Wait for page to load after handling popups
+        wait = WebDriverWait(driver, 15)
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        
+        # Additional wait for dynamic content
+        time.sleep(3)
+        
+        result = {
+            'success': True,
+            'url': url,
+            'scraped_at': datetime.now().isoformat(),
+            'method': 'interactive',
+            'popup_handled': popup_handled,
+            'product_info': {}
+        }
+        
+        # Get basic page info
+        page_title = driver.title
+        result['page_title'] = page_title
+        print(f"Page title: {page_title}")
+        
+        # Extract product information
+        product_info = extract_product_information(driver, wait, config)
+        result['product_info'] = product_info
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f'Interactive scraping error: {str(e)}'
+        print(error_msg)
+        return {
+            'success': False,
+            'error': error_msg,
+            'method': 'interactive'
+        }
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+
+def extract_product_information(driver, wait, config):
+    """Extract product description and size information with enhanced interaction"""
+    product_info = {
+        'description': None,
+        'size_info': None,
+        'size_chart': None,
+        'size_measurements': None,  # Add this new field
+        'materials': None,
+        'care_instructions': None,
+        'specifications': None,
+        'interactive_content_found': False,
+        'extraction_methods_used': []
+    }
+    
+    try:
+        # Step 1: Try to extract visible content first
+        print("Extracting visible content...")
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        visible_content = extract_static_product_info(soup)
+        product_info.update(visible_content)
+        product_info['extraction_methods_used'].append('static_html')
+        
+        # Step 2: Look for and interact with clickable elements
+        print("Looking for interactive elements...")
+        interactive_elements = find_interactive_elements(driver)
+        
+        if interactive_elements:
+            product_info['interactive_content_found'] = True
+            product_info['extraction_methods_used'].append('interactive_clicks')
+            
+            for element_info in interactive_elements:
+                try:
+                    print(f"Interacting with {element_info['type']}: {element_info['text']}")
+                    
+                    # Click the element
+                    element = element_info['element']
+                    element_type = element_info['type']
+                    
+                    # Scroll to element and click
+                    driver.execute_script("arguments[0].scrollIntoView(true);", element)
+                    time.sleep(1)
+                    
+                    # Get page source before click for comparison
+                    before_click_content = driver.page_source
+                    
+                    # Try different click methods
+                    try:
+                        element.click()
+                    except:
+                        # If regular click fails, try JavaScript click
+                        driver.execute_script("arguments[0].click();", element)
+                    
+                    # Wait longer for content to load
+                    time.sleep(4)  # Increased wait time
+                    
+                    # Get page source after click
+                    after_click_content = driver.page_source
+                    
+                    # Check if content changed
+                    if len(after_click_content) != len(before_click_content):
+                        print(f"Page content changed after clicking {element_type}")
+                    
+                    # Extract content after interaction
+                    new_soup = BeautifulSoup(driver.page_source, 'html.parser')
+                    new_content = extract_dynamic_content(new_soup, element_type)
+                    
+                    # Merge new content
+                    for key, value in new_content.items():
+                        if value and (not product_info.get(key) or product_info.get(key) == element_info['text']):
+                            product_info[key] = value
+                            print(f"Updated {key} with new content from {element_type}")
+                    
+                    # Close popup/modal if it opened
+                    close_popup(driver)
+                    time.sleep(1)  # Wait after closing
+                    
+                except Exception as e:
+                    print(f"Error interacting with element {element_info['type']}: {e}")
+                    continue
+        
+        # Step 3: Try scrolling to load more content
+        print("Scrolling to load additional content...")
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(1)
+        
+        # Extract content after scrolling
+        final_soup = BeautifulSoup(driver.page_source, 'html.parser')
+        scroll_content = extract_static_product_info(final_soup)
+        
+        # Merge scroll content
+        for key, value in scroll_content.items():
+            if value and not product_info.get(key):
+                product_info[key] = value
+        
+        if scroll_content:
+            product_info['extraction_methods_used'].append('scroll_content')
+        
+        # Step 4: Clean and format the extracted data
+        product_info = clean_product_info(product_info)
+        
+        print(f"Extraction complete. Methods used: {product_info['extraction_methods_used']}")
+        print(f"Final product info keys: {list(product_info.keys())}")
+        
+        return product_info
+        
+    except Exception as e:
+        print(f"Error in extract_product_information: {e}")
+        product_info['error'] = str(e)
+        return product_info
+
+
+
+def find_interactive_elements(driver):
+    """Enhanced function to find clickable elements for multiple brands"""
+    interactive_elements = []
+    
+    # Enhanced selectors for different brands and languages
+    element_selectors = {
+        'size_guide': [
+            # English selectors
+            'a:contains("Size Guide")', 'button:contains("Size Guide")',
+            'a:contains("Size Chart")', 'button:contains("Size Chart")',
+            'a:contains("Sizing")', 'button:contains("Sizing")',
+            'a:contains("Measurements")', 'button:contains("Measurements")',
+            'a:contains("Product Measurements")', 'button:contains("Product Measurements")',
+            
+            # German selectors
+            'a:contains("Größentabelle")', 'button:contains("Größentabelle")',
+            'a:contains("Größenführung")', 'button:contains("Größenführung")',
+            'a:contains("Maße")', 'button:contains("Maße")',
+            
+            # French selectors
+            'a:contains("Guide des tailles")', 'button:contains("Guide des tailles")',
+            'a:contains("Tableau des tailles")', 'button:contains("Tableau des tailles")',
+            
+            # Spanish selectors
+            'a:contains("Guía de tallas")', 'button:contains("Guía de tallas")',
+            'a:contains("Tabla de tallas")', 'button:contains("Tabla de tallas")',
+            
+            # Generic attribute selectors
+            'a[href*="size"]', 'a[href*="sizing"]', 'a[href*="measurement"]',
+            'button[class*="size"]', 'a[class*="size"]',
+            '[data-size-guide]', '[data-testid*="size"]',
+            '[data-qa-action*="size"]', '[data-qa*="size"]',
+            '[data-modal*="size"]', '[data-popup*="size"]',
+            
+            # Brand specific selectors
+            'button[data-qa-action="size-guide"]',
+            'a[data-qa-action="size-guide"]',
+            '.product-size-guide-link',
+            '.size-guide-trigger',
+            'button.size-chart-btn',
+            'a.size-chart-link',
+            '.size-guide', '.size-chart', '.sizing-info',
+            
+            # Common class patterns
+            '.size-guide-link', '.sizing-link', '.measurement-link',
+            '[class*="size-guide"]', '[class*="sizing"]', '[class*="measurement"]'
+        ],
+        'description': [
+            # English
+            'a:contains("Description")', 'button:contains("Description")',
+            'a:contains("More Details")', 'button:contains("More Details")',
+            'a:contains("Product Details")', 'button:contains("Product Details")',
+            'a:contains("Details")', 'button:contains("Details")',
+            
+            # German
+            'a:contains("Beschreibung")', 'button:contains("Beschreibung")',
+            'a:contains("Mehr Details")', 'button:contains("Mehr Details")',
+            'a:contains("Produktdetails")', 'button:contains("Produktdetails")',
+            
+            # Generic
+            '.description-toggle', '.product-description-toggle',
+            '.more-info', '.view-more', '.expand-description',
+            '[data-qa-action*="description"]', '[data-testid*="description"]'
+        ],
+        'specifications': [
+            'a:contains("Specifications")', 'button:contains("Specifications")',
+            'a:contains("Specs")', 'button:contains("Specs")',
+            'a:contains("Technical Details")', 'button:contains("Technical Details")',
+            'a:contains("Spezifikationen")', 'button:contains("Spezifikationen")',
+            '.specs-toggle', '.specifications-toggle', '.product-specs',
+            '[data-qa-action*="specs"]', '[data-qa-action*="details"]'
+        ],
+        'care': [
+            'a:contains("Care")', 'button:contains("Care Instructions")',
+            'a:contains("Care Instructions")', 'a:contains("Washing Instructions")',
+            'button:contains("Pflege")', 'button:contains("Pflegeanleitung")',
+            '.care-instructions', '.washing-instructions', '.garment-care',
+            '[data-qa-action*="care"]'
+        ]
+    }
+    
+    print("Searching for interactive elements...")
+    
+    for element_type, selectors in element_selectors.items():
+        print(f"Searching for {element_type} elements...")
+        
+        for selector in selectors:
+            try:
+                if ':contains(' in selector:
+                    # Handle text-based selectors with XPath
+                    text = selector.split(':contains("')[1].split('")')[0]
+                    tag = selector.split(':contains(')[0]
+                    xpath = f"//{tag}[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{text.lower()}')]"
+                    elements = driver.find_elements(By.XPATH, xpath)
+                else:
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for element in elements:
+                    if element.is_displayed() and element.is_enabled():
+                        element_text = element.text.strip()
+                        element_tag = element.tag_name
+                        
+                        print(f"Found interactive element: {element_type} - '{element_text}' ({element_tag}) (selector: {selector})")
+                        
+                        interactive_elements.append({
+                            'element': element,
+                            'type': element_type,
+                            'selector': selector,
+                            'text': element_text,
+                            'tag': element_tag
+                        })
+                        break  # Only take first working element of each type
+                
+                if any(e['type'] == element_type for e in interactive_elements):
+                    break  # Found element for this type, move to next
+                    
+            except Exception as e:
+                print(f"Error trying selector {selector}: {e}")
+                continue
+    
+    print(f"Found {len(interactive_elements)} interactive elements total")
+    return interactive_elements
+
+def extract_static_product_info(soup):
+    """Enhanced static product extraction for multiple brands"""
+    info = {}
+    
+    # Enhanced description selectors for various brands
+    description_selectors = [
+        # ZARA specific
+        '.expandable-text__inner-content p',
+        '.expandable-text__inner-content',
+        '.product-detail-info__description',
+        
+        # H&M specific
+        '.product-description-text',
+        '.pdp-product-description',
+        '.product-description-content',
+        
+        # Uniqlo specific
+        '.product-description',
+        '.pdp-description',
+        
+        # Generic brand selectors
+        '.product-detail-view__description',
+        '.product-info__description',
+        '[data-testid="product-description"]',
+        '.product-info-description',
+        '.product-long-description',
+        '.description-content',
+        '.product-content',
+        '.item-description',
+        '.product-summary',
+        '.product-details-content',
+        '.product-information',
+        '#product-description',
+        '.description',
+        '.details',
+        '.overview',
+        '.about-product',
+        '.product-info',
+        '.product-detail',
+        '.product-overview',
+        '.item-details',
+        '.product-specs',
+        
+        # Common patterns
+        '[class*="description"]',
+        '[class*="product-info"]',
+        '[id*="description"]'
+    ]
+    
+    # Extract description with enhanced search
+    for selector in description_selectors:
+        try:
+            element = soup.select_one(selector)
+            if element:
+                text = element.get_text(strip=True)
+                if text and len(text) > 20:
+                    info['description'] = text
+                    print(f"Found description using selector: {selector}")
+                    break
+        except Exception as e:
+            continue
+    
+    # Enhanced fallback for description
+    if not info.get('description'):
+        # Look for expandable content patterns
+        expandable_patterns = [
+            '[class*="expandable"]',
+            '[class*="collapsible"]',
+            '[class*="toggle"]'
+        ]
+        
+        for pattern in expandable_patterns:
+            elements = soup.select(pattern)
+            for element in elements:
+                text = element.get_text(strip=True)
+                if (text and len(text) > 50 and 
+                    not any(exclude in text.lower() for exclude in ['cookie', 'privacy', 'terms', 'size', 'shipping'])):
+                    info['description'] = text
+                    print(f"Found description in expandable content: {pattern}")
+                    break
+            if info.get('description'):
+                break
+    
+    # Enhanced size information extraction
+    size_selectors = [
+        # Direct size guide links/buttons
+        '.size-guide', '.size-chart', '.sizing-info', '.size-information',
+        '.product-sizing', '.fit-guide', '.measurements', '.dimensions',
+        '[data-testid="size-info"]', '.size-details', '.sizing-chart',
+        
+        # Brand specific
+        '.product-detail-size-info', '.size-fit-info', '.size-guide-trigger',
+        '.size-chart-link', '.product-size-info', '.sizing-information',
+        
+        # Interactive elements that might contain size info
+        'button[class*="size"]', 'a[class*="size"]',
+        '[data-qa-action*="size"]', '[data-testid*="size"]',
+        '[data-modal*="size"]', '[data-popup*="size"]'
+    ]
+    
+    for selector in size_selectors:
+        try:
+            element = soup.select_one(selector)
+            if element:
+                text = element.get_text(strip=True)
+                if text and len(text) > 5:
+                    info['size_info'] = text
+                    print(f"Found size info using selector: {selector}")
+                    break
+        except Exception as e:
+            continue
+    
+    # Enhanced materials extraction
+    material_selectors = [
+        '.materials', '.fabric', '.composition', '.material-composition',
+        '.product-materials', '.fabric-composition', '[data-testid="materials"]',
+        '.product-detail-composition', '.composition-info',
+        '[class*="composition"]', '[class*="material"]', '[class*="fabric"]'
+    ]
+    
+    for selector in material_selectors:
+        element = soup.select_one(selector)
+        if element:
+            text = element.get_text(strip=True)
+            if text and any(keyword in text.lower() for keyword in ['cotton', 'polyester', 'material', 'fabric', '%', 'composition']):
+                info['materials'] = text
+                print(f"Found materials using selector: {selector}")
+                break
+    
+    print(f"Static extraction completed. Found: {list(info.keys())}")
+    return info
+
+def extract_dynamic_content(soup, content_type):
+    """Extract content that appeared after interaction - Enhanced for multiple brands"""
+    content = {}
+    
+    # Enhanced modal/popup selectors for different brands and platforms
+    modal_selectors = [
+        # Generic modal selectors
+        '.modal-body', '.popup-content', '.modal-content', '.modal-dialog',
+        '.dialog-content', '.lightbox-content', '.overlay-content',
+        '.modal', '.popup', '.dialog', '.lightbox', '.overlay',
+        
+        # Size guide specific
+        '.size-guide-modal', '.size-modal', '.sizing-modal',
+        '.measurements-modal', '.product-measurements', '.size-chart-modal',
+        
+        # Brand specific selectors
+        '.zara-modal', '.h-and-m-modal', '.uniqlo-modal',
+        
+        # Role-based selectors
+        '[role="dialog"]', '[role="modal"]', '[role="alertdialog"]',
+        
+        # Data attribute selectors
+        '[data-modal]', '[data-popup]', '[data-size-guide]',
+        
+        # Class patterns
+        '[class*="modal"]', '[class*="popup"]', '[class*="dialog"]',
+        '[class*="size-guide"]', '[class*="measurement"]',
+        
+        # ID patterns
+        '#modal', '#popup', '#size-guide', '#measurements',
+        
+        # Recently appeared content (might not be in modal)
+        '.size-guide-content', '.measurements-content', '.sizing-content',
+        '.product-measurements-content', '.size-chart-content'
+    ]
+    
+    modal_content = None
+    modal_selector_used = None
+    
+    # Try each selector to find modal content
+    for selector in modal_selectors:
+        try:
+            element = soup.select_one(selector)
+            if element:
+                text = element.get_text(strip=True)
+                if text and len(text) > 20:  # Must have meaningful content
+                    modal_content = element
+                    modal_selector_used = selector
+                    print(f"Found modal content using selector: {selector}")
+                    break
+        except Exception as e:
+            continue
+    
+    # If no modal found, look for any recently appeared content with size keywords
+    if not modal_content and content_type == 'size_guide':
+        print("No modal found, searching for size-related content...")
+        
+        # Look for any visible element containing size information
+        size_keywords = ['size', 'measurement', 'dimension', 'length', 'width', 'chest', 'waist', 'hip']
+        
+        # Search through all elements for size-related content
+        all_elements = soup.find_all(['div', 'section', 'article', 'table', 'ul', 'ol'])
+        
+        for element in all_elements:
+            text = element.get_text(strip=True).lower()
+            
+            # Check if element contains size-related keywords
+            if (len(text) > 50 and 
+                any(keyword in text for keyword in size_keywords) and
+                # Exclude navigation and header content
+                not any(exclude in text for exclude in ['cookie', 'privacy', 'terms', 'navigation', 'menu'])):
+                
+                modal_content = element
+                modal_selector_used = f"size_keyword_search_{element.name}"
+                print(f"Found size content in {element.name} element: {text[:100]}...")
+                break
+    
+    if modal_content:
+        modal_text = modal_content.get_text(strip=True)
+        print(f"Modal content found ({len(modal_text)} chars): {modal_text[:200]}...")
+        
+        if content_type == 'size_guide':
+            # Extract size chart table from modal
+            tables = modal_content.select('table')
+            if tables:
+                print(f"Found {len(tables)} tables in modal")
+                for i, table in enumerate(tables):
+                    table_data = extract_table_data(table)
+                    if table_data and (table_data.get('headers') or table_data.get('rows')):
+                        content['size_chart'] = table_data
+                        print(f"Extracted size chart table {i}")
+                        break
+            
+            # Look for structured measurement data
+            measurements = extract_measurements_from_text(modal_text)
+            if measurements:
+                content['size_measurements'] = measurements
+                print(f"Extracted measurements: {list(measurements.keys())}")
+            
+            # Always include the full text if it's substantial
+            if modal_text and len(modal_text) > 20:
+                content['size_info'] = modal_text
+                print("Added full modal text as size_info")
+            
+            # Look for specific measurement patterns
+            size_patterns = extract_size_patterns(modal_text)
+            if size_patterns:
+                content['size_patterns'] = size_patterns
+                print(f"Extracted size patterns: {size_patterns}")
+        
+        elif content_type == 'description':
+            if modal_text and len(modal_text) > 20:
+                content['description'] = modal_text
+                print("Added modal text as description")
+        
+        elif content_type == 'specifications':
+            if modal_text and len(modal_text) > 20:
+                content['specifications'] = modal_text
+        
+        elif content_type == 'care':
+            if modal_text and len(modal_text) > 10:
+                content['care_instructions'] = modal_text
+        
+        # Add metadata about extraction
+        content['extraction_method'] = 'modal_extraction'
+        content['modal_selector'] = modal_selector_used
+        content['modal_text_length'] = len(modal_text)
+    
+    # If still no content found for size guide, try alternative approaches
+    if not content and content_type == 'size_guide':
+        print("Trying alternative size extraction methods...")
+        
+        # Method 1: Look for any new tables that might have appeared
+        all_tables = soup.select('table')
+        for table in all_tables:
+            table_text = table.get_text(strip=True).lower()
+            if any(keyword in table_text for keyword in ['size', 'measurement', 'cm', 'inch', 'xs', 'sm', 'md', 'lg', 'xl']):
+                table_data = extract_table_data(table)
+                if table_data:
+                    content['size_chart'] = table_data
+                    content['extraction_method'] = 'table_scan'
+                    print("Found size table through table scan")
+                    break
+        
+        # Method 2: Look for lists with size information
+        all_lists = soup.select('ul, ol')
+        for list_elem in all_lists:
+            list_text = list_elem.get_text(strip=True)
+            if (len(list_text) > 50 and 
+                any(keyword in list_text.lower() for keyword in ['size', 'measurement', 'dimension'])):
+                content['size_info'] = list_text
+                content['extraction_method'] = 'list_extraction'
+                print("Found size info in list element")
+                break
+        
+        # Method 3: Check page for any content changes
+        page_text = soup.get_text()
+        if any(keyword in page_text.lower() for keyword in ['size guide', 'measurements', 'sizing chart']):
+            measurements = extract_measurements_from_text(page_text)
+            if measurements:
+                content['size_measurements'] = measurements
+                content['size_info'] = "Measurements found in page content"
+                content['extraction_method'] = 'page_scan'
+                print("Extracted measurements from full page")
+    
+    print(f"Dynamic content extraction result: {list(content.keys())}")
+    return content
+
+def extract_size_patterns(text):
+    """Extract common size patterns from text"""
+    import re
+    
+    patterns = {}
+    
+    # Pattern for size ranges (e.g., "XS: 32-34", "Size S: 36-38")
+    size_range_pattern = r'(?:Size\s+)?([XS]{1,2}|[SML]{1,2}|\d{2})\s*:?\s*(\d{1,3}(?:\.\d)?)\s*[-–]\s*(\d{1,3}(?:\.\d)?)'
+    matches = re.finditer(size_range_pattern, text, re.IGNORECASE)
+    
+    for match in matches:
+        size, min_val, max_val = match.groups()
+        patterns[f"size_{size.upper()}_range"] = f"{min_val}-{max_val}"
+    
+    # Pattern for measurements with units
+    measurement_pattern = r'(\w+(?:\s+\w+)?)\s*:?\s*(\d{1,3}(?:\.\d)?)\s*(cm|inches?|in)'
+    matches = re.finditer(measurement_pattern, text, re.IGNORECASE)
+    
+    for match in matches:
+        measurement_type, value, unit = match.groups()
+        clean_type = measurement_type.strip().lower().replace(' ', '_')
+        patterns[f"{clean_type}_{unit.lower()}"] = f"{value} {unit}"
+    
+    return patterns if patterns else None
+
+def extract_measurements_from_text(text):
+    """Extract structured measurements from text content"""
+    import re
+    
+    measurements = {}
+    
+    # Common measurement patterns
+    measurement_patterns = [
+        # Pattern: "Size XS: Length 95cm, Waist 68cm"
+        r'Size\s+(\w+):\s*([^,]+(?:,\s*[^,]+)*)',
+        # Pattern: "XS - Length: 95cm, Waist: 68cm"
+        r'(\w+)\s*-\s*([^-]+(?=\w+\s*-|$))',
+        # Pattern: "Length: 95cm" 
+        r'(\w+):\s*(\d+(?:\.\d+)?\s*cm|\d+(?:\.\d+)?\s*inches?)',
+        # Pattern: "95cm length"
+        r'(\d+(?:\.\d+)?\s*cm|\d+(?:\.\d+)?\s*inches?)\s+(\w+)',
+    ]
+    
+    # Size categories to look for
+    size_categories = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '34', '36', '38', '40', '42', '44', '46']
+    measurement_types = ['length', 'width', 'chest', 'waist', 'hips', 'shoulder', 'sleeve', 'inseam', 'rise']
+    
+    for pattern in measurement_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE)
+        for match in matches:
+            groups = match.groups()
+            if len(groups) >= 2:
+                key, value = groups[0], groups[1]
+                
+                # Clean and structure the data
+                key = key.strip()
+                value = value.strip()
+                
+                if key.upper() in size_categories:
+                    # This is a size with measurements
+                    measurements[f"size_{key.upper()}"] = value
+                elif any(mtype in key.lower() for mtype in measurement_types):
+                    # This is a measurement type
+                    measurements[key.lower()] = value
+    
+    return measurements if measurements else None
+
+def extract_table_data(table):
+    """Extract data from size chart tables"""
+    try:
+        table_data = {
+            'headers': [],
+            'rows': []
+        }
+        
+        # Extract headers
+        headers = table.select('thead th, tr:first-child th, tr:first-child td')
+        if headers:
+            table_data['headers'] = [th.get_text(strip=True) for th in headers]
+        
+        # Extract rows
+        rows = table.select('tbody tr, tr')
+        for i, row in enumerate(rows):
+            if i == 0 and table_data['headers']:
+                continue  # Skip header row
+            
+            cells = row.select('td, th')
+            row_data = [cell.get_text(strip=True) for cell in cells]
+            if row_data and any(row_data):  # Skip empty rows
+                table_data['rows'].append(row_data)
+        
+        return table_data
+        
+    except Exception as e:
+        return {'error': f'Error extracting table: {str(e)}'}
+
+def close_popup(driver):
+    """Enhanced popup closing with more selectors"""
+    close_selectors = [
+        '.modal-close', '.close', '.popup-close', '[aria-label="Close"]',
+        '.close-btn', '.modal-dismiss', 'button[data-dismiss="modal"]',
+        '.overlay-close', '.lightbox-close',
+        # ZARA specific close buttons
+        '.zara-modal-close', '.modal-backdrop',
+        # Generic close patterns
+        'button:contains("Close")', 'button:contains("×")', 
+        'a:contains("Close")', '[title="Close"]',
+        # ESC key simulation
+        '.modal.show', '.modal.in'  # For backdrop click
+    ]
+    
+    for selector in close_selectors:
+        try:
+            if ':contains(' in selector:
+                # Handle text-based selectors with XPath
+                text = selector.split(':contains("')[1].split('")')[0]
+                tag = selector.split(':contains(')[0]
+                xpath = f"//{tag}[contains(text(), '{text}')]"
+                close_elements = driver.find_elements(By.XPATH, xpath)
+            else:
+                close_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            
+            for close_btn in close_elements:
+                if close_btn.is_displayed():
+                    try:
+                        close_btn.click()
+                        time.sleep(1)
+                        print(f"Closed popup using selector: {selector}")
+                        return True
+                    except:
+                        # Try JavaScript click
+                        try:
+                            driver.execute_script("arguments[0].click();", close_btn)
+                            time.sleep(1)
+                            print(f"Closed popup with JS using selector: {selector}")
+                            return True
+                        except:
+                            continue
+                            
+        except Exception as e:
+            continue
+    
+    # Try pressing ESC key as fallback
+    try:
+        from selenium.webdriver.common.keys import Keys
+        from selenium.webdriver.common.action_chains import ActionChains
+        ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+        time.sleep(1)
+        print("Closed popup using ESC key")
+        return True
+    except:
+        pass
+    
+    return False
+
+def scrape_static_product(url, config):
+    """Fallback: scrape product info using regular HTTP requests"""
+    try:
+        response = make_request(url, config)
+        soup = parse_html(response)
+        
+        result = {
+            'success': True,
+            'url': url,
+            'scraped_at': datetime.now().isoformat(),
+            'method': 'static',
+            'page_title': get_page_metadata(soup, url)['page_title'],
+            'product_info': {}
+        }
+        
+        # Extract product information
+        product_info = extract_static_product_info(soup)
+        product_info['interactive_content_found'] = False
+        
+        result['product_info'] = clean_product_info(product_info)
+        
+        return result
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Static scraping error: {str(e)}',
+            'method': 'static'
+        }
+
+@app.route('/debug_scrape', methods=['POST'])
+@cross_origin()
+def debug_scrape():
+    """Debug endpoint to see what's actually happening during scraping"""
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        
+        if not url:
+            return jsonify({
+                'success': False,
+                'error': 'URL is required'
+            }), 400
+        
+        driver = None
+        try:
+            print(f"Starting debug scrape for: {url}")
+            
+            # Setup driver in non-headless mode for debugging
+            driver = setup_driver(headless=False)
+            driver.set_page_load_timeout(30)
+            
+            # Step 1: Load page
+            print("Step 1: Loading page...")
+            driver.get(url)
+            time.sleep(3)
+            
+            # Step 2: Handle popups
+            print("Step 2: Handling popups...")
+            popup_handled = handle_cookie_consent_and_popups(driver)
+            print(f"Popup handled: {popup_handled}")
+            
+            # Step 3: Wait for page to be ready
+            print("Step 3: Waiting for page to be ready...")
+            wait = WebDriverWait(driver, 10)
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            time.sleep(2)
+            
+            # Step 4: Get page source and basic info
+            print("Step 4: Getting page info...")
+            page_title = driver.title
+            page_source_length = len(driver.page_source)
+            
+            # Step 5: Parse with BeautifulSoup and look for product content
+            print("Step 5: Parsing with BeautifulSoup...")
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            
+            # Check for common product description selectors
+            description_selectors = [
+                '.product-description', '.pdp-description', '.product-details-description',
+                '[data-testid="product-description"]', '.product-info-description',
+                '.product-long-description', '.description-content', '.product-content',
+                '.product-description-text', '.item-description', '.product-summary',
+                '.product-details-content', '.product-information', '#product-description',
+                # Add more generic selectors
+                '.description', '.details', '.overview', '.about', '.info'
+            ]
+            
+            found_descriptions = {}
+            for selector in description_selectors:
+                elements = soup.select(selector)
+                if elements:
+                    for i, element in enumerate(elements[:3]):  # Check first 3 matches
+                        text = element.get_text(strip=True)
+                        if text and len(text) > 20:  # Only meaningful text
+                            found_descriptions[f"{selector}_{i}"] = {
+                                'selector': selector,
+                                'text_length': len(text),
+                                'text_preview': text[:200] + '...' if len(text) > 200 else text
+                            }
+            
+            # Check for any element with "description" in class or id
+            description_elements = soup.find_all(attrs={'class': lambda x: x and 'description' in ' '.join(x).lower()})
+            description_elements.extend(soup.find_all(attrs={'id': lambda x: x and 'description' in x.lower()}))
+            
+            generic_descriptions = {}
+            for i, element in enumerate(description_elements[:5]):
+                text = element.get_text(strip=True)
+                if text and len(text) > 20:
+                    generic_descriptions[f"generic_{i}"] = {
+                        'classes': element.get('class', []),
+                        'id': element.get('id', ''),
+                        'tag': element.name,
+                        'text_length': len(text),
+                        'text_preview': text[:200] + '...' if len(text) > 200 else text
+                    }
+            
+            # Check for paragraphs that might contain product info
+            paragraphs = soup.find_all('p')
+            long_paragraphs = []
+            for p in paragraphs:
+                text = p.get_text(strip=True)
+                if len(text) > 100:  # Look for substantial paragraphs
+                    long_paragraphs.append({
+                        'text_length': len(text),
+                        'text_preview': text[:150] + '...' if len(text) > 150 else text,
+                        'classes': p.get('class', []),
+                        'parent_classes': p.parent.get('class', []) if p.parent else []
+                    })
+            
+            # Count different element types
+            element_counts = {
+                'total_paragraphs': len(soup.find_all('p')),
+                'total_divs': len(soup.find_all('div')),
+                'total_spans': len(soup.find_all('span')),
+                'elements_with_description_class': len(description_elements),
+                'long_paragraphs': len(long_paragraphs)
+            }
+            
+            return jsonify({
+                'success': True,
+                'url': url,
+                'page_title': page_title,
+                'page_source_length': page_source_length,
+                'popup_handled': popup_handled,
+                'element_counts': element_counts,
+                'found_descriptions': found_descriptions,
+                'generic_descriptions': generic_descriptions,
+                'long_paragraphs': long_paragraphs[:3],  # First 3 only
+                'debug_info': {
+                    'selectors_tested': len(description_selectors),
+                    'soup_parsed': True,
+                    'driver_title': page_title
+                }
+            })
+            
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Debug scraping error: {str(e)}'
+            }), 500
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+                    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Request error: {str(e)}'
+        }), 500
+
+def clean_product_info(product_info):
+    """Clean and format the extracted product information"""
+    cleaned = {}
+    
+    for key, value in product_info.items():
+        if value is None or value == '' or value == []:
+            cleaned[key] = None
+            continue
+        
+        if isinstance(value, str):
+            # Clean whitespace
+            value = ' '.join(value.split())
+            
+            # Remove HTML artifacts
+            value = re.sub(r'<[^>]+>', '', value)
+            
+            # Clean up common text artifacts
+            value = value.replace('\n', ' ').replace('\r', ' ')
+            value = re.sub(r'\s+', ' ', value).strip()
+            
+            if len(value) > 10:  # Only keep meaningful text
+                cleaned[key] = value
+            else:
+                cleaned[key] = None
+        
+        elif isinstance(value, dict):
+            # For table data, keep as is but clean text
+            if 'headers' in value and 'rows' in value:
+                cleaned_table = {
+                    'headers': [h.strip() for h in value['headers'] if h.strip()],
+                    'rows': []
+                }
+                for row in value['rows']:
+                    cleaned_row = [cell.strip() for cell in row if cell.strip()]
+                    if cleaned_row:
+                        cleaned_table['rows'].append(cleaned_row)
+                
+                if cleaned_table['headers'] or cleaned_table['rows']:
+                    cleaned[key] = cleaned_table
+                else:
+                    cleaned[key] = None
+            else:
+                cleaned[key] = value
+        
+        else:
+            cleaned[key] = value
+    
+    return cleaned
 
 def generate(selected_chunks, query):
     client = openai.OpenAI()
@@ -1013,11 +2796,35 @@ def generate(selected_chunks, query):
     #     max_tokens=400, 
     #     temperature=0.1 ) 
 
+    # response = client.chat.completions.create( 
+    #     model="gpt-4", 
+    #     messages=[ {"role": "system", "content": "You are a professional skills extractor"}, {"role": "user", "content": prompt} ], 
+    #     max_tokens=400, 
+    #     temperature=0.1 )
+    # 
+
+    # response = client.chat.completions.create( 
+    #     model="gpt-4", 
+    #      messages=[ {"role": "system", "content": "You are a PhD level research assistant that understands AI and its future and you also have a strong business acumen that will help you build a strong pitch for an AI startup"}, {"role": "user", "content": prompt} ], 
+    #     max_tokens=400, 
+    #     temperature=0.1 ) 
+
     response = client.chat.completions.create( 
-        model="gpt-4", 
-        messages=[ {"role": "system", "content": "You are a professional skills extractor"}, {"role": "user", "content": prompt} ], 
-        max_tokens=400, 
-        temperature=0.1 ) 
+    model="gpt-4", 
+    messages=[ 
+        {
+            "role": "system", 
+            "content": "You are a PhD-level research assistant with deep expertise in cryptocurrency markets, blockchain technology, and financial analysis. You provide insightful, data-driven analysis of crypto assets, including market trends, tokenomics, risk factors, and trading strategies."
+        }, 
+        {
+            "role": "user", 
+            "content": prompt
+        } 
+    ], 
+    max_tokens=400, 
+    temperature=0.1 
+)
+    
     
     print(response)
     answer = response.choices[0].message.content 
@@ -1058,6 +2865,157 @@ def upload_file():
 
     return jsonify({"message": "File uploaded successfully", "file_path": file_path}), 200
 
+
+@app.route('/scrape_product_info', methods=['POST'])
+@cross_origin()
+def scrape_product_info():
+    """
+    Enhanced product scraping API focused on descriptions and size information
+    with interactive element handling
+    """
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        interactive = data.get('interactive', True)  # Use interactive mode by default
+        headless = data.get('headless', True)
+        config = data.get('config', {})
+        
+        if not url:
+            return jsonify({
+                'success': False,
+                'error': 'URL is required'
+            }), 400
+        
+        # Validate URL
+        try:
+            parsed = urlparse(url)
+            if not all([parsed.scheme, parsed.netloc]):
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid URL format'
+                }), 400
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid URL: {str(e)}'
+            }), 400
+        
+        if interactive:
+            # Use Selenium for interactive scraping
+            result = scrape_with_interaction(url, headless, config)
+        else:
+            # Use regular HTTP scraping
+            result = scrape_static_product(url, config)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Scraping error: {str(e)}'
+        }), 500
+
+
+@app.route('/scrape', methods=['POST'])
+@cross_origin()
+def universal_scraper():
+    """
+    Universal scraping API - now includes enhanced product scraping
+    """
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        scrape_type = data.get('type', 'basic')
+        config = data.get('config', {})
+        
+        # Validation
+        if not url:
+            return jsonify({
+                'success': False,
+                'error': 'URL is required'
+            }), 400
+        
+        # Validate URL format
+        try:
+            parsed = urlparse(url)
+            if not all([parsed.scheme, parsed.netloc]):
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid URL format. Include http:// or https://'
+                }), 400
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid URL: {str(e)}'
+            }), 400
+        
+        # Route to appropriate scraper based on type
+        if scrape_type == 'product_info':
+            # Use the new enhanced product scraper - but call it properly
+            data['interactive'] = data.get('interactive', True)
+            data['headless'] = data.get('headless', True)
+            if data.get('interactive', True):
+                result = scrape_with_interaction(url, data.get('headless', True), config)
+            else:
+                result = scrape_static_product(url, config)
+            return jsonify(result)
+        elif scrape_type == 'basic':
+            result = scrape_basic_content(url, config)
+            return jsonify(result)
+        elif scrape_type == 'text':
+            result = scrape_text_content(url, config)
+            return jsonify(result)
+        elif scrape_type == 'json_ld':
+            result = scrape_json_ld_content(url, config)
+            return jsonify(result)
+        elif scrape_type == 'product':
+            result = scrape_product_content(url, config)
+            return jsonify(result)
+        elif scrape_type == 'tables':
+            result = scrape_table_content(url, config)
+            return jsonify(result)
+        elif scrape_type == 'custom':
+            result = scrape_custom_selectors(url, config)
+            return jsonify(result)
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Unknown scrape type: {scrape_type}'
+            }), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Scraping error: {str(e)}'
+        }), 500
+
+@app.route('/search_suggestions', methods=['POST'])
+@cross_origin()
+def openai_chat():
+    """Simple OpenAI chat endpoint for matchmaking"""
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        max_tokens = data.get('max_tokens', 500)
+        temperature = data.get('temperature', 0.7)
+        
+        client = openai.OpenAI()
+        client.api_key = os.environ['OPENAI_API_KEY']
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        
+        return jsonify({
+            'success': True,
+            'response': response.choices[0].message.content.strip()
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # @app.route('/rag_test', methods=['GET'])
 # def rag_test():
@@ -1113,48 +3071,201 @@ def upload_file():
 
 @app.route('/rag_test', methods=['POST'])
 def rag_test():
+    try:
+        data = request.get_json()
+        query = data.get('query')
+        file_name = data.get('file_name')
+        data_store = data.get('data_store')  # This is the folder name under uploaded_data
+
+        if not query or not file_name:
+            return jsonify({"error": "Missing query or file_name parameter"}), 400
+
+        base_upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data"
+        if data_store:
+            file_path = os.path.join(base_upload_folder, data_store, file_name)
+        else:
+            file_path = os.path.join(base_upload_folder, file_name)
+
+        if not os.path.exists(file_path):
+            return jsonify({"error": f"File '{file_path}' not found"}), 404
+
+        print(f"Processing file: {file_path}")
+        openai.api_key = get_credentials()
+        file_hash = get_file_hash(file_path)
+
+        try:
+            if file_hash in cache:
+                print(f"Using cached embeddings for file hash: {file_hash}")
+                index, phrase_embeddings, page_chunks = load_embeddings(file_hash)
+            else:
+                print(f"Processing file and saving embeddings for file hash: {file_hash}")
+                pdf_doc = pdf_loader(file_path)
+                
+                if not pdf_doc:
+                    return jsonify({"error": "Could not extract text from PDF"}), 400
+                
+                page_chunks = pdf_splitter(pdf_doc)
+                
+                if not page_chunks:
+                    return jsonify({"error": "Could not create chunks from PDF content"}), 400
+                
+                page_phrases = extract_keywords_from_pdf(pdf_doc)
+                chunk_phrases = extract_keywords_from_chunks(page_chunks)
+                
+                index, phrase_embeddings = store_embeddings(page_phrases, chunk_phrases)
+                cache[file_hash] = (index, phrase_embeddings, page_chunks)
+                save_embeddings(file_hash, index, phrase_embeddings, page_chunks)
+
+            query_phrases = extract_phrases_from_query(query)
+            if not query_phrases:
+                query_phrases = [query]  # Use the full query if no phrases extracted
+            
+            query_embeddings = get_embeddings_for_query(query_phrases)
+            selected_chunks = retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks)
+
+            max_chunks = 5
+            max_chunk_length = 1000  # characters
+            selected_chunks = [chunk[:max_chunk_length] for chunk in selected_chunks[:max_chunks]]
+
+            answer = generate(selected_chunks, query)
+
+            return jsonify({
+                "answer": answer,
+                "chunks_used": len(selected_chunks),
+                "file_processed": file_name
+            })
+            
+        except Exception as processing_error:
+            print(f"Error processing PDF: {processing_error}")
+            return jsonify({"error": f"Error processing PDF: {str(processing_error)}"}), 500
+
+    except Exception as e:
+        print(f"RAG test error: {e}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route('/enterprise_chat', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def enterprise_chat():
+    """
+    Enterprise chat API that collects business context from the user.
+    User can answer any of the 5 key questions first; the API will detect which question was answered,
+    store it, and then ask the remaining unanswered questions.
+    Once all questions are answered, sends chat_state to OpenAI to generate a summary and auto-fill missing fields.
+    """
     data = request.get_json()
-    query = data.get('query')
-    file_name = data.get('file_name')
-    data_store = data.get('data_store')  # This is the folder name under uploaded_data
+    chat_state = data.get('chat_state', {})
+    last_answer = data.get('last_answer', '').strip()
+    last_question_key = data.get('last_question_key', '').strip()
 
-    base_upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data"
-    if data_store:
-        file_path = os.path.join(base_upload_folder, data_store, file_name)
-    else:
-        file_path = os.path.join(base_upload_folder, file_name)
+    # Define the sequence and mapping of questions
+    questions = [
+        {"key": "industry", "question": "To get a bit of context, which industry does your business operate in?"},
+        {"key": "role", "question": "And what’s your role within the company?"},
+        {"key": "department_context", "question": "Can you share what your department is mainly focused on right now?"},
+        {"key": "tools", "question": "What tools or software do you and your team rely on most, and what do you use them for?"},
+        {"key": "business_need", "question": "If you could change or improve one thing about how your team works today, what would it be?"}
+    ]
+    question_keys = [q['key'] for q in questions]
 
-    if not os.path.exists(file_path):
-        return jsonify({"error": f"File '{file_path}' not found"}), 404
+    # If the user answered a question, store it in chat_state
+    if last_question_key in question_keys and last_answer:
+        chat_state[last_question_key] = last_answer
 
-    print(f"Absolute file path: {file_path}")
-    openai.api_key = get_credentials()
-    file_hash = get_file_hash(file_path)
+    # If the user sent an answer but didn't specify which question, try to infer
+    if not last_question_key and last_answer:
+        for q in questions:
+            if q['key'] not in chat_state or not chat_state.get(q['key']):
+                chat_state[q['key']] = last_answer
+                break
 
-    if file_hash in cache:
-        print(f"Using cached embeddings for file hash: {file_hash}")
-        index, phrase_embeddings, page_chunks = load_embeddings(file_hash)
-    else:
-        print(f"Processing file and saving embeddings for file hash: {file_hash}")
-        pdf_doc = pdf_loader(file_path)
-        page_chunks = pdf_splitter(pdf_doc)
-        page_phrases = extract_keywords_from_pdf(pdf_doc)
-        chunk_phrases = extract_keywords_from_chunks(page_chunks)
-        index, phrase_embeddings = store_embeddings(page_phrases, chunk_phrases)
-        cache[file_hash] = (index, phrase_embeddings, page_chunks)
-        save_embeddings(file_hash, index, phrase_embeddings, page_chunks)
+    # Find the next unanswered question
+    for q in questions:
+        if q['key'] not in chat_state or not chat_state[q['key']]:
+            return jsonify({
+                "success": True,
+                "next_question": q['question'],
+                "next_question_key": q['key'],
+                "chat_state": chat_state,
+                "completed": False
+            })
 
-    query_phrases = extract_phrases_from_query(query)
-    query_embeddings = get_embeddings_for_query(query_phrases)
-    selected_chunks = retrieve_similar_chunks(query_embeddings, index, phrase_embeddings, page_chunks)
+    # If all questions answered, auto-fill and format chat_state using OpenAI
+    try:
+        import openai
+        openai.api_key = os.environ.get("OPENAI_API_KEY")
+        # Prompt to format and auto-fill chat_state
+        autofill_prompt = (
+            "Given the following user answers, format the business context as a JSON object with these keys: "
+            "industry, role, department_context, business_need, and tools (as a list of objects with tool_name and description). "
+            "If any field is missing or vague, infer and auto-fill it based on the other answers. "
+            "Example format:\n"
+            "{\n"
+            '  "tools": [\n'
+            '    {"tool_name": "Slack", "description": "Team communication and collaboration platform"},\n'
+            '    {"tool_name": "Salesforce", "description": "CRM for managing customer relationships and sales pipeline"}\n'
+            "  ],\n"
+            '  "industry": "Technology",\n'
+            '  "role": "Sales Manager",\n'
+            '  "department_context": "Our sales department is focused on improving lead conversion and automating reporting.",\n'
+            '  "business_need": "We want to integrate our communication and CRM tools, automate sales reporting, and identify missing modules for analytics."\n'
+            "}\n"
+            "User answers:\n"
+            f"Industry: {chat_state.get('industry', '')}\n"
+            f"Role: {chat_state.get('role', '')}\n"
+            f"Department Context: {chat_state.get('department_context', '')}\n"
+            f"Tools: {chat_state.get('tools', '')}\n"
+            f"Business Need: {chat_state.get('business_need', '')}\n"
+            "Return only valid JSON."
+        )
 
-    max_chunks = 5
-    max_chunk_length = 1000  # characters
-    selected_chunks = [chunk[:max_chunk_length] for chunk in selected_chunks[:max_chunks]]
+        client = openai.OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a business analyst assistant."},
+                {"role": "user", "content": autofill_prompt}
+            ],
+            max_tokens=300,
+            temperature=0.2
+        )
+        # Extract JSON from response
+        import re
+        raw_content = response.choices[0].message.content.strip()
+        match = re.search(r'\{[\s\S]*\}', raw_content)
+        if match:
+            formatted_state = json.loads(match.group(0))
+        else:
+            formatted_state = chat_state  # fallback
 
-    answer = generate(selected_chunks, query)
+        # Summarize the context for search_summary
+        summary_prompt = (
+            "Summarize the following business context in 2-3 sentences for agent recommendation:\n\n"
+            f"{json.dumps(formatted_state, indent=2)}"
+        )
+        summary_response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a business analyst assistant."},
+                {"role": "user", "content": summary_prompt}
+            ],
+            max_tokens=150,
+            temperature=0.3
+        )
+        search_summary = summary_response.choices[0].message.content.strip()
+        print(formatted_state)
 
-    return jsonify({"answer": answer})  # Always return a JSON object
+    except Exception as e:
+        formatted_state = chat_state
+        search_summary = f"Could not generate summary: {str(e)}"
+
+    return jsonify({
+        "success": True,
+        "message": "Thank you! Here is the summary of your business context.",
+        "chat_state": formatted_state,
+        "completed": True,
+        "search_summary": search_summary
+    })
+
 
 @app.route('/chat_api', methods=['POST', 'OPTIONS'])
 @cross_origin()  # Allow CORS for this endpoint
@@ -1242,68 +3353,6 @@ def previous_prompts():
 
     return jsonify({"prompts": prompts})
 
-# @app.route('/yfinance', methods=['GET'])
-# def yfinance_test():
-#     symbol = request.args.get('stock')
-#     region = request.args.get('region')
-
-#     if not symbol or not region:
-#         return "Missing required parameters: 'stock' and 'region'", 400
-
-#     conn = http.client.HTTPSConnection("yahoo-finance166.p.rapidapi.com")
-
-#     headers = {
-#         'x-rapidapi-key': "95cdd43379mshbd9483856442c47p1c2782jsn897449ebefb8",
-#         'x-rapidapi-host': "yahoo-finance166.p.rapidapi.com"
-#     }
-
-#     endpoint = f"/api/stock/get-financial-data?region={region}&symbol={symbol}"
-#     print(f"Requesting data from endpoint: {endpoint}")  # Debug statement
-#     conn.request("GET", endpoint, headers=headers)
-
-#     res = conn.getresponse()
-#     data = res.read()
-#     json_data = json.loads(data.decode("utf-8"))
-
-#     print(json_data)  # Debug statement to print the entire response
-
-#     if 'quoteSummary' not in json_data or 'result' not in json_data['quoteSummary'] or not json_data['quoteSummary']['result']:
-#         return jsonify({"error": "No data found for the given stock symbol and region"}), 404
-
-#     current_price = json_data['quoteSummary']['result'][0]['financialData']['currentPrice']['fmt']
-#     operating_margins = json_data['quoteSummary']['result'][0]['financialData']['operatingMargins']['fmt']
-#     netprofit_margins = json_data['quoteSummary']['result'][0]['financialData']['profitMargins']['fmt']
-#     gross_margins = json_data['quoteSummary']['result'][0]['financialData']['grossMargins']['fmt']
-#     revenue_growth = json_data['quoteSummary']['result'][0]['financialData']['revenueGrowth']['fmt']
-#     debt_to_equity = json_data['quoteSummary']['result'][0]['financialData']['debtToEquity']['fmt']
-#     quick_ratio = json_data['quoteSummary']['result'][0]['financialData']['quickRatio']['fmt']
-#     current_ratio = json_data['quoteSummary']['result'][0]['financialData']['currentRatio']['fmt']
-#     analyst_recommendation = json_data['quoteSummary']['result'][0]['financialData']['recommendationKey']
-#     number_of_analysts = json_data['quoteSummary']['result'][0]['financialData']['numberOfAnalystOpinions']['fmt']
-#     target_high_price = json_data['quoteSummary']['result'][0]['financialData']['targetHighPrice']['fmt']
-#     target_low_price = json_data['quoteSummary']['result'][0]['financialData']['targetLowPrice']['fmt']
-#     target_mean_price = json_data['quoteSummary']['result'][0]['financialData']['targetMeanPrice']['fmt']
-#     target_median_price = json_data['quoteSummary']['result'][0]['financialData']['targetMedianPrice']['fmt']
-
-#     financial_KPIs = {
-#         "current_price": current_price,
-#         "operating margin": operating_margins,
-#         "netprofit_margins": netprofit_margins,
-#         "gross_margins": gross_margins,
-#         "revenue_growth": revenue_growth,
-#         "debt_to_equity": debt_to_equity,
-#         "quick_ratio": quick_ratio,
-#         "current_ratio": current_ratio,
-#         "number_of_analysts": number_of_analysts,
-#         "analyst_recommendation": analyst_recommendation,
-#         "target_high_price": target_high_price,
-#         "target_low_price": target_low_price,
-#         "target_mean_price": target_mean_price,
-#         "target_median_price": target_median_price
-#     }
-
-#     return jsonify(financial_KPIs)
-
 @app.route('/yfinance', methods=['POST'])
 def yfinance_test():
     data = request.get_json()
@@ -1390,10 +3439,29 @@ def generate_requirements():
     # """
 
     prompt = f"""
-    Draft an research and analysis report based on the requirements {overview} .
-    Consider {context} as context for the research being asked for, focus on the market in {country} or region, 
-    consider {industries} for industry related insights, consider {function} as the role or business function of the requester,
-    and without mentioning the framework in the final response, conduct research taking into account these analysis frameworks: {frameworks} for one valuable and rare resource each using the VRIO, market forces for and against the startup using PESTLE, and product readiness using Mckinsey's 3 Horizon and use response format as reference: {format}.
+    You are a research assistant tasked with producing high-quality, insightful, and well-structured research on business opportunitiesand growth prospects. Your output should include a curated but accessible for free list of relevant academic papers, industry articles, expert quotations, market data, and other authoritative sources.
+
+    Base your research on the following core requirement: {overview}.
+
+    In addition, factor in the following contextual details where applicable:
+
+    Geographic Market: Consider the business and technology landscape in {country}. Ignore if not specified.
+
+    Industry Focus: Include insights, trends, and data from the following industries: {industries}. Ignore if not specified.
+
+    Business Function: Tailor the analysis to the perspective or needs of a person working in {function}. Ignore if not specified.
+
+    Strategic Frameworks: Incorporate or structure your research using the following analytical frameworks: {frameworks}.
+
+    Use the following format as a guide for structuring your response: {format}.
+
+    Your response should:
+
+    Include direct citations or links where available.
+
+    Be clear, logically organized, and easy to turn into a pitch or slide deck.
+
+    Blend both technical insight (e.g., emerging technologies, R&D frontiers) and business relevance (e.g., market sizing, customer pain points, competitive dynamics).
     """
 
     print(prompt)
@@ -1407,7 +3475,7 @@ def generate_requirements():
                 {"role": "system", "content": "You are a research assistant."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=800,
+            max_tokens=2000,
             temperature=0.6
         )
 
@@ -1416,6 +3484,335 @@ def generate_requirements():
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/simple_search', methods=['POST'])
+@cross_origin()
+def simple_search():
+    """Enhanced search endpoint that handles both regular searches and special commands"""
+    try:
+        data = request.get_json()
+        user_query = data.get('query', '').strip()
+        json_data = data.get('data', [])
+        user_id = data.get('user_id', 'default_user')  # For favorites
+        
+        if not user_query:
+            return jsonify({'success': False, 'error': 'No search query provided'}), 400
+        
+        # Parse the query using enhanced function
+        parse_result = parse_simple_query_enhanced(user_query)
+        
+        if not parse_result['success']:
+            return jsonify({
+                'success': False,
+                'error': 'Could not parse search query',
+                'query': user_query,
+                'openai_error': parse_result.get('error', 'Unknown error')
+            }), 400
+        
+        # Handle special commands
+        if parse_result.get('special_command', False):
+            command_type = parse_result.get('command_type')
+            
+            if command_type == 'show_companies':
+                if not json_data:
+                    return jsonify({'success': False, 'error': 'No data available to list companies'}), 400
+                
+                # Extract unique companies from data
+                companies = set()
+                for record in json_data:
+                    company = record.get('company') or record.get('Company') or record.get('organization')
+                    if company and str(company).strip():
+                        companies.add(str(company).strip())
+                
+                company_list = sorted(list(companies))
+                return jsonify({
+                    "success": True,
+                    "type": "companies_list",
+                    "total_found": len(company_list),
+                    "results": [{"company": comp} for comp in company_list],
+                    "query": user_query,
+                    "keywords": parse_result['keywords'],
+                    "command_type": command_type
+                })
+            
+            elif command_type == 'show_titles':
+                if not json_data:
+                    return jsonify({'success': False, 'error': 'No data available to list titles'}), 400
+                
+                # Extract unique titles from data
+                titles = set()
+                for record in json_data:
+                    title = (record.get('title') or record.get('Title') or 
+                            record.get('Job title') or record.get('position'))
+                    if title and str(title).strip():
+                        titles.add(str(title).strip())
+                
+                title_list = sorted(list(titles))
+                return jsonify({
+                    "success": True,
+                    "type": "titles_list",
+                    "total_found": len(title_list),
+                    "results": [{"title": title} for title in title_list],
+                    "query": user_query,
+                    "keywords": parse_result['keywords'],
+                    "command_type": command_type
+                })
+            
+            elif command_type == 'show_locations':
+                if not json_data:
+                    return jsonify({'success': False, 'error': 'No data available to list locations'}), 400
+                
+                # Extract unique locations from data
+                locations = set()
+                for record in json_data:
+                    location = (record.get('location') or record.get('Location') or 
+                               record.get('city') or record.get('City'))
+                    if location and str(location).strip():
+                        locations.add(str(location).strip())
+                
+                location_list = sorted(list(locations))
+                return jsonify({
+                    "success": True,
+                    "type": "locations_list",
+                    "total_found": len(location_list),
+                    "results": [{"location": loc} for loc in location_list],
+                    "query": user_query,
+                    "keywords": parse_result['keywords'],
+                    "command_type": command_type
+                })
+            
+            elif command_type == 'show_skills':
+                if not json_data:
+                    return jsonify({'success': False, 'error': 'No data available to list skills'}), 400
+                
+                # Extract unique skills from data
+                skills = set()
+                for record in json_data:
+                    skill_fields = (record.get('skills') or record.get('Skills') or 
+                                   record.get('technologies') or record.get('required_skills'))
+                    if skill_fields:
+                        if isinstance(skill_fields, str):
+                            # Split by common delimiters
+                            import re
+                            skill_list = re.split(r'[,;|]+', skill_fields)
+                            for skill in skill_list:
+                                clean_skill = skill.strip()
+                                if clean_skill:
+                                    skills.add(clean_skill)
+                        elif isinstance(skill_fields, list):
+                            skills.update([str(s).strip() for s in skill_fields if str(s).strip()])
+                
+                skill_list = sorted(list(skills))
+                return jsonify({
+                    "success": True,
+                    "type": "skills_list",
+                    "total_found": len(skill_list),
+                    "results": [{"skill": skill} for skill in skill_list],
+                    "query": user_query,
+                    "keywords": parse_result['keywords'],
+                    "command_type": command_type
+                })
+            
+            elif command_type == 'show_favorites':
+                # Load user favorites (doesn't need json_data)
+                favorites_file = os.path.join(
+                    '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 
+                    'user_data', user_id, 'favorites.json'
+                )
+                
+                if os.path.exists(favorites_file):
+                    with open(favorites_file, 'r', encoding='utf-8') as f:
+                        favorites = json.load(f)
+                    
+                    return jsonify({
+                        "success": True,
+                        "type": "favorites_list",
+                        "total_found": len(favorites),
+                        "results": favorites,
+                        "query": user_query,
+                        "keywords": parse_result['keywords'],
+                        "command_type": command_type
+                    })
+                else:
+                    return jsonify({
+                        "success": True,
+                        "type": "favorites_list",
+                        "total_found": 0,
+                        "results": [],
+                        "query": user_query,
+                        "keywords": parse_result['keywords'],
+                        "command_type": command_type,
+                        "message": "No favorites saved yet"
+                    })
+            
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': f'Unknown special command: {command_type}'
+                }), 400
+        
+        # Regular search logic (existing)
+        if not json_data:
+            return jsonify({'success': False, 'error': 'No data provided for search'}), 400
+        
+        if not parse_result['keywords']:
+            return jsonify({
+                'success': False,
+                'error': 'Could not extract search keywords from query',
+                'query': user_query,
+                'suggestion': 'Try being more specific with company names, job titles, or skills'
+            }), 400
+        
+        # Search the data using existing function
+        results = simple_search_json(json_data, parse_result['keywords'])
+        
+        return jsonify({
+            'success': True,
+            'type': 'search_results',
+            'query': user_query,
+            'keywords': parse_result['keywords'],
+            'results': results,
+            'total_found': len(results),
+            'phrases': parse_result.get('phrases', [])
+        })
+        
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Search error: {str(e)}'
+        }), 500
+
+
+@app.route('/save_user_favorite', methods=['POST'])
+@cross_origin()
+def save_user_favorite():
+    """Save a profile to user's favorites"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', 'default_user')
+        profile_data = data.get('profile_data')
+        
+        if not profile_data:
+            return jsonify({"success": False, "error": "No profile data provided"}), 400
+        
+        # Create user_data directory if it doesn't exist
+        user_data_dir = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data')
+        os.makedirs(user_data_dir, exist_ok=True)
+        
+        # Create user-specific subdirectory
+        user_dir = os.path.join(user_data_dir, user_id)
+        os.makedirs(user_dir, exist_ok=True)
+        
+        # File path for user's favorites
+        favorites_file = os.path.join(user_dir, 'favorites.json')
+        
+        # Load existing favorites or create new list
+        favorites = []
+        if os.path.exists(favorites_file):
+            with open(favorites_file, 'r', encoding='utf-8') as f:
+                favorites = json.load(f)
+        
+        # Add metadata to profile
+        profile_with_meta = {
+            **profile_data,
+            'saved_at': datetime.now().isoformat(),
+            'favorite_id': len(favorites) + 1
+        }
+        
+        # Check if already exists (by name and company)
+        full_name = f"{profile_data.get('name', '')} {profile_data.get('lastname', '')}".strip()
+        existing = next((fav for fav in favorites 
+                        if fav.get('full_name') == full_name and 
+                           fav.get('company') == profile_data.get('company')), None)
+        
+        if existing:
+            return jsonify({"success": False, "error": "Profile already in favorites"})
+        
+        # Add to favorites
+        favorites.append(profile_with_meta)
+        
+        # Save updated favorites
+        with open(favorites_file, 'w', encoding='utf-8') as f:
+            json.dump(favorites, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            "success": True,
+            "message": "Profile saved to favorites",
+            "favorites_count": len(favorites)
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/get_user_favorites', methods=['POST'])
+@cross_origin()
+def get_user_favorites():
+    """Get user's saved favorites"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', 'default_user')
+        
+        # Path to user's favorites file
+        favorites_file = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data', user_id, 'favorites.json')
+        
+        if not os.path.exists(favorites_file):
+            return jsonify({"success": True, "favorites": [], "count": 0})
+        
+        # Load favorites
+        with open(favorites_file, 'r', encoding='utf-8') as f:
+            favorites = json.load(f)
+        
+        return jsonify({
+            "success": True,
+            "favorites": favorites,
+            "count": len(favorites)
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/remove_user_favorite', methods=['POST'])
+@cross_origin()
+def remove_user_favorite():
+    """Remove a profile from user's favorites"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', 'default_user')
+        favorite_id = data.get('favorite_id')
+        
+        if not favorite_id:
+            return jsonify({"success": False, "error": "No favorite_id provided"}), 400
+        
+        # Path to user's favorites file
+        favorites_file = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data', user_id, 'favorites.json')
+        
+        if not os.path.exists(favorites_file):
+            return jsonify({"success": False, "error": "No favorites file found"}), 404
+        
+        # Load favorites
+        with open(favorites_file, 'r', encoding='utf-8') as f:
+            favorites = json.load(f)
+        
+        # Remove the favorite
+        original_count = len(favorites)
+        favorites = [fav for fav in favorites if fav.get('favorite_id') != favorite_id]
+        
+        if len(favorites) == original_count:
+            return jsonify({"success": False, "error": "Favorite not found"}), 404
+        
+        # Save updated favorites
+        with open(favorites_file, 'w', encoding='utf-8') as f:
+            json.dump(favorites, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            "success": True,
+            "message": "Profile removed from favorites",
+            "favorites_count": len(favorites)
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/save-requirements', methods=['POST'])
 def save_requirements():
@@ -1589,8 +3986,8 @@ def enrich_with_openai():
         
         # Enrich data using the new workflow
         result = enrich_json_with_openai(json_data)
-        print(result)
-        # return jsonify(result)
+        
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({
@@ -1603,9 +4000,11 @@ def enrich_with_openai():
 def get_chrome_history():
     """API endpoint to get Chrome browser history with better error handling"""
     try:
+        user_id = request.args.get('user_id', 'default_user')
         result = read_chrome_history_safe()
         
         if result['success']:
+            save_tools_landscape_for_user(user_id, result)
             return jsonify(result)
         else:
             return jsonify(result), 400
@@ -1649,8 +4048,351 @@ def check_chrome_status():
             'error': str(e)
         })
     
+@app.route('/check_existing_file', methods=['POST'])
+def check_existing_file():
+    try:
+        data = request.json
+        file_name = data.get('file_name')
+        new_file_size = data.get('new_file_size')
+        
+        # Create file path - Updated to use the correct data folder structure
+        json_file_name = file_name.replace('.csv', '.json').replace('.xlsx', '.json').replace('.xls', '.json')
+        # Use the same structure as upload function
+        file_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', 'alumni_data', json_file_name)
+        
+        if os.path.exists(file_path):
+            existing_size = os.path.getsize(file_path)
+            
+            # If new file is not significantly larger (less than 10% increase), skip processing
+            size_threshold = existing_size * 1.1  # 10% increase threshold
+            should_skip = new_file_size <= size_threshold
+            
+            return jsonify({
+                'exists': True,
+                'existing_size': existing_size,
+                'should_skip': should_skip,
+                'message': f'File exists. Size: {existing_size} bytes vs new: {new_file_size} bytes'
+            })
+        
+        return jsonify({
+            'exists': False,
+            'should_skip': False,
+            'message': 'File does not exist'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/save_json_file', methods=['POST'])
+def save_json_file():
+    try:
+        data = request.json
+        json_data = data.get('data')
+        file_name = data.get('file_name')
+        folder_name = data.get('folder_name', 'alumni_data')
+        
+        # Create directory using the correct data folder structure
+        folder_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+        
+        # Save JSON file
+        file_path = os.path.join(folder_path, file_name)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            'success': True,
+            'file_path': file_path,
+            'file_name': file_name,
+            'message': f'JSON file saved successfully: {file_name}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/load_json_file', methods=['POST'])
+def load_json_file():
+    try:
+        data = request.json
+        file_name = data.get('file_name')
+        folder_name = data.get('folder_name', 'alumni_data')
+        
+        # Use the correct data folder structure
+        file_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', folder_name, file_name)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        
+        return jsonify({
+            'success': True,
+            'data': json_data,
+            'message': f'JSON file loaded successfully: {file_name}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def read_chrome_history_safe():
+    """
+    Improved: Read Chrome browser history and return only unique domains
+    classified as tools where the user has logged in or has a subscription.
+    """
+    try:
+        history_path = get_chrome_history_path()
+        if not os.path.exists(history_path):
+            return {
+                'success': False,
+                'error': 'Chrome history file not found. Make sure Chrome is installed.'
+            }
+
+        now = datetime.now()
+        seven_days_ago = now - timedelta(days=7)
+        webkit_epoch = datetime(1601, 1, 1)
+        seven_days_ago_webkit = int((seven_days_ago - webkit_epoch).total_seconds() * 1000000)
+
+        # Copy Chrome history file to temp location
+        temp_dir = tempfile.mkdtemp()
+        temp_history = os.path.join(temp_dir, 'History')
+        shutil.copy2(history_path, temp_history)
+
+        conn = sqlite3.connect(temp_history)
+        cursor = conn.cursor()
+        query = """
+        SELECT url, title, visit_count, last_visit_time,
+            datetime(last_visit_time/1000000 + (strftime('%s', '1601-01-01')), 'unixepoch', 'localtime') as visit_date
+        FROM urls
+        WHERE last_visit_time >= ?
+        ORDER BY last_visit_time DESC
+        LIMIT 2000
+        """
+        cursor.execute(query, (seven_days_ago_webkit,))
+        rows = cursor.fetchall()
+        conn.close()
+        os.remove(temp_history)
+        os.rmdir(temp_dir)
+
+        # Filter URLs for login/subscription/dashboard/account/profile/settings
+        login_keywords = [
+            '/login', '/signin', '/dashboard', '/account', '/settings', '/profile', '/subscription', '/user', '/me'
+        ]
+        domain_map = {}
+        filtered_history = []
+        for row in rows:
+            url = row[0]
+            parsed = urlparse(url)
+            domain = parsed.netloc.lower()
+            path = parsed.path.lower()
+            # Only consider URLs with login/subscription/dashboard/account/profile/settings or base domain
+            if any(kw in path for kw in login_keywords) or path in ['', '/']:
+                if domain not in domain_map:
+                    domain_map[domain] = {
+                        'domain': domain,
+                        'sample_url': url,
+                        'title': row[1] if row[1] else 'No Title',
+                        'visit_count': row[2],
+                        'last_visit_time': row[3],
+                        'visit_date': row[4]
+                    }
+
+        # Classify domains using OpenAI (reuse your identify_saas_tools_with_openai)
+        unique_domains = list(domain_map.values())
+        # Prepare for OpenAI classification
+        history_data_for_ai = [{'url': item['sample_url']} for item in unique_domains]
+        tools_result = identify_saas_tools_with_openai(history_data_for_ai)
+        for i, item in enumerate(unique_domains):
+            if tools_result['success'] and i in tools_result['mapping']:
+                mapping = tools_result['mapping'][i]
+                item.update({
+                    'is_tool': mapping.get('is_tool', False),
+                    'tool_name': mapping.get('tool_name'),
+                    'category': mapping.get('category'),
+                    'tool_type': mapping.get('type'),
+                    'description': mapping.get('description'),
+                })
+            else:
+                item.update({
+                    'is_tool': None,
+                    'tool_name': None,
+                    'category': None,
+                    'tool_type': None,
+                    'description': 'Tool analysis unavailable'
+                })
+
+        # Only return classified tools (where is_tool is True)
+        classified_tools = [item for item in unique_domains if item.get('is_tool')]
+
+        return {
+            'success': True,
+            'unique_domains': len(unique_domains),
+            'tools_found': len(classified_tools),
+            'data': classified_tools,
+            'date_range': {
+                'from': seven_days_ago.strftime('%Y-%m-%d'),
+                'to': now.strftime('%Y-%m-%d')
+            }
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Unexpected error reading Chrome history: {str(e)}'
+        }
+
+def save_tools_landscape_for_user(user_id, tools_data):
+    """
+    Save the result of /chrome_history API into a JSON file called
+    'SaaS & tools landscape.json' under user_data for the given user.
+    Adds a timestamp for when the data was last updated.
+    """
+    try:
+        user_folder = os.path.join(
+            '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/user_data/tools_landscape/'
+        )
+        os.makedirs(user_folder, exist_ok=True)
+        file_path = os.path.join(user_folder, 'tools_landscape.json')
+
+        # Add/update timestamp
+        tools_data['last_updated'] = datetime.now().isoformat()
+        tools_data['user'] = user_id
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(tools_data, f, ensure_ascii=False, indent=2)
+
+        return {
+            'success': True,
+            'message': f'Tools landscape saved for {user_id}',
+            'file_path': file_path,
+            'last_updated': tools_data['last_updated']
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@app.route('/get_tools_landscape', methods=['GET'])
+@cross_origin()
+def get_tools_landscape():
+    """
+    GET API to read tools landscape from tools_landscape.json and return
+    a list of tools with tool_name, description, and category.
+    """
+    try:
+        file_path = '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/user_data/tools_landscape/tools_landscape.json'
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': 'tools_landscape.json not found'}), 404
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Extract tools info
+        tools = []
+        for item in data.get('data', []):
+            if item.get('tool_name'):
+                tools.append({
+                    'tool_name': item.get('tool_name'),
+                    'description': item.get('description'),
+                    'category': item.get('category')
+                })
+
+        return jsonify({'success': True, 'tools': tools})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+import openai
+
+
+@app.route('/recommend_agents', methods=['POST'])
+@cross_origin()
+def recommend_agents():
+    """
+    Recommend agents/modules based on user's tools, industry/domain, role, department/company context, and business need.
+    Input JSON payload:
+    {
+        "tools": [ {"tool_name": "ToolA", "description": "..."}, ... ],
+        "industry": "...",
+        "role": "...",
+        "department_context": "...",  # e.g. 'My company/department is doing X and is responsible for Y'
+        "business_need": "..."         # e.g. 'I want to track this business task and generate insights'
+    }
+    Output JSON:
+    {
+        "success": true,
+        "recommendations": {
+            "recommended_tools": [ {"tool_name": "...", "description": "...", "why_recommended": "..."}, ... ],
+            "integration_pairs": [ {"tools": ["ToolA", "ToolB"], "integration": "...", "data_shared": "..."}, ... ],
+            "additional_tools": [ {"tool_name": "...", "description": "...", "why_needed": "..."}, ... ]
+        }
+    }
+    """
+    try:
+        openai.api_key = get_credentials()
+        data = request.json
+        tools = data.get('tools', [])
+        industry = data.get('industry', '')
+        role = data.get('role', '')
+        department_context = data.get('department_context', '')
+        business_need = data.get('business_need', '')
+
+        # Load available modules (from agents_modules.json)
+        with open('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/agents_modules.json', 'r', encoding='utf-8') as f:
+            modules = json.load(f)
+
+        # Prepare context for OpenAI
+        context = {
+            "tools": tools,
+            "industry": industry,
+            "role": role,
+            "department_context": department_context,
+            "business_need": business_need,
+            "available_modules": modules
+        }
+        prompt = (
+            "You are a technology consultant. Based on the following user context, "
+            "recommend a set of software modules (tools/agents) that can cater to the business need, "
+            "considering the existing tools, missing necessary tools, and possible integrations. "
+            "For each recommendation, provide: "
+            "1. recommended_tools: list of modules/tools with name, description, and why recommended. "
+            "2. integration_pairs: pairs of tools/modules that should be integrated, with integration description and data shared. "
+            "3. additional_tools: tools/modules that are needed but missing, with name, description, and why needed. "
+            "Return the output as a JSON object with a 'recommendations' key containing these three lists. "
+            "Here is the user context and available modules:\n\n" + json.dumps(context, indent=2)
+        )
+        client = openai.OpenAI()
+
+        response = response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a technology consultant for business software and workflow automation."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+
+        # Try to parse the response as JSON
+        import ast
+        import re
+        raw_content = response.choices[0].message.content
+        # Extract JSON from response (in case LLM returns extra text)
+        match = re.search(r'\{[\s\S]*\}', raw_content)
+        if match:
+            recommendations_json = match.group(0)
+            try:
+                recommendations = json.loads(recommendations_json)
+            except Exception:
+                recommendations = {"raw": raw_content}
+        else:
+            recommendations = {"raw": raw_content}
+
+        return jsonify({
+            "success": True,
+            "recommendations": recommendations.get('recommendations', recommendations)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # @app.route('/AI_ML', methods=['GET'])
-# def yfinance_test()
+# def yfinance_test():
     
 #     return "Hello World!"
 
@@ -1708,9 +4450,69 @@ def check_chrome_status():
 # @app.route('/Jobs', methods=['GET'])
 # def yfinance_test():
     
-    return "Hello World!"
+#     return "Hello World!"
+
+# @app.route('/yfinance', methods=['GET'])
+# def yfinance_test():
+#     symbol = request.args.get('stock')
+#     region = request.args.get('region')
+
+#     if not symbol or not region:
+#         return "Missing required parameters: 'stock' and 'region'", 400
+
+#     conn = http.client.HTTPSConnection("yahoo-finance166.p.rapidapi.com")
+
+#     headers = {
+#         'x-rapidapi-key': "95cdd43379mshbd9483856442c47p1c2782jsn897449ebefb8",
+#         'x-rapidapi-host': "yahoo-finance166.p.rapidapi.com"
+#     }
+
+#     endpoint = f"/api/stock/get-financial-data?region={region}&symbol={symbol}"
+#     print(f"Requesting data from endpoint: {endpoint}")  # Debug statement
+#     conn.request("GET", endpoint, headers=headers)
+
+#     res = conn.getresponse()
+#     data = res.read()
+#     json_data = json.loads(data.decode("utf-8"))
+
+#     print(json_data)  # Debug statement to print the entire response
+
+#     if 'quoteSummary' not in json_data or 'result' not in json_data['quoteSummary'] or not json_data['quoteSummary']['result']:
+#         return jsonify({"error": "No data found for the given stock symbol and region"}), 404
+
+#     current_price = json_data['quoteSummary']['result'][0]['financialData']['currentPrice']['fmt']
+#     operating_margins = json_data['quoteSummary']['result'][0]['financialData']['operatingMargins']['fmt']
+#     netprofit_margins = json_data['quoteSummary']['result'][0]['financialData']['profitMargins']['fmt']
+#     gross_margins = json_data['quoteSummary']['result'][0]['financialData']['grossMargins']['fmt']
+#     revenue_growth = json_data['quoteSummary']['result'][0]['financialData']['revenueGrowth']['fmt']
+#     debt_to_equity = json_data['quoteSummary']['result'][0]['financialData']['debtToEquity']['fmt']
+#     quick_ratio = json_data['quoteSummary']['result'][0]['financialData']['quickRatio']['fmt']
+#     current_ratio = json_data['quoteSummary']['result'][0]['financialData']['currentRatio']['fmt']
+#     analyst_recommendation = json_data['quoteSummary']['result'][0]['financialData']['recommendationKey']
+#     number_of_analysts = json_data['quoteSummary']['result'][0]['financialData']['numberOfAnalystOpinions']['fmt']
+#     target_high_price = json_data['quoteSummary']['result'][0]['financialData']['targetHighPrice']['fmt']
+#     target_low_price = json_data['quoteSummary']['result'][0]['financialData']['targetLowPrice']['fmt']
+#     target_mean_price = json_data['quoteSummary']['result'][0]['financialData']['targetMeanPrice']['fmt']
+#     target_median_price = json_data['quoteSummary']['result'][0]['financialData']['targetMedianPrice']['fmt']
+
+#     financial_KPIs = {
+#         "current_price": current_price,
+#         "operating margin": operating_margins,
+#         "netprofit_margins": netprofit_margins,
+#         "gross_margins": gross_margins,
+#         "revenue_growth": revenue_growth,
+#         "debt_to_equity": debt_to_equity,
+#         "quick_ratio": quick_ratio,
+#         "current_ratio": current_ratio,
+#         "number_of_analysts": number_of_analysts,
+#         "analyst_recommendation": analyst_recommendation,
+#         "target_high_price": target_high_price,
+#         "target_low_price": target_low_price,
+#         "target_mean_price": target_mean_price,
+#         "target_median_price": target_median_price
+#     }
+
+#     return jsonify(financial_KPIs)
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()  # Creates tables if not exist
     app.run(debug=True)
