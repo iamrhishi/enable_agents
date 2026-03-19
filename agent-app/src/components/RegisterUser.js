@@ -8,6 +8,9 @@ function RegisterUser() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
+  const [linkedin, setLinkedin] = useState('');
+  const [shortIntro, setShortIntro] = useState('');
+  const [companyIntro, setCompanyIntro] = useState('');
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
@@ -17,7 +20,7 @@ function RegisterUser() {
       const response = await fetch('http://localhost:5000/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, first_name: firstName, last_name: lastName, email, company }),
+      body: JSON.stringify({ username, password, first_name: firstName, last_name: lastName, email, company, linkedin, short_intro: shortIntro, company_intro: companyIntro }),
       });
       const data = await response.json();
       if (response.ok) {
@@ -76,6 +79,30 @@ function RegisterUser() {
               value={company}
               onChange={e => setCompany(e.target.value)}
               required
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="LinkedIn Profile URL"
+              value={linkedin}
+              onChange={e => setLinkedin(e.target.value)}
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="Short Personal Intro"
+              value={shortIntro}
+              onChange={e => setShortIntro(e.target.value)}
+            />
+          </div>
+          <div>
+            <input
+              type="text"
+              placeholder="Company Intro"
+              value={companyIntro}
+              onChange={e => setCompanyIntro(e.target.value)}
             />
           </div>
           <div>

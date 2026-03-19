@@ -3,8 +3,8 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background:#ffffff;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #F1EAE4 0%, #D6C7B8 100%);
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .main-container {
@@ -30,26 +30,27 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  background: rgba(255, 255, 255, 0.95);
+  background: #FFFFFF;
   backdrop-filter: blur(10px);
   border-radius: 16px;
+  border: 2px solid #D6C7B8;
   padding: 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(30, 58, 95, 0.1);
   overflow-y: auto;
   max-height: 100%;
 }
 
 .upload-section h3 {
   margin: 0 0 20px 0;
-  color: #2d3748;
+  color: #1E3A5F;
   font-size: 1.5rem;
   font-weight: 700;
   text-align: center;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: linear-gradient(135deg, #C2410C, #B45309);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  font-family: 'Fraunces', serif;
 }
 
 .upload-card {
@@ -396,14 +397,14 @@
 
 .stat-item {
   padding: 8px 12px;
-  background: white;
+  background: #FFFFFF;
   border-radius: 6px;
   font-size: 0.85rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D6C7B8;
 }
 
 .stat-item strong {
-  color: #4a5568;
+  color: #1E3A5F;
 }
 
 /* Typing Indicator */
@@ -418,7 +419,7 @@
   height: 8px;
   width: 8px;
   border-radius: 50%;
-  background: #cbd5e0;
+  background: #C2410C;
   animation: bounce 1.4s ease-in-out infinite both;
 }
 
@@ -435,16 +436,17 @@
 
 .loading-text {
   margin: 0;
-  color: #718096;
+  color: #1E3A5F;
   font-size: 0.9rem;
   font-style: italic;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 /* Input Container */
 .input-container {
   padding: 20px 24px;
-  background: white;
-  border-top: 1px solid #e2e8f0;
+  background: #FFFFFF;
+  border-top: 1px solid #D6C7B8;
   display: flex;
   gap: 12px;
   align-items: flex-end;
@@ -453,38 +455,40 @@
 .message-input {
   flex: 1;
   padding: 12px 16px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid #D6C7B8;
   border-radius: 12px;
   font-size: 0.95rem;
-  font-family: inherit;
+  font-family: 'IBM Plex Sans', sans-serif;
   resize: none;
   transition: border-color 0.3s ease;
-  background: #f8fafc;
+  background: #F1EAE4;
+  color: #1E3A5F;
 }
 
 .message-input:focus {
   outline: none;
-  border-color: #667eea;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #C2410C;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.1);
 }
 
 .send-button {
   padding: 12px 20px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: linear-gradient(135deg, #C2410C, #B45309);
+  color: #FFFFFF;
   border: none;
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 0.95rem;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .send-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5a67d8, #6b46c1);
+  background: linear-gradient(135deg, #B45309, #A03C0A);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 12px rgba(194, 65, 12, 0.4);
 }
 
 .send-button:disabled {
@@ -501,19 +505,19 @@
 
 .messages-container::-webkit-scrollbar-track,
 .upload-section::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #F1EAE4;
   border-radius: 3px;
 }
 
 .messages-container::-webkit-scrollbar-thumb,
 .upload-section::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
+  background: #D6C7B8;
   border-radius: 3px;
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover,
 .upload-section::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
+  background: #C2410C;
 }
 
 /* Responsive Design */

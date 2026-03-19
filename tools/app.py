@@ -12,7 +12,8 @@ import os
 import bs4
 import fitz 
 import faiss
-from typing_extensions import List, TypedDict
+from typing import Dict, List
+from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from rake_nltk import Rake
 import numpy as np
@@ -33,17 +34,65 @@ from werkzeug.utils import secure_filename
 import openpyxl
 from flask_cors import cross_origin
 from urllib.parse import urlencode
-from langchain import hub
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.document_loaders import WebBaseLoader
-from langchain.document_loaders import PyPDFLoader
-from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chat_models import init_chat_model
-from langchain.vectorstores import FAISS
-from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import ChatOpenAI
+
+# LangChain imports with fallbacks for version compatibility
+try:
+    from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+except (ImportError, Exception) as e:
+    try:
+        from langchain.embeddings.openai import OpenAIEmbeddings
+        from langchain.chat_models import ChatOpenAI
+    except (ImportError, Exception):
+        # Set placeholders for testing without full dependencies
+        OpenAIEmbeddings = None
+        ChatOpenAI = None
+        print(f"Warning: LangChain OpenAI modules not available: {e}")
+
+try:
+    from langchain_community.vectorstores import FAISS
+except (ImportError, Exception):
+    try:
+        from langchain.vectorstores import FAISS
+    except (ImportError, Exception):
+        FAISS = None
+        print("Warning: FAISS not available")
+
+try:
+    from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
+except (ImportError, Exception):
+    try:
+        from langchain.document_loaders import WebBaseLoader, PyPDFLoader
+    except (ImportError, Exception):
+        WebBaseLoader = None
+        PyPDFLoader = None
+        print("Warning: Document loaders not available")
+
+try:
+    from langchain_core.documents import Document
+except (ImportError, Exception):
+    try:
+        from langchain.schema import Document
+    except (ImportError, Exception):
+        Document = None
+        print("Warning: Document class not available")
+
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except (ImportError, Exception):
+    try:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+    except (ImportError, Exception):
+        RecursiveCharacterTextSplitter = None
+        print("Warning: RecursiveCharacterTextSplitter not available")
+
+try:
+    from langchain_core.prompts import ChatPromptTemplate
+except (ImportError, Exception):
+    try:
+        from langchain.prompts import ChatPromptTemplate
+    except (ImportError, Exception):
+        ChatPromptTemplate = None
+        print("Warning: ChatPromptTemplate not available")
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from selenium import webdriver
@@ -57,7 +106,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 from datetime import datetime, timedelta
 import re
-
+from docx import Document as DocxDocument
+import networkx as nx
+from google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
 
 load_dotenv()
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
@@ -69,6 +120,7 @@ nltk.download('stopwords')
 nltk.download('punkt_tab')
 
 PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/prompts.json"
+
 
 app = Flask(__name__)
 CORS(app)
@@ -83,6 +135,94 @@ ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
+# Content Marketing Agent Configuration
+CONTENT_MARKETING_UPLOAD_FOLDER = os.path.join(os.path.expanduser('~'), 'Enable/Software_Development/enable_agents/data/content_marketing_uploads')
+CONTENT_MARKETING_DB_PATH = os.path.join(os.path.expanduser('~'), 'Enable/Software_Development/enable_agents/data/content_marketing.db')
+CONTENT_MARKETING_ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'xlsx', 'html', 'md'}
+os.makedirs(CONTENT_MARKETING_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(os.path.dirname(CONTENT_MARKETING_DB_PATH), exist_ok=True)
+
+# Initialize Content Marketing Database
+def init_content_marketing_db():
+    """Initialize SQLite database for content marketing agent"""
+    conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS projects (
+            project_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            description TEXT,
+            industry TEXT,
+            sector TEXT,
+            function TEXT,
+            role TEXT,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP,
+            metadata JSON
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS documents (
+            doc_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_type TEXT,
+            file_path TEXT,
+            file_size INTEGER,
+            upload_date TIMESTAMP,
+            document_type TEXT,
+            extracted_content TEXT,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS knowledge_graphs (
+            kg_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            kg_data JSON,
+            entities INT,
+            relationships INT,
+            created_at TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS generated_content (
+            content_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            channel TEXT,
+            content_type TEXT,
+            content TEXT,
+            source_docs JSON,
+            domain_context JSON,
+            created_at TIMESTAMP,
+            modified_at TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS conversation_history (
+            msg_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_message TEXT,
+            agent_response TEXT,
+            context JSON,
+            timestamp TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+init_content_marketing_db()
+
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -92,6 +232,9 @@ class User(db.Model):
     last_name = db.Column(db.String(80))
     email = db.Column(db.String(120))
     company = db.Column(db.String(120))
+    linkedin = db.Column(db.String(256))
+    short_intro = db.Column(db.String(256))
+    company_intro = db.Column(db.String(256))
 
 # 1. Load: First we need to load our data. This is done with Document Loaders.
 # 2. Split: Text splitters break large Documents into smaller chunks. This is useful both for indexing data and passing it into a model, as large chunks are harder to search over and won't fit in a model's finite context window.
@@ -101,11 +244,132 @@ class User(db.Model):
 
 cache = {}
 
+# Cache for KG+RAG to avoid recreating embeddings and graphs for same documents
+kg_rag_cache = {
+    'embeddings': {},      # Store embeddings by document hash
+    'faiss_indices': {},   # Store FAISS indices by document hash
+    'chunks': {},          # Store text chunks by document hash
+    'knowledge_graphs': {} # Store knowledge graphs by nodes/edges hash
+}
+
 # Define state for application
 class State(TypedDict):
     question: str
-    context: List[Document]
+    context: 'List'  # List of Document objects
     answer: str
+
+
+# ============= CONTENT MARKETING AGENT CLASSES & HELPERS =============
+
+class DomainSpecializationAnalyzer:
+    """Analyzes documents to extract domain specialization information"""
+    
+    def __init__(self):
+        self.llm = ChatOpenAI(model="gpt-4", temperature=0)
+        self.industry_keywords = self._load_industry_keywords()
+    
+    def _load_industry_keywords(self) -> Dict[str, List[str]]:
+        """Load industry-specific keywords"""
+        return {
+            'Technology': ['software', 'cloud', 'api', 'infrastructure', 'devops', 'saas'],
+            'Healthcare': ['medical', 'patient', 'pharmaceutical', 'clinical', 'health', 'disease'],
+            'Finance': ['banking', 'investment', 'portfolio', 'trading', 'compliance', 'regulatory'],
+            'Retail': ['ecommerce', 'inventory', 'customer', 'sales', 'purchase', 'product'],
+            'Manufacturing': ['production', 'supply chain', 'logistics', 'quality', 'automation'],
+            'Real Estate': ['property', 'tenant', 'lease', 'valuation', 'construction'],
+            'Education': ['student', 'curriculum', 'learning', 'course', 'assessment'],
+        }
+    
+    def analyze_documents(self, documents: List[str]) -> Dict:
+        """
+        Analyze documents to extract domain specialization
+        
+        Args:
+            documents: List of document texts
+            
+        Returns:
+            Dictionary with industry, sector, function, role analysis
+        """
+        combined_text = ' '.join(documents[:3]) if documents else ''
+        
+        prompt = ChatPromptTemplate.from_template("""
+        Analyze the following business documents and extract domain specialization information.
+        
+        Documents:
+        {documents}
+        
+        Provide a JSON response with:
+        {{
+            "industry": "identified industry",
+            "sector": "business sector",
+            "function": "primary business function",
+            "role": "primary role/persona",
+            "target_audience": "target customer/audience",
+            "value_proposition": "key value proposition",
+            "tone": "recommended tone (professional/casual/formal)",
+            "key_themes": ["theme1", "theme2", ...]
+        }}
+        """)
+        
+        try:
+            chain = prompt | self.llm
+            response = chain.invoke({"documents": combined_text[:2000]})
+            
+            import re
+            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+        except:
+            pass
+        
+        return {
+            "industry": "General",
+            "sector": "Unknown",
+            "function": "Marketing",
+            "role": "Marketing Manager",
+            "target_audience": "Business Professionals",
+            "value_proposition": "Enhanced marketing through AI",
+            "tone": "professional",
+            "key_themes": ["innovation", "value", "efficiency"]
+        }
+
+
+def extract_text_from_file_content_marketing(file_path: str, file_type: str) -> str:
+    """Extract text content from various file formats"""
+    try:
+        if file_type == 'pdf':
+            text = []
+            pdf_document = fitz.open(file_path)
+            for page in pdf_document:
+                text.append(page.get_text())
+            pdf_document.close()
+            return '\n'.join(text)
+        
+        elif file_type == 'docx':
+            doc = DocxDocument(file_path)
+            return '\n'.join([para.text for para in doc.paragraphs])
+        
+        elif file_type == 'txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        
+        elif file_type == 'html':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                soup = BeautifulSoup(f.read(), 'html.parser')
+                return soup.get_text()
+        
+        elif file_type == 'md':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        
+        else:
+            return ''
+    
+    except Exception as e:
+        print(f"Error extracting text from {file_path}: {str(e)}")
+        return ''
+
+
 def setup_driver(headless=True):
     """Setup Chrome WebDriver for interactive scraping with popup handling"""
     chrome_options = Options()
@@ -282,6 +546,22 @@ def clean_dataframe_strict(df, required_field_groups=None):
         
         df = df[condition]
         print(f"After strict filtering: {len(df)} rows remaining")
+    
+    return df
+
+
+def clean_dataframe(df, required_columns=None):
+    """Clean dataframe by removing rows with missing required columns"""
+    if required_columns is None:
+        return df
+    
+    # Filter rows where at least one of the required columns has a value
+    if required_columns:
+        condition = pd.Series([False] * len(df))
+        for col in required_columns:
+            if col in df.columns:
+                condition = condition | (df[col].notna() & (df[col] != ''))
+        df = df[condition]
     
     return df
 
@@ -707,7 +987,7 @@ def load_embeddings(file_hash):
     return index, phrase_embeddings, page_chunks
 
 def init_llm():
-    llm = init_chat_model("gpt-4o-mini", model_provider="openai")
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     return llm
 
 def init_embeddings():
@@ -3160,8 +3440,7 @@ def enterprise_chat():
     # Define the sequence and mapping of questions
     questions = [
         {"key": "industry", "question": "To get a bit of context, which industry does your business operate in?"},
-        {"key": "role", "question": "And what’s your role within the company?"},
-        {"key": "department_context", "question": "Can you share what your department is mainly focused on right now?"},
+        {"key": "role_department", "question": "What’s your role within the company, and what is your department mainly focused on right now?"},
         {"key": "tools", "question": "What tools or software do you and your team rely on most, and what do you use them for?"},
         {"key": "business_need", "question": "If you could change or improve one thing about how your team works today, what would it be?"}
     ]
@@ -3846,6 +4125,9 @@ def register():
     last_name = data.get('last_name')
     email = data.get('email')
     company = data.get('company')
+    linkedin = data.get('linkedin')
+    short_intro = data.get('short_intro')
+    company_intro = data.get('company_intro')
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
@@ -3860,7 +4142,10 @@ def register():
             first_name=first_name,
             last_name=last_name,
             email=email,
-            company=company
+            company=company,
+            linkedin=linkedin,
+            short_intro=short_intro,
+            company_intro=company_intro
         )
         db.session.add(user)
         db.session.commit()
@@ -4353,7 +4638,7 @@ def recommend_agents():
             "For each recommendation, provide: "
             "1. recommended_tools: list of modules/tools with name, description, and why recommended. "
             "2. integration_pairs: pairs of tools/modules that should be integrated, with integration description and data shared. "
-            "3. additional_tools: tools/modules that are needed but missing, with name, description, and why needed. "
+            "3. additional_tools: tools/modules that are needed but missing, with name, description, names of companies offering it and why needed. "
             "Return the output as a JSON object with a 'recommendations' key containing these three lists. "
             "Here is the user context and available modules:\n\n" + json.dumps(context, indent=2)
         )
@@ -4383,6 +4668,8 @@ def recommend_agents():
                 recommendations = {"raw": raw_content}
         else:
             recommendations = {"raw": raw_content}
+
+        print(recommendations)
 
         return jsonify({
             "success": True,
@@ -4513,6 +4800,1497 @@ def recommend_agents():
 #     }
 
 #     return jsonify(financial_KPIs)
+
+
+# ========== KNOWLEDGE GRAPH + RAG API ==========
+
+import boto3
+from docx import Document as DocxDocument
+import networkx as nx
+
+# Initialize S3 client for AWS operations
+s3_client = boto3.client('s3')
+
+def generate_cache_key(data):
+    """Generate a hash key for caching based on input data"""
+    data_string = json.dumps(data, sort_keys=True)
+    return hashlib.md5(data_string.encode()).hexdigest()
+
+def get_document_cache_key(documents):
+    """Generate cache key for documents list"""
+    doc_keys = []
+    for doc in documents:
+        key = f"{doc['source_type']}:{doc['path']}"
+        if 'bucket' in doc:
+            key += f":{doc['bucket']}"
+        doc_keys.append(key)
+    return generate_cache_key(sorted(doc_keys))
+
+def get_kg_cache_key(nodes, edges):
+    """Generate cache key for knowledge graph"""
+    kg_data = {'nodes': nodes, 'edges': edges}
+    return generate_cache_key(kg_data)
+
+def load_document_from_source(source_type, source_path, bucket_name=None):
+    """Load PDF or Word document from S3 or local machine"""
+    if source_type == "s3":
+        local_path = f"/tmp/{os.path.basename(source_path)}"
+        s3_client.download_file(bucket_name, source_path, local_path)
+        return local_path
+    return source_path
+
+def extract_text_from_pdf(file_path):
+    """Extract text content from PDF file using PyMuPDF"""
+    doc = fitz.open(file_path)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
+
+def extract_text_from_word(file_path):
+    """Extract text content from Word document"""
+    doc = DocxDocument(file_path)
+    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+    return text
+
+def extract_text_from_document(file_path):
+    """Route extraction based on file extension"""
+    if file_path.lower().endswith('.pdf'):
+        return extract_text_from_pdf(file_path)
+    elif file_path.lower().endswith(('.docx', '.doc')):
+        return extract_text_from_word(file_path)
+    return ""
+
+def build_knowledge_graph(nodes, edges):
+    """Create a NetworkX graph from nodes and edges JSON input"""
+    G = nx.DiGraph()
+    for node in nodes:
+        G.add_node(node['id'], **node.get('attributes', {}))
+    for edge in edges:
+        G.add_edge(edge['source'], edge['target'], **edge.get('attributes', {}))
+    return G
+
+def chunk_text(text, chunk_size=1000, overlap=200):
+    """Split text into overlapping chunks for better context preservation"""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap
+    return chunks
+
+def create_embeddings(chunks):
+    """Generate OpenAI embeddings for text chunks"""
+    embeddings_model = OpenAIEmbeddings()
+    embeddings = embeddings_model.embed_documents(chunks)
+    return np.array(embeddings)
+
+def build_faiss_index(embeddings):
+    """Create FAISS index for efficient similarity search"""
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(embeddings.astype('float32'))
+    return index
+
+def retrieve_relevant_chunks(query, index, chunks, embeddings_model, top_k=5):
+    """Retrieve most relevant chunks using FAISS similarity search"""
+    query_embedding = embeddings_model.embed_query(query)
+    query_vector = np.array([query_embedding]).astype('float32')
+    distances, indices = index.search(query_vector, top_k)
+    return [chunks[i] for i in indices[0]]
+
+def query_knowledge_graph(graph, query_type, node_id=None):
+    """Query knowledge graph for specific information based on query type"""
+    if query_type == "neighbors" and node_id:
+        return list(graph.neighbors(node_id))
+    elif query_type == "attributes" and node_id:
+        return dict(graph.nodes[node_id])
+    elif query_type == "all_nodes":
+        return list(graph.nodes(data=True))
+    elif query_type == "all_edges":
+        return list(graph.edges(data=True))
+    return None
+
+def generate_answer_with_rag(query, relevant_chunks, kg_context):
+    """Generate final answer using OpenAI with RAG context and KG information"""
+    llm = ChatOpenAI(model="gpt-4", temperature=0)
+    context_text = "\n\n".join(relevant_chunks)
+    kg_text = json.dumps(kg_context, indent=2)
+    
+    prompt = f"""Based on the following document context and knowledge graph information, answer the query.
+
+Document Context:
+{context_text}
+
+Knowledge Graph Context:
+{kg_text}
+
+Query: {query}
+
+Provide a detailed answer:"""
+    
+    response = llm.predict(prompt)
+    return response
+
+def process_documents_with_kg_rag(documents, nodes, edges, query, include_context=False):
+    """Main processing pipeline combining document loading, KG building, and RAG with caching"""
+    # Generate cache keys
+    doc_cache_key = get_document_cache_key(documents)
+    kg_cache_key = get_kg_cache_key(nodes, edges)
+    
+    # Check if knowledge graph is cached
+    if kg_cache_key in kg_rag_cache['knowledge_graphs']:
+        kg = kg_rag_cache['knowledge_graphs'][kg_cache_key]
+    else:
+        # Build knowledge graph and cache it
+        kg = build_knowledge_graph(nodes, edges)
+        kg_rag_cache['knowledge_graphs'][kg_cache_key] = kg
+    
+    # Check if document embeddings are cached
+    if doc_cache_key in kg_rag_cache['embeddings']:
+        # Reuse cached data
+        chunks = kg_rag_cache['chunks'][doc_cache_key]
+        embeddings = kg_rag_cache['embeddings'][doc_cache_key]
+        faiss_index = kg_rag_cache['faiss_indices'][doc_cache_key]
+        embeddings_model = OpenAIEmbeddings()
+    else:
+        # Extract and combine text from all documents
+        all_text = ""
+        for doc_info in documents:
+            local_path = load_document_from_source(
+                doc_info['source_type'], 
+                doc_info['path'], 
+                doc_info.get('bucket')
+            )
+            text = extract_text_from_document(local_path)
+            all_text += text + "\n\n"
+        
+        # Create chunks and embeddings
+        chunks = chunk_text(all_text)
+        embeddings_model = OpenAIEmbeddings()
+        embeddings = create_embeddings(chunks)
+        
+        # Build FAISS index
+        faiss_index = build_faiss_index(embeddings)
+        
+        # Cache all the expensive computations
+        kg_rag_cache['chunks'][doc_cache_key] = chunks
+        kg_rag_cache['embeddings'][doc_cache_key] = embeddings
+        kg_rag_cache['faiss_indices'][doc_cache_key] = faiss_index
+    
+    # Retrieve relevant chunks (this is query-specific, not cached)
+    relevant_chunks = retrieve_relevant_chunks(query, faiss_index, chunks, embeddings_model)
+    
+    # Query knowledge graph for additional context
+    kg_context = {
+        'nodes': query_knowledge_graph(kg, "all_nodes"),
+        'edges': query_knowledge_graph(kg, "all_edges")
+    }
+    
+    # Generate answer
+    answer = generate_answer_with_rag(query, relevant_chunks, kg_context)
+    
+    # Return only answer by default (lightweight response)
+    if include_context:
+        return {
+            'answer': answer,
+            'relevant_chunks': relevant_chunks,
+            'kg_context': kg_context
+        }
+    else:
+        return {
+            'answer': answer
+        }
+
+@app.route('/extract-with-kg-rag', methods=['POST'])
+@cross_origin()
+def extract_with_kg_rag():
+    """API endpoint to extract information from documents using Knowledge Graph and RAG"""
+    try:
+        data = request.json
+        
+        # Validate input
+        documents = data.get('documents', [])
+        nodes = data.get('nodes', [])
+        edges = data.get('edges', [])
+        query = data.get('query', '')
+        include_context = data.get('include_context', False)  # Optional: return chunks and KG context
+        
+        if not documents or not query:
+            return jsonify({
+                'success': False,
+                'error': 'documents and query are required'
+            }), 400
+        
+        # Process documents with KG and RAG
+        result = process_documents_with_kg_rag(documents, nodes, edges, query, include_context)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/clear-kg-rag-cache', methods=['POST'])
+@cross_origin()
+def clear_kg_rag_cache():
+    """Clear the KG+RAG cache to free up memory"""
+    try:
+        data = request.json or {}
+        cache_type = data.get('cache_type', 'all')  # 'all', 'embeddings', 'graphs'
+        
+        if cache_type == 'all':
+            kg_rag_cache['embeddings'].clear()
+            kg_rag_cache['faiss_indices'].clear()
+            kg_rag_cache['chunks'].clear()
+            kg_rag_cache['knowledge_graphs'].clear()
+            cleared = 'all caches'
+        elif cache_type == 'embeddings':
+            kg_rag_cache['embeddings'].clear()
+            kg_rag_cache['faiss_indices'].clear()
+            kg_rag_cache['chunks'].clear()
+            cleared = 'embeddings cache'
+        elif cache_type == 'graphs':
+            kg_rag_cache['knowledge_graphs'].clear()
+            cleared = 'knowledge graphs cache'
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid cache_type. Use: all, embeddings, or graphs'
+            }), 400
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully cleared {cleared}'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/kg-rag-cache-status', methods=['GET'])
+@cross_origin()
+def kg_rag_cache_status():
+    """Get current cache status and statistics"""
+    try:
+        status = {
+            'embeddings_cached': len(kg_rag_cache['embeddings']),
+            'faiss_indices_cached': len(kg_rag_cache['faiss_indices']),
+            'chunks_cached': len(kg_rag_cache['chunks']),
+            'knowledge_graphs_cached': len(kg_rag_cache['knowledge_graphs']),
+            'total_cached_items': (
+                len(kg_rag_cache['embeddings']) + 
+                len(kg_rag_cache['knowledge_graphs'])
+            )
+        }
+        
+        return jsonify({
+            'success': True,
+            'cache_status': status
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==================== ENTITY MANAGEMENT SYSTEM ====================
+# Domain-agnostic persistent knowledge graph + vector DB system
+# Works for ANY domain: HR, Sales, Research, Healthcare, Legal, etc.
+# Note: Commented out pending completion of entity_system module
+
+# from entity_system import (
+#     EntityKnowledgeGraphManager,
+#     EntityVectorStoreManager,
+#     process_entity_documents,
+#     query_entity_profile,
+#     chroma_client
+# )
+#
+# # Initialize entity system managers
+# kg_manager = EntityKnowledgeGraphManager(db)
+# vector_manager = EntityVectorStoreManager(chroma_client)
+
+# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# 
+# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# These endpoints require the entity_system module which is not yet implemented
+#
+# All entity-related endpoints are disabled including:
+# - POST /entity/upload
+# - POST /entity/query
+# - GET /entity/<entity_id>
+# - DELETE /entity/<entity_id>
+# - GET /entities/list
+# - GET /system/health
+#
+# This module will be enabled once entity_system.py is properly implemented
+# with EntityKnowledgeGraphManager, EntityVectorStoreManager, and related utilities
+# ============================================================================
+
+
+# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# These endpoints require the entity_system module which is not yet implemented
+#
+# All entity-related endpoints disabled including:
+# - entity_upload
+# - entity_query
+# - get_entity
+# - delete_entity
+# - list_entities
+# - system_health
+#
+# ============================================================================
+
+
+# ============= CONTENT MARKETING AGENT API ENDPOINTS =============
+
+@app.route('/api/content-marketing/projects', methods=['POST'])
+@cross_origin()
+def create_content_marketing_project():
+    """Create a new content marketing project"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', 'default_user')
+        project_name = data.get('project_name', 'Untitled Project')
+        industry = data.get('industry')
+        sector = data.get('sector')
+        
+        project_id = f"project_{uuid4().hex[:12]}"
+        
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO projects 
+            (project_id, user_id, project_name, industry, sector, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (project_id, user_id, project_name, industry, sector, datetime.now(), datetime.now()))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'project_id': project_id,
+            'message': f'Project "{project_name}" created successfully'
+        }), 201
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/projects/<project_id>', methods=['GET'])
+@cross_origin()
+def get_content_marketing_project(project_id):
+    """Get project details"""
+    try:
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM projects WHERE project_id = ?', (project_id,))
+        project = cursor.fetchone()
+        
+        if not project:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        # Get documents count
+        cursor.execute('SELECT COUNT(*) FROM documents WHERE project_id = ?', (project_id,))
+        doc_count = cursor.fetchone()[0]
+        
+        # Get knowledge graph
+        cursor.execute('SELECT kg_data FROM knowledge_graphs WHERE project_id = ?', (project_id,))
+        kg_row = cursor.fetchone()
+        has_kg = kg_row is not None
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'project': dict(project),
+            'statistics': {
+                'documents': doc_count,
+                'has_knowledge_graph': has_kg
+            }
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/documents/upload', methods=['POST'])
+@cross_origin()
+def upload_content_marketing_documents():
+    """
+    Upload documents to project
+    Extracts text and creates initial knowledge graph using existing RAG
+    """
+    try:
+        project_id = request.form.get('project_id')
+        if not project_id:
+            return jsonify({'success': False, 'error': 'project_id required'}), 400
+        
+        uploaded_files = request.files.getlist('files')
+        if not uploaded_files:
+            return jsonify({'success': False, 'error': 'No files provided'}), 400
+        
+        analyzer = DomainSpecializationAnalyzer()
+        
+        extracted_documents = []
+        doc_ids = []
+        
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        cursor = conn.cursor()
+        
+        for file in uploaded_files:
+            if not file.filename:
+                continue
+            
+            filename = secure_filename(file.filename)
+            file_type = filename.split('.')[-1].lower()
+            
+            if file_type not in CONTENT_MARKETING_ALLOWED_EXTENSIONS:
+                continue
+            
+            file_path = os.path.join(CONTENT_MARKETING_UPLOAD_FOLDER, project_id, filename)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            file.save(file_path)
+            
+            # Extract text from document
+            text_content = extract_text_from_file_content_marketing(file_path, file_type)
+            
+            # Store in database
+            doc_id = f"doc_{uuid4().hex[:12]}"
+            cursor.execute('''
+                INSERT INTO documents
+                (doc_id, project_id, file_name, file_type, file_path, 
+                 file_size, upload_date, extracted_content)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (doc_id, project_id, filename, file_type, file_path,
+                  os.path.getsize(file_path), datetime.now(), text_content))
+            
+            extracted_documents.append(text_content)
+            doc_ids.append(doc_id)
+        
+        conn.commit()
+        conn.close()
+        
+        # Analyze domain specialization
+        domain_context = analyzer.analyze_documents(extracted_documents)
+        
+        # Build knowledge graph using existing RAG embeddings
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        cursor = conn.cursor()
+        kg_id = f"kg_{uuid4().hex[:12]}"
+        
+        # Simple KG structure using the text
+        kg_data = {
+            'entities': [f'Entity_{i}' for i in range(min(10, len(extracted_documents)))],
+            'relationships': [],
+            'domain_context': domain_context,
+            'documents_count': len(doc_ids)
+        }
+        
+        cursor.execute('''
+            INSERT INTO knowledge_graphs
+            (kg_id, project_id, kg_data, entities, relationships, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (kg_id, project_id, json.dumps(kg_data),
+              len(kg_data.get('entities', [])),
+              len(kg_data.get('relationships', [])),
+              datetime.now()))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'uploaded_files': len(doc_ids),
+            'document_ids': doc_ids,
+            'knowledge_graph_id': kg_id,
+            'domain_specialization': domain_context
+        }), 201
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/documents/<project_id>', methods=['GET'])
+@cross_origin()
+def list_content_marketing_documents(project_id):
+    """List all documents in a project"""
+    try:
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT doc_id, file_name, file_type, upload_date, file_size
+            FROM documents WHERE project_id = ?
+            ORDER BY upload_date DESC
+        ''', (project_id,))
+        
+        documents = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'documents': documents,
+            'count': len(documents)
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/generate-content', methods=['POST'])
+@cross_origin()
+def generate_content_marketing():
+    """
+    Generate marketing content for specified channel
+    Uses existing RAG endpoint with knowledge graph for content creation
+    """
+    try:
+        data = request.json
+        project_id = data.get('project_id')
+        channel = data.get('channel', 'linkedin')
+        content_type = data.get('content_type', 'post')
+        user_context = data.get('context', '')
+        
+        if not project_id:
+            return jsonify({'success': False, 'error': 'project_id required'}), 400
+        
+        # Get project and documents
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM projects WHERE project_id = ?', (project_id,))
+        project_row = cursor.fetchone()
+        if not project_row:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        project = dict(project_row)
+        
+        cursor.execute('''
+            SELECT extracted_content FROM documents WHERE project_id = ?
+        ''', (project_id,))
+        
+        documents = cursor.fetchall()
+        doc_texts = [doc[0] for doc in documents if doc[0]]
+        
+        # Get knowledge graph
+        cursor.execute('''
+            SELECT kg_data FROM knowledge_graphs WHERE project_id = ?
+            ORDER BY created_at DESC LIMIT 1
+        ''', (project_id,))
+        
+        kg_row = cursor.fetchone()
+        kg_data = json.loads(kg_row[0]) if kg_row else None
+        
+        conn.close()
+        
+        if not doc_texts:
+            return jsonify({'success': False, 'error': 'No documents found in project'}), 400
+        
+        # Use existing RAG endpoint to generate content
+        channel_config = {
+            'linkedin': {
+                'tone': 'professional',
+                'max_length': 3000,
+                'include_hashtags': True,
+                'call_to_action': 'Connect with us'
+            },
+            'email': {
+                'tone': 'persuasive',
+                'max_length': 500,
+                'include_subject': True,
+                'call_to_action': 'Learn more'
+            },
+            'social': {
+                'tone': 'casual',
+                'max_length': 280,
+                'include_hashtags': True,
+                'call_to_action': 'Follow us'
+            },
+            'google_ads': {
+                'tone': 'direct',
+                'max_length': 150,
+                'include_headline': True,
+                'call_to_action': 'Click here'
+            }
+        }
+        
+        config = channel_config.get(channel, channel_config['linkedin'])
+        
+        # Simple content generation using context
+        prompt = f"""Generate marketing content for {channel} channel.
+        
+Industry: {project.get('industry', 'General')}
+Tone: {config['tone']}
+Max Length: {config['max_length']} characters
+Content Type: {content_type}
+User Context: {user_context}
+
+Documents Summary: {' '.join([doc[:200] for doc in doc_texts[:3]])}
+
+Generate compelling marketing {content_type} content that is {config['tone']}, 
+stays within {config['max_length']} characters, and resonates with the target audience."""
+        
+        llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+        response = llm.predict(prompt)
+        
+        # Store generated content
+        content_id = f"content_{uuid4().hex[:12]}"
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO generated_content
+            (content_id, project_id, channel, content_type, content, source_docs, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (content_id, project_id, channel, content_type,
+              response, json.dumps([d[:100] for d in doc_texts]),
+              datetime.now()))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'content_id': content_id,
+            'channel': channel,
+            'content_type': content_type,
+            'content': response,
+            'variations': [response],  # Could generate multiple variations
+            'metadata': config
+        }), 201
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/chat', methods=['POST'])
+@cross_origin()
+def content_marketing_chat():
+    """
+    Conversational endpoint for iterative content refinement
+    """
+    try:
+        data = request.json
+        project_id = data.get('project_id')
+        message = data.get('message')
+        
+        if not all([project_id, message]):
+            return jsonify({'success': False, 'error': 'project_id and message required'}), 400
+        
+        # Retrieve context
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT extracted_content FROM documents WHERE project_id = ?
+            LIMIT 10
+        ''', (project_id,))
+        documents = [row[0] for row in cursor.fetchall()]
+        
+        cursor.execute('''
+            SELECT kg_data FROM knowledge_graphs WHERE project_id = ?
+            ORDER BY created_at DESC LIMIT 1
+        ''', (project_id,))
+        kg_row = cursor.fetchone()
+        kg_data = json.loads(kg_row[0]) if kg_row else None
+        
+        conn.close()
+        
+        # Generate response using LLM
+        context_text = ' '.join([doc[:500] for doc in documents[:3]]) if documents else ''
+        
+        prompt = f"""Based on the following document context and knowledge graph, provide helpful marketing advice.
+
+Document Context: {context_text}
+
+Knowledge Graph: {json.dumps(kg_data)[:500] if kg_data else 'No KG available'}
+
+User Question: {message}
+
+Provide a helpful, concise response focused on marketing strategy and content improvement."""
+        
+        llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+        response = llm.predict(prompt)
+        
+        # Store conversation
+        msg_id = f"msg_{uuid4().hex[:12]}"
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO conversation_history
+            (msg_id, project_id, user_message, agent_response, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (msg_id, project_id, message, response, datetime.now()))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'response': response,
+            'message_id': msg_id
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/content-marketing/knowledge-graph/<project_id>', methods=['GET'])
+@cross_origin()
+def get_content_marketing_knowledge_graph(project_id):
+    """Retrieve knowledge graph for visualization"""
+    try:
+        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT kg_data, entities, relationships, created_at
+            FROM knowledge_graphs WHERE project_id = ?
+            ORDER BY created_at DESC LIMIT 1
+        ''', (project_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'success': False, 'error': 'Knowledge graph not found'}), 404
+        
+        kg_data = json.loads(row[0])
+        
+        return jsonify({
+            'success': True,
+            'graph': kg_data,
+            'statistics': {
+                'entities': row[1],
+                'relationships': row[2],
+                'created_at': str(row[3])
+            }
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/get-google-credentials', methods=['GET'])
+@cross_origin()
+def get_google_credentials():
+    """
+    Get pre-configured Google OAuth credentials from environment
+    Returns empty values if not configured
+    """
+    try:
+        load_dotenv()
+        
+        credentials = {
+            'clientId': os.getenv('GOOGLE_CLIENT_ID', ''),
+            'clientSecret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
+            'redirectUri': os.getenv('GOOGLE_REDIRECT_URI', ''),
+            'hasCredentials': bool(os.getenv('GOOGLE_CLIENT_ID'))
+        }
+        
+        return jsonify({
+            'success': True,
+            'credentials': credentials
+        }), 200
+        
+    except Exception as e:
+        print(f"Error fetching Google credentials: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'credentials': {
+                'clientId': '',
+                'clientSecret': '',
+                'redirectUri': '',
+                'hasCredentials': False
+            }
+        }), 200
+
+
+@app.route('/connect-google-business', methods=['POST'])
+@cross_origin()
+def connect_google_business():
+    """
+    Step 1: Save OAuth credentials and generate authorization URL
+    Returns URL where user should go to authorize the app
+    """
+    try:
+        data = request.get_json()
+        
+        required_fields = ['clientId', 'clientSecret', 'redirectUri']
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields'
+            }), 400
+        
+        # Save credentials
+        helper = GoogleBusinessHelper()
+        if not helper.save_credentials(data):
+            return jsonify({
+                'success': False,
+                'error': 'Failed to save credentials'
+            }), 500
+        
+        # Generate Google OAuth authorization URL
+        client_id = data.get('clientId')
+        redirect_uri = data.get('redirectUri')
+        
+        auth_url = _generate_google_auth_url(client_id, redirect_uri)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Credentials saved. Please authorize the app.',
+            'authUrl': auth_url
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in connect_google_business: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/auth/google/callback', methods=['GET'])
+@cross_origin()
+def google_auth_callback():
+    """
+    Step 2: OAuth callback endpoint
+    Google redirects here with authorization code
+    """
+    try:
+        auth_code = request.args.get('code')
+        error = request.args.get('error')
+        
+        if error:
+            return jsonify({
+                'success': False,
+                'error': f'Google authorization denied: {error}'
+            }), 400
+        
+        if not auth_code:
+            return jsonify({
+                'success': False,
+                'error': 'No authorization code received'
+            }), 400
+        
+        # Exchange code for refresh token
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
+        
+        success = _exchange_auth_code_for_token(auth_code, client_id, client_secret, redirect_uri)
+        
+        if success:
+            # Redirect back to app with success
+            return redirect('http://localhost:3000?google_connected=true')
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to exchange authorization code'
+            }), 500
+            
+    except Exception as e:
+        print(f"Error in google_auth_callback: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/get-google-business-data', methods=['GET'])
+@cross_origin()
+def get_google_business_data():
+    """
+    Fetch Google Business information using saved credentials
+    Returns business profile, reviews, and metrics
+    """
+    try:
+        helper = GoogleBusinessHelper()
+        
+        if not helper.is_connected():
+            return jsonify({
+                'success': False,
+                'error': 'Google Business credentials not found. Please connect first.',
+                'code': 'NOT_CONNECTED'
+            }), 401
+        
+        # Get complete business data
+        business_data = helper.get_complete_business_data()
+        business_data['success'] = True
+        
+        return jsonify(business_data), 200
+        
+    except Exception as e:
+        print(f"Error in get_google_business_data: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/get-requirements-with-google-data', methods=['POST'])
+@cross_origin()
+def get_requirements_with_google_data():
+    """
+    Combined endpoint to get user requirements along with Google Business data
+    Returns both requirement inputs and business insights for context
+    """
+    try:
+        data = request.get_json()
+        
+        # Extract user requirements from request
+        user_requirements = {
+            'overview': data.get('overview', ''),
+            'context': data.get('context', ''),
+            'region': data.get('region', ''),
+            'countries': data.get('countries', []),
+            'industries': data.get('industries', []),
+            'businessFunctions': data.get('businessFunctions', []),
+            'analysisFrameworks': data.get('analysisFrameworks', ''),
+            'responseFormat': data.get('responseFormat', ''),
+            'uploadedFile': data.get('uploadedFile', None)
+        }
+        
+        # Check if Google Business is connected and fetch data
+        helper = GoogleBusinessHelper()
+        google_business_data = None
+        
+        if helper.is_connected():
+            google_business_data = helper.get_complete_business_data()
+        else:
+            google_business_data = {
+                'connected': False,
+                'message': 'Google Business not connected'
+            }
+        
+        response = {
+            'success': True,
+            'userRequirements': user_requirements,
+            'googleBusinessData': google_business_data,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        print(f"Error in get_requirements_with_google_data: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/search-google-businesses', methods=['POST'])
+@cross_origin()
+def search_google_businesses():
+    """
+    Search for Google businesses using Google Locations API
+    Searches by business name and location with pagination support
+    Supports up to 200 listings with configurable page size
+    """
+    try:
+        data = request.get_json()
+        
+        query = data.get('query', '')
+        location = data.get('location', '')
+        page = data.get('page', 1)
+        page_size = data.get('page_size', 20)
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Search query is required'
+            }), 400
+        
+        if not location:
+            return jsonify({
+                'success': False,
+                'error': 'Location is required'
+            }), 400
+        
+        # Validate pagination parameters
+        if page < 1:
+            page = 1
+        if page_size < 1:
+            page_size = 20
+        if page_size > 200:
+            page_size = 200  # Cap at 200 per page
+        
+        print(f"[SEARCH] Query: {query}, Location: {location}, Page: {page}, Page Size: {page_size}")
+        
+        # Get OAuth credentials from environment
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
+        
+        if not all([client_id, client_secret, redirect_uri]):
+            return jsonify({
+                'success': False,
+                'error': 'Google Business credentials not configured. Please connect your account first.',
+                'code': 'CREDENTIALS_MISSING'
+            }), 401
+        
+        print(f"[SEARCH] Credentials found, getting access token...")
+        
+        # Exchange credentials for access token
+        access_token = _get_google_access_token(client_id, client_secret, redirect_uri)
+        
+        if not access_token:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to authenticate with Google. Please reconnect your account.',
+                'code': 'AUTH_FAILED'
+            }), 401
+        
+        print(f"[SEARCH] Got access token, calling Google API...")
+        
+        # Use Google Locations API to search for businesses
+        searcher = GoogleBusinessSearcher()
+        searcher.set_credentials(access_token)
+        
+        results = searcher.search_businesses(
+            query=query,
+            location=location,
+            max_results=200,
+            page=page,
+            page_size=page_size
+        )
+        
+        print(f"[SEARCH] Results: {results}")
+        return jsonify(results), 200
+        
+    except Exception as e:
+        print(f"[SEARCH] Error in search_google_businesses: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+def _generate_google_auth_url(client_id: str, redirect_uri: str) -> str:
+    """
+    Generate Google OAuth authorization URL
+    User visits this URL to authorize the app
+    """
+    params = {
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'response_type': 'code',
+        'scope': 'https://www.googleapis.com/auth/business.manage',
+        'access_type': 'offline',
+        'prompt': 'consent'
+    }
+    return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+
+
+def _exchange_auth_code_for_token(auth_code: str, client_id: str, client_secret: str, redirect_uri: str) -> bool:
+    """
+    Exchange Google authorization code for refresh token
+    Called when user returns from Google authorization page
+    """
+    try:
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'code': auth_code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': redirect_uri
+        }
+        
+        response = requests.post(token_url, data=data, timeout=10)
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            refresh_token = token_data.get('refresh_token')
+            
+            if refresh_token:
+                # Save refresh token to environment
+                os.environ['GOOGLE_REFRESH_TOKEN'] = refresh_token
+                
+                # Save to .env file in the tools directory
+                env_file = os.path.join(os.path.dirname(__file__), '.env')
+                with open(env_file, 'a') as f:
+                    f.write(f"\nGOOGLE_REFRESH_TOKEN={refresh_token}")
+                
+                print(f"Refresh token saved to {env_file}")
+                load_dotenv()
+                return True
+            else:
+                print("No refresh token in response - this might be the first time authorizing")
+                print(f"Response data: {token_data}")
+                return False
+        else:
+            print(f"Token exchange failed: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error exchanging auth code: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def _get_google_access_token(client_id: str, client_secret: str, redirect_uri: str) -> str:
+    """
+    Get Google access token from stored refresh token
+    """
+    try:
+        refresh_token = os.getenv('GOOGLE_REFRESH_TOKEN')
+        
+        if not refresh_token:
+            print("No refresh token found. User must authorize the app first.")
+            print(f"Check that GOOGLE_REFRESH_TOKEN is in .env file")
+            return None
+        
+        print(f"Using refresh token: {refresh_token[:20]}...")
+        
+        # Use refresh token to get new access token
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'refresh_token': refresh_token,
+            'grant_type': 'refresh_token'
+        }
+        
+        response = requests.post(token_url, data=data, timeout=10)
+        
+        if response.status_code == 200:
+            access_token = response.json().get('access_token')
+            print(f"Successfully got access token: {access_token[:20]}...")
+            return access_token
+        else:
+            print(f"Token refresh failed: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"Error getting Google access token: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+@app.route('/enrich-businesses-with-emails', methods=['POST'])
+@cross_origin()
+def enrich_businesses_with_emails():
+    """
+    Enrich business data with email addresses using scrap.io API
+    Takes a list of businesses with website URLs and enriches them with email data
+    """
+    try:
+        data = request.get_json()
+        businesses = data.get('businesses', [])
+        scrap_io_api_key = os.getenv('SCRAP_IO_API_KEY')
+        
+        if not businesses or len(businesses) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No businesses provided'
+            }), 400
+        
+        if not scrap_io_api_key:
+            return jsonify({
+                'success': False,
+                'error': 'Scrap.io API key not configured',
+                'code': 'API_KEY_MISSING'
+            }), 401
+        
+        print(f"[EMAIL_ENRICHMENT] Enriching {len(businesses)} businesses with emails")
+        
+        def extract_emails_from_text(text):
+            """Extract email addresses from text using regex"""
+            if not text:
+                return []
+            email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+            emails = re.findall(email_pattern, str(text))
+            return list(set(emails))  # Remove duplicates
+        
+        def get_email_from_google_places(business):
+            """Try to extract email from Google Places data"""
+            # Check if business data already contains formatted address, phone, website
+            # that might have email info
+            if business.get('formatted_address'):
+                emails = extract_emails_from_text(business['formatted_address'])
+                if emails:
+                    return emails[0]
+            
+            return None
+        
+        def generate_common_email_patterns(domain, business_name):
+            """Generate common email patterns for a domain"""
+            # Remove www. if present for cleaner domain
+            domain_clean = domain.replace('www.', '')
+            
+            # Common prefixes to try
+            common_prefixes = [
+                'info', 'contact', 'support', 'hello', 'business', 'sales', 
+                'email', 'inquiry', 'admin', 'help', 'team'
+            ]
+            
+            # Try with business name components
+            name_parts = business_name.lower().split()[:2] if business_name else []
+            
+            patterns = []
+            
+            # Standard patterns
+            for prefix in common_prefixes:
+                patterns.append(f"{prefix}@{domain_clean}")
+            
+            # Business name patterns
+            if name_parts:
+                for part in name_parts:
+                    part_clean = ''.join(c for c in part if c.isalnum())
+                    if part_clean:
+                        patterns.append(f"{part_clean}@{domain_clean}")
+            
+            return patterns
+        
+        def try_sync_website_scrape(website, business_name):
+            """Try to scrape website for email addresses synchronously"""
+            try:
+                response = requests.get(
+                    website if website.startswith('http') else f'https://{website}',
+                    timeout=5,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                
+                if response.status_code == 200:
+                    # Look for email patterns in HTML
+                    emails = extract_emails_from_text(response.text)
+                    if emails:
+                        # Filter out common auto-generated emails
+                        filtered = [e for e in emails if not any(x in e.lower() for x in ['noreply', 'no-reply', 'postmaster'])]
+                        return filtered[0] if filtered else None
+            except:
+                pass
+            
+            return None
+        
+        def extract_email_from_business_data(business_data, domain, website):
+            """Extract email from scrap.io response with multiple fallback strategies"""
+            email = 'N/A'
+            
+            website_data = business_data.get('website_data', {})
+            
+            if not website_data:
+                return email
+            
+            # Strategy 1: Check emails array (primary)
+            if website_data.get('emails') and len(website_data.get('emails', [])) > 0:
+                email_item = website_data['emails'][0]
+                if isinstance(email_item, dict) and 'email' in email_item:
+                    extracted = email_item['email']
+                    if extracted and extracted != 'N/A':
+                        email = extracted
+                        print(f"[EMAIL_ENRICHMENT] ✅ Strategy 1 (emails array) found: {email}")
+                        return email
+                elif isinstance(email_item, str) and email_item.strip():
+                    email = email_item
+                    print(f"[EMAIL_ENRICHMENT] ✅ Strategy 1 (emails string) found: {email}")
+                    return email
+            
+            # Strategy 2: Try contact information
+            if not email or email == 'N/A':
+                contact_info = website_data.get('contact_info', {})
+                if contact_info and contact_info.get('email'):
+                    email = contact_info['email']
+                    print(f"[EMAIL_ENRICHMENT] ✅ Strategy 2 (contact_info) found: {email}")
+                    return email
+            
+            # Strategy 3: Extract from social profiles or other fields
+            if not email or email == 'N/A':
+                for key in ['socials', 'social_profiles', 'contact', 'business_info']:
+                    if key in website_data:
+                        data = website_data[key]
+                        if isinstance(data, dict):
+                            for field_key, field_value in data.items():
+                                if field_value and isinstance(field_value, str):
+                                    found_emails = extract_emails_from_text(field_value)
+                                    if found_emails:
+                                        email = found_emails[0]
+                                        print(f"[EMAIL_ENRICHMENT] ✅ Strategy 3 ({key}.{field_key}) found: {email}")
+                                        return email
+            
+            # Strategy 4: Check for contact URLs and other fields
+            if not email or email == 'N/A':
+                for key in ['contact_page', 'about_page', 'company_info', 'all_text']:
+                    if key in website_data:
+                        text_data = website_data[key]
+                        if text_data:
+                            found_emails = extract_emails_from_text(str(text_data))
+                            if found_emails:
+                                email = found_emails[0]
+                                print(f"[EMAIL_ENRICHMENT] ✅ Strategy 4 ({key}) found: {email}")
+                                return email
+            
+            # Strategy 5: Fallback to phone if no email found
+            if (not email or email == 'N/A') and website_data.get('phones') and len(website_data.get('phones', [])) > 0:
+                phone_obj = website_data['phones'][0]
+                if isinstance(phone_obj, dict) and 'phone' in phone_obj:
+                    phone = phone_obj['phone']
+                    email = f"Phone: {phone}"
+                    print(f"[EMAIL_ENRICHMENT] ℹ️  Strategy 5 (phone fallback) found: {email}")
+                    return email
+            
+            return email
+        
+        def call_scrap_io_with_retry(domain, max_retries=3, delay=2):
+            """Call scrap.io with retries to handle async processing"""
+            import time
+            
+            headers = {
+                'Authorization': f'Bearer {scrap_io_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            for attempt in range(max_retries):
+                try:
+                    # Use domain parameter
+                    response = requests.get(
+                        scrap_io_endpoint,
+                        params={'domain': domain},
+                        headers=headers,
+                        timeout=15
+                    )
+                    
+                    if response.status_code in [200, 202]:
+                        result = response.json()
+                        data = result.get('data', [])
+                        meta = result.get('meta', {})
+                        status = meta.get('status', 'unknown')
+                        
+                        # If we got data, return it
+                        if data and len(data) > 0:
+                            print(f"[EMAIL_ENRICHMENT] Got data on attempt {attempt + 1}")
+                            return result, True
+                        
+                        # If status is incomplete, retry with delay
+                        if status == 'incomplete' and attempt < max_retries - 1:
+                            print(f"[EMAIL_ENRICHMENT] Status incomplete, retrying... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(delay)
+                            continue
+                        
+                        # Status is completed with no data, or this is the last attempt
+                        return result, False
+                    else:
+                        print(f"[EMAIL_ENRICHMENT] API Error {response.status_code}: {response.text[:100]}")
+                        return {}, False
+                        
+                except requests.exceptions.Timeout:
+                    print(f"[EMAIL_ENRICHMENT] Timeout on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        time.sleep(delay)
+                        continue
+                    return {}, False
+                except Exception as e:
+                    print(f"[EMAIL_ENRICHMENT] Error on attempt {attempt + 1}: {str(e)}")
+                    return {}, False
+            
+            return {}, False
+        
+        enriched_businesses = []
+        scrap_io_endpoint = "https://scrap.io/api/v1/gmap/enrich"
+        
+        for business in businesses:
+            website = business.get('website')
+            
+            # If no website, add business as-is with empty email
+            if not website:
+                business_copy = business.copy()
+                business_copy['email'] = 'N/A'
+                enriched_businesses.append(business_copy)
+                continue
+            
+            # Extract domain from website URL
+            domain = website.replace('https://', '').replace('http://', '').split('/')[0]
+            business_name = business.get('name', '')
+            
+            email = 'N/A'
+            
+            try:
+                # First, try to extract from Google Places data itself
+                google_email = get_email_from_google_places(business)
+                if google_email:
+                    email = google_email
+                    print(f"[EMAIL_ENRICHMENT] ✅ Found email from Google Places: {email}")
+                else:
+                    # Try calling scrap.io with retry mechanism for async processing
+                    result, has_data = call_scrap_io_with_retry(domain, max_retries=2, delay=1)
+                    
+                    if has_data:
+                        data = result.get('data', [])
+                        if data and len(data) > 0:
+                            business_data = data[0]
+                            email = extract_email_from_business_data(business_data, domain, website)
+                    
+                    # If still no email, try direct website scraping
+                    if email == 'N/A':
+                        print(f"[EMAIL_ENRICHMENT] Trying direct website scrape for {domain}...")
+                        scraped_email = try_sync_website_scrape(website, business_name)
+                        if scraped_email:
+                            email = scraped_email
+                            print(f"[EMAIL_ENRICHMENT] ✅ Found via website scrape: {email}")
+                    
+                    # If still no email, generate common patterns for user reference
+                    if email == 'N/A':
+                        patterns = generate_common_email_patterns(domain, business_name)
+                        if patterns:
+                            # Use the most common pattern as suggestion
+                            email = patterns[0]
+                            print(f"[EMAIL_ENRICHMENT] ℹ️  Using common pattern suggestion: {email}")
+                
+                business_copy = business.copy()
+                business_copy['email'] = email
+                enriched_businesses.append(business_copy)
+                
+            except Exception as e:
+                print(f"[EMAIL_ENRICHMENT] ❌ Error processing {business_name}: {str(e)}")
+                business_copy = business.copy()
+                business_copy['email'] = 'Error'
+                enriched_businesses.append(business_copy)
+        
+        print(f"[EMAIL_ENRICHMENT] Successfully enriched {len(enriched_businesses)} businesses")
+        
+        return jsonify({
+            'success': True,
+            'businesses': enriched_businesses,
+            'enrichedCount': len(enriched_businesses),
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"[EMAIL_ENRICHMENT] Error in enrich_businesses_with_emails: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

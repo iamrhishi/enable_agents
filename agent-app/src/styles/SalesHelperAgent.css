@@ -2,8 +2,8 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background:#ffffff;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #F1EAE4 0%, #D6C7B8 100%);
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .main-container {
@@ -21,40 +21,42 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  background: rgba(255, 255, 255, 0.95);
+  background: #FFFFFF;
   backdrop-filter: blur(10px);
   border-radius: 16px;
+  border: 2px solid #D6C7B8;
   padding: 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(30, 58, 95, 0.1);
   overflow-y: auto;
   max-height: 100%;
 }
 
 .upload-section h3 {
   margin: 0 0 20px 0;
-  color: #2d3748;
+  color: #1E3A5F;
   font-size: 1.5rem;
   font-weight: 700;
   text-align: center;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: linear-gradient(135deg, #C2410C, #B45309);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  font-family: 'Fraunces', serif;
 }
 
 .upload-card {
-  background: white;
+  background: #F1EAE4;
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.06);
+  border: 1.5px solid #D6C7B8;
   transition: all 0.3s ease;
 }
 
 .upload-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(30, 58, 95, 0.12);
   transform: translateY(-2px);
+  border-color: #C2410C;
 }
 
 .upload-header {
@@ -66,9 +68,10 @@
 
 .upload-header h4 {
   margin: 0;
-  color: #2d3748;
+  color: #1E3A5F;
   font-size: 1.1rem;
   font-weight: 600;
+  font-family: 'Fraunces', serif;
 }
 
 .status-indicator {
@@ -76,59 +79,62 @@
   border-radius: 20px;
   font-size: 0.8rem;
   font-weight: 500;
-  background: #e6fffa;
-  color: #234e52;
-  border: 1px solid #81e6d9;
+  background: #E0F2FE;
+  color: #0369A1;
+  border: 1px solid #BAE6FD;
 }
 
 .upload-card p {
-  color: #718096;
+  color: #475569;
   font-size: 0.9rem;
   line-height: 1.5;
   margin-bottom: 16px;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .upload-btn {
   width: 100%;
   padding: 12px 20px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: linear-gradient(135deg, #C2410C, #B45309);
+  color: #F1EAE4;
   border: none;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 0.9rem;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .upload-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 8px 20px rgba(194, 65, 12, 0.4);
 }
 
 .upload-btn:disabled {
-  background: #cbd5e0;
+  background: #D6C7B8;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }
 
 .upload-btn.secondary {
-  background: linear-gradient(135deg, #48bb78, #38a169);
+  background: linear-gradient(135deg, #1E3A5F, #475569);
 }
 
 .upload-btn.secondary:hover:not(:disabled) {
-  box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
+  box-shadow: 0 8px 20px rgba(30, 58, 95, 0.4);
 }
 
 .file-info {
   margin-top: 12px;
   padding: 8px 12px;
-  background: #f7fafc;
+  background: #F1EAE4;
   border-radius: 6px;
   font-size: 0.8rem;
-  color: #4a5568;
-  border-left: 3px solid #48bb78;
+  color: #475569;
+  border-left: 3px solid #C2410C;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 /* Quick Actions */
@@ -141,20 +147,22 @@
 
 .quick-action-btn {
   padding: 8px 12px;
-  background: #f7fafc;
-  border: 1px solid #e2e8f0;
+  background: #F1EAE4;
+  border: 1px solid #D6C7B8;
   border-radius: 6px;
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #4a5568;
-  text-align: center;
+  color: #1E3A5F;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 500;
 }
 
 .quick-action-btn:hover:not(:disabled) {
-  background: #edf2f7;
-  border-color: #cbd5e0;
+  background: #FFFFFF;
+  border-color: #C2410C;
   transform: translateY(-1px);
+  color: #C2410C;
 }
 
 .quick-action-btn:disabled {
@@ -167,17 +175,17 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: white;
+  background: #FFFFFF;
   border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid #D6C7B8;
+  box-shadow: 0 8px 32px rgba(30, 58, 95, 0.1);
   overflow: hidden;
 }
 
 .chat-header {
   padding: 24px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: linear-gradient(135deg, #1E3A5F, #475569);
+  color: #F1EAE4;
   text-align: center;
 }
 
@@ -185,19 +193,22 @@
   margin: 0 0 8px 0;
   font-size: 1.8rem;
   font-weight: 700;
+  font-family: 'Fraunces', serif;
 }
 
 .chat-header p {
   margin: 0;
   font-size: 1rem;
   opacity: 0.9;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
-  background: #f8fafc;
+  background: #F1EAE4;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .message {
@@ -215,25 +226,34 @@
   max-width: 80%;
   padding: 16px 20px;
   border-radius: 16px;
-  background: white;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  background: #FFFFFF;
+  box-shadow: 0 2px 12px rgba(30, 58, 95, 0.08);
   position: relative;
+  border: 1px solid #D6C7B8;
 }
 
 .message.user .message-content {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: linear-gradient(135deg, #C2410C, #B45309);
+  color: #F1EAE4;
+  border: none;
 }
 
 .message-text {
   font-size: 0.95rem;
   line-height: 1.6;
   margin-bottom: 8px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: #1E3A5F;
+}
+
+.message.user .message-text {
+  color: #F1EAE4;
 }
 
 .message-text h1, .message-text h2, .message-text h3, .message-text h4 {
   margin: 16px 0 8px 0;
   color: inherit;
+  font-family: 'Fraunces', serif;
 }
 
 .message-text strong {
@@ -255,37 +275,38 @@
   position: absolute;
   bottom: 4px;
   right: 12px;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 /* Sales-specific profile cards */
 .sales-profile-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D6C7B8;
   border-radius: 12px;
   padding: 16px;
   margin: 12px 0;
-  background: white;
+  background: #FFFFFF;
   transition: all 0.3s ease;
   position: relative;
 }
 
 .sales-profile-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(30, 58, 95, 0.1);
   transform: translateY(-2px);
 }
 
 .sales-profile-card.high-priority {
-  border-left: 4px solid #f56565;
-  background: linear-gradient(135deg, #fff5f5, #ffffff);
+  border-left: 4px solid #C2410C;
+  background: linear-gradient(135deg, #FFF8F4, #FFFFFF);
 }
 
 .sales-profile-card.medium-priority {
-  border-left: 4px solid #ed8936;
-  background: linear-gradient(135deg, #fffaf0, #ffffff);
+  border-left: 4px solid #B45309;
+  background: linear-gradient(135deg, #FFF8F4, #FFFFFF);
 }
 
 .sales-profile-card.low-priority {
-  border-left: 4px solid #48bb78;
-  background: linear-gradient(135deg, #f0fff4, #ffffff);
+  border-left: 4px solid #1E3A5F;
+  background: linear-gradient(135deg, #F1EAE4, #FFFFFF);
 }
 
 .profile-header {
@@ -297,10 +318,11 @@
 
 .profile-main-info h4 {
   margin: 0 0 4px 0;
-  color: #2d3748;
-  font-size: 1.1rem;
+  color: #1E3A5F;
+  font-family: 'Fraunces', serif;
   font-weight: 600;
 }
+ 
 
 .contact-info {
   margin: 0;
@@ -321,18 +343,18 @@
 }
 
 .score-badge.high-priority {
-  background: #fed7d7;
-  color: #c53030;
+  background: #FFE6E0;
+  color: #C2410C;
 }
 
 .score-badge.medium-priority {
-  background: #feebc8;
-  color: #c05621;
+  background: #FFE6D5;
+  color: #B45309;
 }
 
 .score-badge.low-priority {
-  background: #c6f6d5;
-  color: #276749;
+  background: #E8DDD5;
+  color: #1E3A5F;
 }
 
 .profile-details {
@@ -344,33 +366,39 @@
 
 .detail-tag {
   padding: 4px 8px;
-  background: #edf2f7;
+  background: #F1EAE4;
   border-radius: 12px;
   font-size: 0.8rem;
-  color: #4a5568;
+  color: #1E3A5F;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  border: 1px solid #D6C7B8;
 }
 
 .detail-tag.industry {
-  background: #e6fffa;
-  color: #234e52;
+  background: #FFF8F4;
+  color: #C2410C;
+  border-color: #C2410C;
 }
 
 .detail-tag.deal-value {
-  background: #fef5e7;
-  color: #744210;
+  background: #FFF8F4;
+  color: #B45309;
+  border-color: #B45309;
 }
 
 .detail-tag.stage {
-  background: #edf2f7;
-  color: #4a5568;
+  background: #F1EAE4;
+  color: #1E3A5F;
+  border-color: #D6C7B8;
 }
 
 .detail-tag.location {
-  background: #f0f4ff;
-  color: #3730a3;
+  background: #E8DDD5;
+  color: #1E3A5F;
+  border-color: #D6C7B8;
 }
 
 .profile-actions {
@@ -381,56 +409,58 @@
 
 .action-btn {
   padding: 6px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D6C7B8;
   border-radius: 6px;
-  background: white;
-  color: #4a5568;
+  background: #FFFFFF;
+  color: #1E3A5F;
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .action-btn:hover {
-  background: #f7fafc;
-  border-color: #cbd5e0;
+  background: #F1EAE4;
+  border-color: #C2410C;
+  color: #C2410C;
   transform: translateY(-1px);
 }
 
 .action-btn.contact {
-  border-color: #48bb78;
-  color: #48bb78;
+  border-color: #C2410C;
+  color: #C2410C;
 }
 
 .action-btn.contact:hover {
-  background: #f0fff4;
+  background: #FFF8F4;
+  border-color: #B45309;
+  color: #B45309;
 }
 
 .action-btn.favorite {
-  border-color: #ed8936;
-  color: #ed8936;
+  border-color: #B45309;
+  color: #B45309;
 }
 
 .action-btn.favorite:hover {
-  background: #fffaf0;
+  background: #FFF8F4;
+  border-color: #C2410C;
+  color: #C2410C;
 }
 
 .action-btn.notes {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: #C2410C;
+  color: #C2410C;
 }
 
 .action-btn.notes:hover {
-  background: #f0f4ff;
-}
-
-/* Message Form */
-.message-form {
-  padding: 24px;
-  background: white;
-  border-top: 1px solid #e2e8f0;
+  background: #FFF8F4;
+  border-color: #B45309;
+  color: #B453#FFFFFF;
+  border-top: 1px solid #D6C7B8;
 }
 
 .input-container {
@@ -442,20 +472,24 @@
 .message-input {
   flex: 1;
   padding: 12px 16px;
-  border: 1px solid #e2e8f0;
+  border: 1.5px solid #D6C7B8;
   border-radius: 25px;
   font-size: 0.95rem;
   outline: none;
   transition: all 0.3s ease;
+  background: #FFFFFF;
+  color: #1E3A5F;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .message-input:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #C2410C;
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.1);
 }
 
 .message-input::placeholder {
-  color: #a0aec0;
+  color: #A0A7B3;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 .send-button {
@@ -463,8 +497,8 @@
   height: 48px;
   border: none;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: linear-gradient(135deg, #C2410C, #B45309);
+  color: #FFFFFF;
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -475,8 +509,10 @@
 
 .send-button:hover:not(:disabled) {
   transform: scale(1.05);
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 16px rgba(194, 65, 12, 0.4);
 }
+
+
 
 .send-button:disabled {
   background: #cbd5e0;

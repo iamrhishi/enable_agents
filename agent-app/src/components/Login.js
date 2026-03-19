@@ -69,7 +69,7 @@ function Login() {
       <div className="login-card enhanced-card" style={{ minWidth: 340, maxWidth: 400, width: '100%', padding: '40px 32px 32px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}>
         <div className="logo-wrapper" style={{ marginBottom: '18px' }}>
           <img
-            src={`${process.env.PUBLIC_URL}/assets/images/enable_logo.png`}
+            src={`${process.env.PUBLIC_URL}/logo192.svg`}
             alt="Enable Logo"
             className="logo"
             style={{ height: '56px' }}
@@ -89,7 +89,12 @@ function Login() {
               autoFocus
             />
             <div className="register-link" style={{ textAlign: 'center', marginTop: '8px' }}>
-              <span style={{ color: '#2a5298', fontWeight: 500, cursor: 'pointer' }}>New User?</span>
+              <span
+                style={{ color: '#2a5298', fontWeight: 500, cursor: 'pointer' }}
+                onClick={() => navigate('/register')}
+              >
+                New User?
+              </span>
             </div>
           </form>
         )}

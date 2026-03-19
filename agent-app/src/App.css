@@ -1,16 +1,38 @@
 body {
-  font-family: Arial, sans-serif;
+  font-family: 'IBM Plex Sans', sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #f4f4f4;
+  background-color: #F1EAE4;
+  color: #1E3A5F;
 }
 
 .App {
   text-align: center;
+  background-color: #F1EAE4;
+}
+
+h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 60px;
+  color: #1E3A5F;
 }
 
 h2 {
-  color: #333;
+  font-family: 'Fraunces', serif;
+  font-size: 32px;
+  color: #1E3A5F;
+}
+
+h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 20px;
+  color: #1E3A5F;
+}
+
+h4 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 16px;
+  color: #1E3A5F;
 }
 
 form {
@@ -27,17 +49,20 @@ input, textarea, button {
   width: 100%;
   padding: 10px;
   margin-top: 5px;
-  border: 1px solid #ccc;
+  border: 1px solid #D6C7B8;
   border-radius: 5px;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
 button {
-  background-color: #007bff;
-  color: white;
+  background-color: #C2410C;
+  color: #F1EAE4;
   border: none;
   cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.3s ease;
 }
 
 button:hover {
-  background-color: #0056b3;
+  background-color: #B45309;
 }

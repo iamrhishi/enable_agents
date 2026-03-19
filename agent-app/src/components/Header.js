@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import '../styles/Header.css';
 
-function Header() {
+function Header({ onProcessClick }) {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [dataSource, setDataSource] = useState('');
   const [isConnected, setIsConnected] = useState(false);
@@ -359,9 +359,10 @@ function Header() {
       <header className="header">
         <Link to="/">
           <img
-            src={`${process.env.PUBLIC_URL}/assets/images/enable_logo.png`}
+            src={`${process.env.PUBLIC_URL}/logo192.svg`}
             alt="Enable Logo"
             className="logo"
+            style={{ height: '48px' }}
           />
         </Link>
         <div className="header-icons">
@@ -396,6 +397,16 @@ function Header() {
             />
             <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>landscape</span>
           </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <img 
+                src="/assets/icons/process.png"  
+                alt="Process" 
+                className="icon"
+                style={{ cursor: 'pointer' }}
+                onClick={onProcessClick}
+              />
+              <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>process</span>
+            </div>
           <div className="user-icon-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
             <img src="/assets/icons/user.png" alt="User" className="icon" style={{ cursor: 'pointer' }} onClick={handleUserIconClick} />
             {firstName && (

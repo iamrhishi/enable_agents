@@ -8,6 +8,8 @@ langchain
 beautifulsoup4
 faiss-cpu
 PyMuPDF
+chromadb
+sentence-transformers
 rake-nltk
 numpy
 scipy
@@ -16,3 +18,9 @@ pandas
 typing-extensions
 Werkzeug
 mysql-connector-python
+boto3
+python-docx
+networkx
+selenium
+webdriver-manager
+openpyxl

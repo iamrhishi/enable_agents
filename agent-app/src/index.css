@@ -1,13 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Fraunces:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Brand Color Palette */
+  --primary-dark: #1E3A5F;      /* Deep ink blue */
+  --primary-grey: #475569;      /* System grey */
+  --accent-burnt: #C2410C;      /* Burnt ember */
+  --accent-copper: #B45309;     /* Copper clay */
+  --accent-soft: #D6C7B8;       /* Soft clay */
+  --accent-paper: #F1EAE4;      /* Paper warm */
+
+  /* Typography */
+  --font-title: 'Fraunces', serif;      /* 60pt */
+  --font-heading: 'Fraunces', serif;    /* 32pt */
+  --font-subheading: 'Fraunces', serif; /* 20pt */
+  --font-quote: 'Fraunces', serif;      /* 15pt */
+  --font-body: 'IBM Plex Sans', sans-serif;          /* 12pt */
+  --font-subtitle: 'IBM Plex Sans', sans-serif;      /* 24pt */
+  --font-section: 'IBM Plex Sans', sans-serif;       /* 16pt */
+  --font-caption: 'IBM Plex Sans', sans-serif;       /* 9pt */
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--primary-dark);
+  background-color: var(--accent-paper);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: 'Courier New', monospace;
+}
+
+h1 {
+  font-family: var(--font-title);
+  font-size: 60px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+h2 {
+  font-family: var(--font-heading);
+  font-size: 32px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+h3 {
+  font-family: var(--font-subheading);
+  font-size: 20px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+h4 {
+  font-family: var(--font-section);
+  font-size: 16px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+h5 {
+  font-family: var(--font-quote);
+  font-size: 15px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+h6 {
+  font-family: var(--font-caption);
+  font-size: 9px;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+p {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+/* Links */
+a {
+  color: var(--accent-burnt);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-copper);
 }
