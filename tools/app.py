@@ -110,7 +110,8 @@ from docx import Document as DocxDocument
 import networkx as nx
 from google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
 
-load_dotenv()
+ENV_FILE = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(ENV_FILE, override=True)
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
 LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
@@ -125,8 +126,11 @@ PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agent
 app = Flask(__name__)
 CORS(app)
 
-# MySQL config
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:root@localhost/enable_agents'
+# Database config (env override + local fallback)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URI',
+    'sqlite:///enable_agents.db'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -235,6 +239,107 @@ class User(db.Model):
     linkedin = db.Column(db.String(256))
     short_intro = db.Column(db.String(256))
     company_intro = db.Column(db.String(256))
+
+
+EMAIL_EXTRACTION_UNIT_COST = float(os.getenv('EMAIL_EXTRACTION_UNIT_COST', '0.20'))
+DEFAULT_EMAIL_EXTRACTION_LIMIT = int(os.getenv('EMAIL_EXTRACTION_DEFAULT_LIMIT', '500'))
+
+
+class EmailExtractionQuota(db.Model):
+    __tablename__ = 'email_extraction_quotas'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    total_allowed = db.Column(db.Integer, nullable=False, default=DEFAULT_EMAIL_EXTRACTION_LIMIT)
+    used_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmailExtractionUsageLog(db.Model):
+    __tablename__ = 'email_extraction_usage_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    username = db.Column(db.String(120), nullable=False, index=True)
+    processed_count = db.Column(db.Integer, nullable=False, default=0)
+    billable_count = db.Column(db.Integer, nullable=False, default=0)
+    charged_count = db.Column(db.Integer, nullable=False, default=0)
+    cost_this_request = db.Column(db.Float, nullable=False, default=0.0)
+    total_cost_after = db.Column(db.Float, nullable=False, default=0.0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+class EmailCampaign(db.Model):
+    __tablename__ = 'email_campaigns'
+    id = db.Column(db.String(36), primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    username = db.Column(db.String(120), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+class EmailCampaignRecipient(db.Model):
+    __tablename__ = 'email_campaign_recipients'
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.String(36), db.ForeignKey('email_campaigns.id'), nullable=False)
+    receiver_email = db.Column(db.String(255), nullable=False, index=True)
+    receiver_name = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(50), default='Sent')
+    reply_status = db.Column(db.String(50), default='No Reply')
+    sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    replied_at = db.Column(db.DateTime, nullable=True)
+
+
+
+def _ensure_email_usage_tables():
+    """Create usage tracking tables if they don't exist yet."""
+    db.create_all()
+
+
+def _normalize_username(value):
+    candidate = (value or '').strip()
+    return candidate if candidate else 'anonymous'
+
+
+def _is_billable_email(value):
+    if not value:
+        return False
+
+    email_str = str(value).strip()
+    lowered = email_str.lower()
+    if lowered in {'n/a', 'na', 'none', 'error'}:
+        return False
+    if lowered.startswith('phone:'):
+        return False
+
+    return re.fullmatch(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', email_str) is not None
+
+
+def _get_or_create_quota(username):
+    quota = EmailExtractionQuota.query.filter_by(username=username).first()
+    if quota:
+        return quota
+
+    quota = EmailExtractionQuota(
+        username=username,
+        total_allowed=DEFAULT_EMAIL_EXTRACTION_LIMIT,
+        used_count=0
+    )
+    db.session.add(quota)
+    db.session.commit()
+    return quota
+
+
+def _build_usage_summary(username, quota=None):
+    quota = quota or _get_or_create_quota(username)
+    used = max(quota.used_count, 0)
+    remaining = max(quota.total_allowed - used, 0)
+
+    return {
+        'username': username,
+        'totalAllowed': quota.total_allowed,
+        'usedCount': used,
+        'remainingCount': remaining,
+        'unitCost': EMAIL_EXTRACTION_UNIT_COST,
+        'totalCost': round(used * EMAIL_EXTRACTION_UNIT_COST, 2)
+    }
 
 # 1. Load: First we need to load our data. This is done with Document Loaders.
 # 2. Split: Text splitters break large Documents into smaller chunks. This is useful both for indexing data and passing it into a model, as large chunks are harder to search over and won't fit in a model's finite context window.
@@ -5598,13 +5703,20 @@ def get_google_credentials():
     Returns empty values if not configured
     """
     try:
-        load_dotenv()
+        load_dotenv(ENV_FILE, override=True)
+        has_oauth_credentials = all([
+            os.getenv('GOOGLE_CLIENT_ID'),
+            os.getenv('GOOGLE_CLIENT_SECRET'),
+            os.getenv('GOOGLE_REDIRECT_URI')
+        ])
+        has_places_api_key = bool(os.getenv('GOOGLE_PLACES_API_KEY'))
         
         credentials = {
             'clientId': os.getenv('GOOGLE_CLIENT_ID', ''),
             'clientSecret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
             'redirectUri': os.getenv('GOOGLE_REDIRECT_URI', ''),
-            'hasCredentials': bool(os.getenv('GOOGLE_CLIENT_ID'))
+            'hasCredentials': has_oauth_credentials or has_places_api_key,
+            'hasPlacesApiKey': has_places_api_key
         }
         
         return jsonify({
@@ -5839,35 +5951,26 @@ def search_google_businesses():
         
         print(f"[SEARCH] Query: {query}, Location: {location}, Page: {page}, Page Size: {page_size}")
         
-        # Get OAuth credentials from environment
+        # OAuth is optional for this flow because Google Places API key is used for search.
+        # If OAuth is configured, we still attempt token refresh and pass it through.
         client_id = os.getenv('GOOGLE_CLIENT_ID')
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
-        
-        if not all([client_id, client_secret, redirect_uri]):
-            return jsonify({
-                'success': False,
-                'error': 'Google Business credentials not configured. Please connect your account first.',
-                'code': 'CREDENTIALS_MISSING'
-            }), 401
-        
-        print(f"[SEARCH] Credentials found, getting access token...")
-        
-        # Exchange credentials for access token
-        access_token = _get_google_access_token(client_id, client_secret, redirect_uri)
-        
-        if not access_token:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to authenticate with Google. Please reconnect your account.',
-                'code': 'AUTH_FAILED'
-            }), 401
-        
-        print(f"[SEARCH] Got access token, calling Google API...")
+        access_token = None
+        if all([client_id, client_secret, redirect_uri]):
+            print("[SEARCH] OAuth credentials detected, attempting token refresh...")
+            access_token = _get_google_access_token(client_id, client_secret, redirect_uri)
+            if access_token:
+                print("[SEARCH] OAuth token refresh succeeded.")
+            else:
+                print("[SEARCH] OAuth token refresh failed; continuing with Places API key.")
+        else:
+            print("[SEARCH] OAuth credentials missing; continuing with Places API key.")
         
         # Use Google Locations API to search for businesses
         searcher = GoogleBusinessSearcher()
-        searcher.set_credentials(access_token)
+        if access_token:
+            searcher.set_credentials(access_token)
         
         results = searcher.search_businesses(
             query=query,
@@ -5895,15 +5998,132 @@ def _generate_google_auth_url(client_id: str, redirect_uri: str) -> str:
     Generate Google OAuth authorization URL
     User visits this URL to authorize the app
     """
+    oauth_scopes = [
+        'https://www.googleapis.com/auth/business.manage',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.file'
+    ]
     params = {
         'client_id': client_id,
         'redirect_uri': redirect_uri,
         'response_type': 'code',
-        'scope': 'https://www.googleapis.com/auth/business.manage',
+        'scope': ' '.join(oauth_scopes),
         'access_type': 'offline',
         'prompt': 'consent'
     }
     return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+
+
+@app.route('/export-google-sheet', methods=['POST'])
+@cross_origin()
+def export_google_sheet():
+    """
+    Create and populate a Google Sheet using OAuth refresh token.
+    Expects JSON payload: { title: str, headers: [str], rows: [[...]] }
+    """
+    try:
+        data = request.get_json() or {}
+        title = data.get('title', f"Market Research {datetime.now().strftime('%Y-%m-%d')}")
+        headers = data.get('headers', [])
+        rows = data.get('rows', [])
+
+        if not headers or not isinstance(headers, list):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid headers payload'
+            }), 400
+
+        if not isinstance(rows, list):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid rows payload'
+            }), 400
+
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
+
+        if not all([client_id, client_secret, redirect_uri]):
+            return jsonify({
+                'success': False,
+                'error': 'Google OAuth credentials not configured.',
+                'code': 'CREDENTIALS_MISSING'
+            }), 401
+
+        access_token = _get_google_access_token(client_id, client_secret, redirect_uri)
+        if not access_token:
+            return jsonify({
+                'success': False,
+                'error': 'Unable to get Google access token. Please reconnect Google account.',
+                'code': 'AUTH_FAILED',
+                'authUrl': _generate_google_auth_url(client_id, redirect_uri)
+            }), 401
+
+        create_sheet_resp = requests.post(
+            'https://sheets.googleapis.com/v4/spreadsheets',
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'properties': {'title': title}
+            },
+            timeout=20
+        )
+
+        if create_sheet_resp.status_code != 200:
+            error_payload = create_sheet_resp.json() if create_sheet_resp.text else {}
+            error_message = error_payload.get('error', {}).get('message', create_sheet_resp.text)
+            return jsonify({
+                'success': False,
+                'error': f'Failed to create Google Sheet: {error_message}',
+                'code': 'SHEET_CREATE_FAILED',
+                'authUrl': _generate_google_auth_url(client_id, redirect_uri)
+            }), 400
+
+        spreadsheet = create_sheet_resp.json()
+        spreadsheet_id = spreadsheet.get('spreadsheetId')
+        spreadsheet_url = spreadsheet.get('spreadsheetUrl')
+
+        value_rows = [headers] + rows
+        update_resp = requests.put(
+            f'https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A1?valueInputOption=RAW',
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'majorDimension': 'ROWS',
+                'values': value_rows
+            },
+            timeout=20
+        )
+
+        if update_resp.status_code != 200:
+            error_payload = update_resp.json() if update_resp.text else {}
+            error_message = error_payload.get('error', {}).get('message', update_resp.text)
+            return jsonify({
+                'success': False,
+                'error': f'Sheet created but data write failed: {error_message}',
+                'code': 'SHEET_WRITE_FAILED',
+                'spreadsheetUrl': spreadsheet_url,
+                'authUrl': _generate_google_auth_url(client_id, redirect_uri)
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'spreadsheetId': spreadsheet_id,
+            'spreadsheetUrl': spreadsheet_url
+        }), 200
+
+    except Exception as e:
+        print(f"Error in export_google_sheet: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 def _exchange_auth_code_for_token(auth_code: str, client_id: str, client_secret: str, redirect_uri: str) -> bool:
@@ -5994,6 +6214,238 @@ def _get_google_access_token(client_id: str, client_secret: str, redirect_uri: s
         return None
 
 
+@app.route('/email-extraction-usage', methods=['GET'])
+@cross_origin()
+def get_email_extraction_usage():
+    """Return extraction usage summary for a username."""
+    try:
+        _ensure_email_usage_tables()
+
+        username = _normalize_username(
+            request.args.get('username') or request.args.get('userId')
+        )
+        quota = _get_or_create_quota(username)
+
+        return jsonify({
+            'success': True,
+            'usageSummary': _build_usage_summary(username, quota)
+        }), 200
+    except Exception as e:
+        print(f"[EMAIL_USAGE] Failed to fetch usage summary: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+@app.route('/send-bulk-emails', methods=['POST'])
+@cross_origin()
+def send_bulk_emails():
+    """
+    Send emails to a list of extracted businesses using SMTP credentials.
+    Expects JSON: { subject: str, body: str, businesses: list }
+    """
+    try:
+        data = request.get_json()
+        subject = data.get('subject')
+        body = data.get('body')
+        businesses = data.get('businesses', [])
+        campaign_name = data.get('campaignName', 'Untitled Campaign')
+        username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
+
+        campaign_name = data.get('campaignName', 'Untitled Campaign')
+        username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
+
+
+        if not subject or not body:
+            return jsonify({'success': False, 'error': 'Subject and body are required'}), 400
+
+        valid_emails = [b.get('email') for b in businesses if b.get('email') and b.get('email') != 'N/A' and '@' in b.get('email')]
+
+        if not valid_emails:
+            return jsonify({'success': False, 'error': 'No valid emails found to send to'}), 400
+
+        email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+        email_port = int(os.getenv('EMAIL_PORT', 587))
+        email_user = os.getenv('EMAIL_USER', 'dalviharsh93@gmail.com')
+        email_pass = os.getenv('EMAIL_PASS', 'sxfncbmxfemwsngy')
+
+        # Initialize DB Tables if needed
+        _ensure_email_usage_tables()
+        
+        # Create Campaign Record
+        import uuid
+        campaign_id = str(uuid.uuid4())
+        campaign = EmailCampaign(
+            id=campaign_id,
+            name=campaign_name,
+            subject=subject,
+            username=username
+        )
+        db.session.add(campaign)
+        db.session.commit()
+
+        # Initialize DB Tables if needed
+        _ensure_email_usage_tables()
+        
+        # Create Campaign Record
+        import uuid
+        campaign_id = str(uuid.uuid4())
+        campaign = EmailCampaign(
+            id=campaign_id,
+            name=campaign_name,
+            subject=subject,
+            username=username
+        )
+        db.session.add(campaign)
+        db.session.commit()
+
+        server = smtplib.SMTP(email_host, email_port)
+        server.starttls()
+        server.login(email_user, email_pass)
+
+        sent_count = 0
+        for b in businesses:
+            recipient = b.get('email')
+            if not recipient or recipient == 'N/A' or '@' not in recipient:
+                continue
+
+            business_name = b.get('name', 'Business Owner')
+            # optionally customize body with business name
+            custom_body = body.replace('{{Company}}', business_name)
+
+            msg = MIMEMultipart()
+            msg['From'] = email_user
+            msg['To'] = recipient
+            msg['Subject'] = subject
+            msg.attach(MIMEText(custom_body, 'plain'))
+            
+            server.send_message(msg)
+            
+            # Log Recipient
+            recipient_log = EmailCampaignRecipient(
+                campaign_id=campaign_id,
+                receiver_email=recipient,
+                receiver_name=business_name,
+                status='Sent',
+                reply_status='No Reply'
+            )
+            db.session.add(recipient_log)
+            sent_count += 1
+            
+            # Commit every 10 or at end
+            if sent_count % 10 == 0:
+                db.session.commit()
+
+        db.session.commit()
+        server.quit()
+        return jsonify({'success': True, 'sentCount': sent_count})
+
+    except Exception as e:
+        print(f"[SMTP ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/webhook/zapier/email-reply', methods=['POST'])
+@cross_origin()
+def handle_email_reply():
+    """
+    Zapier Webhook Endpoint to log replies from emails sent in campaigns.
+    Expects JSON: { "from_email": "example@domain.com", "subject": "Re: ...", "timestamp": "...", "snippet": "..." }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON payload provided'}), 400
+            
+        from_email = data.get('from_email')
+        
+        if not from_email:
+            return jsonify({'success': False, 'error': 'from_email is required'}), 400
+            
+        # Optional: Parse out name from format "Name <email@dom.com>"
+        import re
+        email_match = re.search(r'<(.+?)>', from_email)
+        if email_match:
+            clean_email = email_match.group(1).lower().strip()
+        else:
+            clean_email = from_email.lower().strip()
+            
+        # Find receiver in the database
+        recipients = EmailCampaignRecipient.query.filter(
+            EmailCampaignRecipient.receiver_email.ilike(f"%{clean_email}%")
+        ).all()
+        
+        if not recipients:
+            return jsonify({'success': False, 'message': f'Reply from {clean_email} logged, but not found in active campaigns.'}), 200
+            
+        updated_count = 0
+        for rec in recipients:
+            if rec.reply_status != 'Replied':
+                rec.reply_status = 'Replied'
+                rec.replied_at = datetime.utcnow()
+                updated_count += 1
+                
+        db.session.commit()
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully updated {updated_count} recipient records to Replied status.'
+        }), 200
+
+    except Exception as e:
+        print(f"[ZAPIER WEBHOOK ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/stats', methods=['GET'])
+@cross_origin()
+def get_campaign_stats():
+    """Returns analytics for all campaigns."""
+    try:
+        campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
+        results = []
+        for c in campaigns:
+            recipients = EmailCampaignRecipient.query.filter_by(campaign_id=c.id).all()
+            total_sent = len(recipients)
+            total_replied = sum(1 for r in recipients if r.reply_status == 'Replied')
+            
+            results.append({
+                'id': c.id,
+                'name': c.name,
+                'subject': c.subject,
+                'createdAt': c.created_at.isoformat(),
+                'totalSent': total_sent,
+                'totalReplied': total_replied,
+                'replyRate': round((total_replied / total_sent * 100) if total_sent > 0 else 0, 1)
+            })
+            
+        return jsonify({'success': True, 'campaigns': results}), 200
+    except Exception as e:
+        print(f"[CAMPAIGN STATS ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/campaigns/<campaign_id>/recipients', methods=['GET'])
+@cross_origin()
+def get_campaign_recipients(campaign_id):
+    """Returns recipients for a specific campaign."""
+    try:
+        recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
+        results = [{
+            'email': r.receiver_email,
+            'name': r.receiver_name,
+            'status': r.status,
+            'replyStatus': r.reply_status,
+            'sentAt': r.sent_at.isoformat() if r.sent_at else None,
+            'repliedAt': r.replied_at.isoformat() if r.replied_at else None
+        } for r in recipients]
+        return jsonify({'success': True, 'recipients': results}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/enrich-businesses-with-emails', methods=['POST'])
 @cross_origin()
 def enrich_businesses_with_emails():
@@ -6004,7 +6456,22 @@ def enrich_businesses_with_emails():
     try:
         data = request.get_json()
         businesses = data.get('businesses', [])
+        username = _normalize_username(
+            data.get('username') or data.get('userId') or data.get('firstName')
+        )
         scrap_io_api_key = os.getenv('SCRAP_IO_API_KEY')
+
+        _ensure_email_usage_tables()
+        quota = _get_or_create_quota(username)
+        usage_before = _build_usage_summary(username, quota)
+
+        if usage_before['remainingCount'] <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Email extraction limit reached for this user.',
+                'code': 'QUOTA_EXCEEDED',
+                'usageSummary': usage_before
+            }), 403
         
         if not businesses or len(businesses) == 0:
             return jsonify({
@@ -6273,16 +6740,44 @@ def enrich_businesses_with_emails():
                 business_copy['email'] = 'Error'
                 enriched_businesses.append(business_copy)
         
-        print(f"[EMAIL_ENRICHMENT] Successfully enriched {len(enriched_businesses)} businesses")
+        processed_count = len(enriched_businesses)
+        billable_count = sum(
+            1 for business in enriched_businesses if _is_billable_email(business.get('email'))
+        )
+        charged_count = min(billable_count, usage_before['remainingCount'])
+        quota.used_count += charged_count
+        db.session.add(quota)
+
+        request_id = str(uuid4())
+        cost_this_request = round(charged_count * EMAIL_EXTRACTION_UNIT_COST, 2)
+        usage_after = _build_usage_summary(username, quota)
+        usage_log = EmailExtractionUsageLog(
+            request_id=request_id,
+            username=username,
+            processed_count=processed_count,
+            billable_count=billable_count,
+            charged_count=charged_count,
+            cost_this_request=cost_this_request,
+            total_cost_after=usage_after['totalCost']
+        )
+        db.session.add(usage_log)
+        db.session.commit()
+
+        print(f"[EMAIL_ENRICHMENT] Successfully enriched {processed_count} businesses")
         
         return jsonify({
             'success': True,
             'businesses': enriched_businesses,
-            'enrichedCount': len(enriched_businesses),
+            'enrichedCount': processed_count,
+            'billableEmailCount': billable_count,
+            'chargedEmailCount': charged_count,
+            'costThisRequest': cost_this_request,
+            'usageSummary': usage_after,
             'timestamp': datetime.now().isoformat()
         }), 200
         
     except Exception as e:
+        db.session.rollback()
         print(f"[EMAIL_ENRICHMENT] Error in enrich_businesses_with_emails: {str(e)}")
         import traceback
         traceback.print_exc()

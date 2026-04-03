@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import Header from './Header';
 import '../styles/RequirementsGathering.css';
 
@@ -21,12 +24,24 @@ function RequirementsGathering() {
   const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
+  const [extractingEmailRows, setExtractingEmailRows] = useState({});
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [extractionUsage, setExtractionUsage] = useState(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [campaignName, setCampaignName] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
     clientSecret: '',
     redirectUri: ''
   });
+
+  const getCurrentUsername = () => {
+    return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
+  };
 
   // Check if user just returned from Google OAuth authorization
   useEffect(() => {
@@ -62,6 +77,21 @@ function RequirementsGathering() {
     };
     
     fetchCredentials();
+
+    const fetchEmailUsage = async () => {
+      try {
+        const username = getCurrentUsername();
+        const response = await fetch(`http://127.0.0.1:5000/email-extraction-usage?username=${encodeURIComponent(username)}`);
+        const data = await response.json();
+        if (response.ok && data.success && data.usageSummary) {
+          setExtractionUsage(data.usageSummary);
+        }
+      } catch (error) {
+        console.error('Error fetching email extraction usage:', error);
+      }
+    };
+
+    fetchEmailUsage();
   }, []);
 
   const handleFileUpload = (e) => {
@@ -78,11 +108,8 @@ function RequirementsGathering() {
     try {
       // Check if Customer Research format is selected
       if (responseFormat === 'Customer Research') {
-        // Check if Google Business is connected
-        if (!googleBusinessConnected) {
-          alert('Google Business Account is not connected. Please connect first to perform customer research.');
-          return;
-        }
+        // Allow customer research even when OAuth is not connected.
+        // Backend can run this flow via Google Places API key.
 
         // Validate required inputs for customer research
         if (!overview || !industries || !countries) {
@@ -101,7 +128,7 @@ function RequirementsGathering() {
           body: JSON.stringify({
             query: overview, // Use overview as the search query
             location: countries, // Use countries as location
-            limit: 15 // Get 15 matching businesses
+            page_size: 200 // Get 200 matching businesses
           }),
         });
 
@@ -170,36 +197,9 @@ function RequirementsGathering() {
     }
   };
 
-  const handleSavePrompt = async () => {
-    try {
-      const payload = {
-        overview,
-        context,
-        countries,
-        industries,
-        businessFunctions,
-        analysisFrameworks,
-        responseFormat,
-      };
+  
 
-      const response = await fetch('http://127.0.0.1:5000/save-prompt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to save prompt');
-      }
-
-      alert('Prompt saved successfully!');
-    } catch (error) {
-      console.error('Error saving prompt:', error);
-      alert('Failed to save prompt.');
-    }
-  };
 
   const handleFetchPreviousPrompts = async () => {
     try {
@@ -234,7 +234,8 @@ function RequirementsGathering() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          businesses: customerResearchResults.businesses
+          businesses: customerResearchResults.businesses,
+          username: getCurrentUsername()
         }),
       });
 
@@ -244,6 +245,9 @@ function RequirementsGathering() {
       }
 
       const enrichedData = await response.json();
+      if (enrichedData.usageSummary) {
+        setExtractionUsage(enrichedData.usageSummary);
+      }
 
       if (enrichedData.success && enrichedData.businesses) {
         // Update the customer research results with enriched businesses
@@ -251,7 +255,10 @@ function RequirementsGathering() {
           ...customerResearchResults,
           businesses: enrichedData.businesses
         });
-        alert(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!`);
+        const usageLine = enrichedData.usageSummary
+          ? `\nUsed: ${enrichedData.usageSummary.usedCount}/${enrichedData.usageSummary.totalAllowed} | Remaining: ${enrichedData.usageSummary.remainingCount}`
+          : '';
+        alert(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`);
       } else {
         alert('Failed to enrich businesses with emails');
       }
@@ -260,6 +267,65 @@ function RequirementsGathering() {
       alert(`Error: ${error.message}`);
     } finally {
       setIsLoadingEmails(false);
+    }
+  };
+
+  const handleExtractEmailForBusiness = async (business, index) => {
+    if (!business || !business.website) {
+      alert('Website not available for this business.');
+      return;
+    }
+
+    setExtractingEmailRows((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          businesses: [business],
+          username: getCurrentUsername()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to extract email for this business');
+      }
+
+      const enrichedData = await response.json();
+      if (enrichedData.usageSummary) {
+        setExtractionUsage(enrichedData.usageSummary);
+      }
+      const enrichedBusiness = enrichedData?.businesses?.[0];
+
+      if (!enrichedBusiness) {
+        throw new Error('No enriched business data returned');
+      }
+
+      setCustomerResearchResults((prev) => {
+        if (!prev || !prev.businesses) {
+          return prev;
+        }
+
+        const updatedBusinesses = [...prev.businesses];
+        updatedBusinesses[index] = {
+          ...updatedBusinesses[index],
+          email: enrichedBusiness.email || 'N/A'
+        };
+
+        return {
+          ...prev,
+          businesses: updatedBusinesses
+        };
+      });
+    } catch (error) {
+      console.error('Error extracting email for business:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setExtractingEmailRows((prev) => ({ ...prev, [index]: false }));
     }
   };
 
@@ -298,6 +364,141 @@ function RequirementsGathering() {
     } catch (error) {
       console.error('Error copying to clipboard:', error);
       alert('Failed to copy data to clipboard');
+    }
+  };
+
+  const getCustomerResearchRows = () => {
+    if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
+      return [];
+    }
+
+    return customerResearchResults.businesses.map((business) => ({
+      businessName: business.name || 'N/A',
+      address: business.address || 'N/A',
+      phone: business.phone || 'N/A',
+      website: business.website || 'N/A',
+      email: business.email || 'N/A',
+      matchAccuracy: business.matchAccuracy || 'N/A',
+      primary: business.isPrimary ? 'Yes' : 'No'
+    }));
+  };
+
+  const downloadTextFile = (filename, content, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const escapeCsvValue = (value) => {
+    const safeValue = String(value ?? '');
+    if (safeValue.includes('"') || safeValue.includes(',') || safeValue.includes('\n')) {
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    }
+    return safeValue;
+  };
+
+  const buildCsvContent = (rows) => {
+    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+    const csvRows = rows.map((row) => [
+      row.businessName,
+      row.address,
+      row.phone,
+      row.website,
+      row.email,
+      row.matchAccuracy,
+      row.primary
+    ].map(escapeCsvValue).join(','));
+
+    return [headers.join(','), ...csvRows].join('\n');
+  };
+
+  const handleExport = async (format) => {
+    const rows = getCustomerResearchRows();
+    if (rows.length === 0) {
+      alert('No data available to export.');
+      return;
+    }
+
+    const fileBaseName = `market_research_${new Date().toISOString().slice(0, 10)}`;
+    const csvContent = buildCsvContent(rows);
+
+    try {
+      if (format === 'excel') {
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Market Research');
+        XLSX.writeFile(workbook, `${fileBaseName}.xlsx`);
+      }
+
+      if (format === 'csv') {
+        downloadTextFile(`${fileBaseName}.csv`, csvContent, 'text/csv;charset=utf-8;');
+      }
+
+      if (format === 'json') {
+        downloadTextFile(`${fileBaseName}.json`, JSON.stringify(rows, null, 2), 'application/json;charset=utf-8;');
+      }
+
+      if (format === 'pdf') {
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+        doc.setFontSize(12);
+        doc.text('Market Research Export', 40, 36);
+
+        autoTable(doc, {
+          startY: 50,
+          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary']],
+          body: rows.map((row) => [
+            row.businessName,
+            row.address,
+            row.phone,
+            row.website,
+            row.email,
+            row.matchAccuracy,
+            row.primary
+          ]),
+          styles: { fontSize: 8, cellPadding: 4 },
+          headStyles: { fillColor: [30, 58, 95] }
+        });
+
+        doc.save(`${fileBaseName}.pdf`);
+      }
+
+      if (format === 'sheets') {
+        const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+        const matrixRows = rows.map((row) => [
+          row.businessName,
+          row.address,
+          row.phone,
+          row.website,
+          row.email,
+          row.matchAccuracy,
+          row.primary
+        ]);
+
+        const toSheetsSafeValue = (value) => {
+          const strValue = String(value ?? '');
+          return /^[=+\-@]/.test(strValue) ? `'${strValue}` : strValue;
+        };
+
+        const tsvContent = [
+          headers.join('\t'),
+          ...matrixRows.map((row) => row.map(toSheetsSafeValue).join('\t'))
+        ].join('\n');
+
+        await navigator.clipboard.writeText(tsvContent);
+        window.open('https://docs.google.com/spreadsheets/create', '_blank', 'noopener,noreferrer');
+        alert('Google Sheets opened. Data is copied to clipboard, paste with Ctrl+V.');
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setShowExportModal(false);
     }
   };
 
@@ -369,144 +570,160 @@ function RequirementsGathering() {
       }
     } catch (error) {
       console.error('Error fetching Google Business data:', error);
-      return null;
+        return null;
+      }
+    };
+
+    const handleSendEmails = async () => {
+    if (!emailSubject || !emailBody) {
+      alert("Subject and Body are required");
+      return;
+    }
+    const validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+    if (validEmails.length === 0) {
+      alert("No valid emails found to send to");
+      return;
+    }
+
+    setIsSendingEmails(true);
+    try {
+      const response = await fetch('http://127.0.0.1:5000/send-bulk-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignName: campaignName,
+          subject: emailSubject,
+          body: emailBody,
+          businesses: validEmails
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        alert('Successfully sent ' + validEmails.length + ' emails!');
+        setShowEmailModal(false);
+        setEmailSubject('');
+        setEmailBody('');
+      } else {
+        alert('Error : ' + data.error);
+      }
+    } catch (e) {
+      alert('Error sending emails: ' + e.message);
+    } finally {
+      setIsSendingEmails(false);
     }
   };
 
-  return (
+    return (
     <div className="requirements-page">
       <Header />
       <div className="requirements-container">
-        <div className="user-input">
-          <h2>User Input</h2>
-          <div className="input-group">
-            <label>Requirement Overview</label>
-            <textarea
-              placeholder="Your business requirements: Product, Solution, Service, Business Idea/Name "
-              value={overview}
-              onChange={(e) => setOverview(e.target.value)}
-              rows="3"
-            />
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-third">
-              <label>Response Format</label>
-              <select
-                value={responseFormat}
-                onChange={(e) => setResponseFormat(e.target.value)}
-              >
-                <option value="">Select a format</option>
-                <option value="Customer Research">Customer Research</option>
-                <option value="Industry Use Cases">Industry Use Cases</option>
-                <option value="Product Requirements">Product Requirements</option>
-                <option value="Competitive Research">Competitive Research</option>
-              </select>
+        
+        <div className="requirements-header-bar">
+          <div className="header-bar-top">
+            <div className="overview-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '8px', color: '#1E3A5F'}}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span>Requirement Overview</span>
             </div>
-            <div className="input-group input-col-third">
-              <label>Reference File</label>
-              <div className="file-upload-wrapper">
-                <input 
-                  type="file" 
-                  id="file-input"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-                <button 
-                  className="upload-button"
-                  onClick={() => document.getElementById('file-input').click()}
-                >
-                  {uploadedFile ? `✓ ${uploadedFile.name}` : 'Upload'}
-                </button>
-              </div>
-            </div>
-            <div className="input-group input-col-third">
-              <label>3rd Party Integration</label>
-              <button 
-                className={`google-business-button ${googleBusinessConnected ? 'connected' : ''}`}
-                onClick={() => setShowIntegrationModal(true)}
-              >
-                {googleBusinessConnected ? (
-                  <>
-                    <span className="button-text-normal">Connected</span>
-                    <span className="button-text-hover">Reconnect</span>
-                  </>
-                ) : 'Connect Google Business'}
-              </button>
+            <div className="integration-badge">
+              <span className="dot"></span> 3RD PARTY INTEGRATION READY
             </div>
           </div>
-
-          <div className="input-group">
-            <label>Context</label>
-            <textarea
-              placeholder="Provide additional context for your requirements."
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              rows="3"
-            />
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-half">
-              <label>Region / Country of Interest</label>
+          <div className="header-bar-inputs">
+            <div className="input-block flex-grow">
+              <label>PROJECT CONTEXT & DESCRIPTION</label>
               <input
                 type="text"
-                placeholder="Country or Region of interest"
-                value={countries}
-                onChange={(e) => setCountries(e.target.value)}
+                placeholder="Enter goals..."
+                value={overview}
+                onChange={(e) => setOverview(e.target.value)}
               />
             </div>
-            <div className="input-group input-col-half">
-              <label>Industry</label>
+            <div className="input-block">
+              <label>INDUSTRY</label>
               <input
                 type="text"
-                placeholder="Enter Relevant industry"
+                placeholder="e.g. Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
               />
             </div>
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-half">
-              <label>Business Function</label>
+            <div className="input-block">
+              <label>REGION</label>
               <input
                 type="text"
-                placeholder="Marketing, Sales, Finance, etc."
-                value={businessFunctions}
-                onChange={(e) => setBusinessFunctions(e.target.value)}
+                placeholder="e.g. North Ame"
+                value={countries}
+                onChange={(e) => setCountries(e.target.value)}
               />
             </div>
-            <div className="input-group input-col-half">
-              <label>Analysis Frameworks</label>
+            <div className="input-block">
+              <label>FORMAT</label>
               <select
-                value={analysisFrameworks}
-                onChange={handleGenerateAnalysisFrameworks}
+                value={responseFormat}
+                onChange={(e) => setResponseFormat(e.target.value)}
               >
-                <option value="">Select a framework</option>
-                <option value="PESTLE">PESTLE</option>
-                <option value="VRIO">VRIO</option>
-                <option value="3-Horizon">3-Horizon</option>
-                <option value="5 Forces">5 Forces</option>
+                 <option value="Detailed PRD">Detailed PRD</option>
+                 <option value="Customer Research">Customer Research</option>
+                 <option value="Industry Use Cases">Industry Use Cases</option>
+                 <option value="Product Requirements">Product Requirements</option>
+                 <option value="Competitive Research">Competitive Research</option>
               </select>
             </div>
-          </div>
-
-          <div className="button-group">
-            <button className="generate-button large-action-btn" onClick={handleGenerate}>
-              Generate Requirements
-            </button>
-            <button className="save-button large-action-btn" onClick={handleSavePrompt}>
-              Save Prompt
-            </button>
-            <button className="previous-prompts-button large-action-btn" onClick={handleFetchPreviousPrompts}>
-              Previous Prompts
-            </button>
+            <div className="input-block button-block">
+              <input type="file" id="file-input" onChange={handleFileUpload} style={{ display: 'none' }} />
+              <button className="upload-btn" onClick={() => document.getElementById('file-input').click()}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px'}}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                {uploadedFile ? uploadedFile.name : 'Upload Ref'}
+              </button>
+            </div>
+            <div className="input-block button-block">
+              <button className="generate-req-btn" onClick={handleGenerate}>
+                Generate Requirements
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="ai-assisted">
-          <h2>AI-Assisted Requirements</h2>
+        <div className="main-workspace-area">
+
+          <div className="tabs-container">
+            <button className="workspace-tab active-tab">Leads</button>
+            <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
+          </div>
+
+          <div className="workspace-content-box">
+            <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
+              {(!aiRequirements && !customerResearchResults) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px' }}>
+                  <div style={{ background: '#EAE1D9', borderRadius: '12px', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8E9BAb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                    </svg>
+                  </div>
+                  <h2 style={{ color: '#0D2644', fontSize: '1.5rem', marginBottom: '12px' }}>Awaiting Configuration</h2>
+                  <p style={{ color: '#6C7F99', textAlign: 'center', maxWidth: '400px', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '16px' }}>
+                    Refine the requirements in the bar above to generate structured architectural specifications. Our AI will analyze your context, industry, and region to produce a precise specification.
+                  </p>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>READY TO ANALYZE</div>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>SECURE END-TO-END</div>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>ENTERPRISE LLM</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+
+
 
           {/* Show Customer Research Results */}
           {customerResearchResults && (
@@ -530,9 +747,49 @@ function RequirementsGathering() {
                       <span className="badge-value">{customerResearchResults.totalResults}</span>
                     </div>
                   </div>
-                  <button className="restore-popup-button" style={{marginLeft: 'auto'}} onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}>
-                    Maximize
-                  </button>
+
+                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginRight: '4px', background: '#fff', padding: '6px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '0.05em', marginBottom: '4px' }}>EMAILS EXTRACTED</span>
+                      <div style={{ position: 'relative', width: '46px', height: '46px' }}>
+                        <svg fill="none" viewBox="0 0 50 50" style={{ transform: 'rotate(-90deg)' }}>
+                          <circle cx="25" cy="25" r="21" stroke="#333" strokeWidth="5" />
+                          <circle 
+                            cx="25" cy="25" r="21" 
+                            stroke="#10B981" 
+                            strokeWidth="5" 
+                            strokeDasharray={2 * Math.PI * 21} 
+                            strokeDashoffset={(2 * Math.PI * 21) - ((customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0) / 100) * (2 * Math.PI * 21)} 
+                            strokeLinecap="round" 
+                          />
+                        </svg>
+                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '800', borderBottom: '1px solid #ccc', lineHeight: '1.1', width: '50%', textAlign: 'center', paddingBottom: '1px', marginBottom: '1px' }}>
+                            {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}
+                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: '800', lineHeight: '1' }}>100</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="get-emails-button compact"
+                        onClick={handleGetEmails}
+                        disabled={isLoadingEmails}
+                      >
+                        {isLoadingEmails ? (
+                          <>
+                            <span className="spinner"></span>
+                            Extracting...
+                          </>
+                        ) : 'Get All Emails'}
+                      </button>
+                      <button className="restore-popup-button" onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}>
+                        Maximize
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="minimized-content-scroll">
                   {customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
@@ -564,7 +821,19 @@ function RequirementsGathering() {
                                   'N/A'
                                 )}
                               </td>
-                              <td>{business.email || 'N/A'}</td>
+                              <td>
+                                {business.email && business.email !== 'N/A' ? (
+                                  business.email
+                                ) : (
+                                  <button
+                                    className="extract-email-button"
+                                    onClick={() => handleExtractEmailForBusiness(business, index)}
+                                    disabled={!!extractingEmailRows[index]}
+                                  >
+                                    {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                                  </button>
+                                )}
+                              </td>
                               <td>{business.matchAccuracy || 'N/A'}</td>
                               <td>{business.isPrimary ? 'Yes' : 'No'}</td>
                             </tr>
@@ -596,11 +865,21 @@ function RequirementsGathering() {
           )}
 
           {customerResearchResults && (
-            <button className="copy-button" onClick={handleCopyToClipboard}>
-              Copy to Clipboard
-            </button>
+            <div className="research-actions-row">
+              <button className="copy-button compact" onClick={handleCopyToClipboard}>
+                Copy to Clipboard
+              </button>
+              <button className="export-button compact" onClick={() => setShowExportModal(true)}>
+                  Export Data
+                </button>
+                <button className="send-emails-button compact" onClick={() => setShowEmailModal(true)} style={{ backgroundColor: '#10B981', color: '#fff', border: 'none', marginLeft: '10px' }}>
+                  Send Emails
+                </button>
+                </div>
           )}
-        </div>
+                </>
+              )}
+</div>
       </div>
 
       {/* Google Business Integration Modal */}
@@ -715,7 +994,19 @@ function RequirementsGathering() {
                             'N/A'
                           )}
                         </td>
-                        <td>{business.email || 'N/A'}</td>
+                        <td>
+                          {business.email && business.email !== 'N/A' ? (
+                            business.email
+                          ) : (
+                            <button
+                              className="extract-email-button"
+                              onClick={() => handleExtractEmailForBusiness(business, index)}
+                              disabled={!!extractingEmailRows[index]}
+                            >
+                              {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                            </button>
+                          )}
+                        </td>
                         <td>{business.matchAccuracy || 'N/A'}</td>
                         <td>{business.isPrimary ? 'Yes' : 'No'}</td>
                       </tr>
@@ -728,18 +1019,6 @@ function RequirementsGathering() {
             )}
 
             <div className="modal-buttons">
-              <button 
-                className="get-emails-button" 
-                onClick={handleGetEmails}
-                disabled={isLoadingEmails}
-              >
-                {isLoadingEmails ? (
-                  <>
-                    <span className="spinner"></span>
-                    Extracting Emails...
-                  </>
-                ) : 'Get Emails'}
-              </button>
               <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
                 Minimize
               </button>
@@ -781,8 +1060,90 @@ function RequirementsGathering() {
         </div>
       )}
 
+      {showExportModal && (
+        <div className="popup-overlay">
+          <div className="popup-content export-options-modal">
+            <h3>Export Market Research</h3>
+            <div className="export-options-grid">
+              <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
+              <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
+              <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
+              <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
+              <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
+            </div>
+            <div className="modal-buttons">
+              <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-    </div>
+
+      
+
+      
+
+        {showEmailModal && (
+        <div className="popup-overlay">
+          <div className="popup-content email-modal" style={{ maxWidth: '600px', width: '90%' }}>
+            <h3>Draft Email Campaign</h3>
+            <div className="input-group" style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Campaign Name</label>
+              <input 
+                type="text" 
+                value={campaignName} 
+                onChange={(e) => setCampaignName(e.target.value)} 
+                placeholder="e.g., Tech Startups Dec 2026"
+                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
+              />
+            </div>
+            <div className="input-group" style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Subject</label>
+              <input 
+                type="text" 
+                value={emailSubject} 
+                onChange={(e) => setEmailSubject(e.target.value)} 
+                placeholder="Email Subject"
+                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
+              />
+            </div>
+            <div className="input-group" style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Body</label>
+              <textarea 
+                value={emailBody} 
+                onChange={(e) => setEmailBody(e.target.value)} 
+                placeholder="Type your email body here...\n\nYou can use {{Company}} to automatically insert the business's name." 
+                rows={8}
+                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit' }}
+              ></textarea>
+            </div>
+            <div className="modal-buttons" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '15px' }}>
+              <button 
+                className="cancel-button" 
+                onClick={() => setShowEmailModal(false)}
+                style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="send-button" 
+                onClick={handleSendEmails} 
+                disabled={isSendingEmails}
+                style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: isSendingEmails ? 'not-allowed' : 'pointer', opacity: isSendingEmails ? 0.7 : 1 }}
+              >
+                {isSendingEmails ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+          </div>
+          
+        </div>
+      </div>
   );
 }
 

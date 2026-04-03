@@ -1,8 +1,9 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import RegisterUser from './components/RegisterUser';
 import RequirementsGathering from './components/RequirementsGathering';
+import CampaignDashboard from './components/CampaignDashboard';
 import AgentsAssembly from './components/AgentsAssembly';
 import EventNetworkingAgent from './components/EventNetworkingAgent';
 import DataInsights from './components/DataInsights'; 
@@ -20,9 +21,11 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<Navigate to="/agents" replace />} />
+          <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
           <Route path="/requirements" element={<RequirementsGathering />} />
+          <Route path="/campaign-dashboard" element={<CampaignDashboard />} />
           <Route path="/agents" element={<AgentsAssembly />} />
           <Route path="/agents-assembly" element={<AgentsAssembly />} />
           <Route path="/datainsights" element={<DataInsights />} /> 

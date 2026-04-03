@@ -260,67 +260,88 @@ class GoogleBusinessSearcher:
             api_endpoint = "https://places.googleapis.com/v1/places:searchText"
             headers = {
                 'Content-Type': 'application/json',
-                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.websiteUri,places.location,places.rating,places.userRatingCount,places.id'
+                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.websiteUri,places.location,places.rating,places.userRatingCount,places.id,nextPageToken'
             }
-            search_query = f"{query} in {location}" if location else query
-            print(f"[PLACES_API] Searching for: {search_query}, Max Results: {max_results}")
+            
+            # Create variations of the query to bypass the 60-result limit per query
+            base_query = f"{query} in {location}" if location else query
+            query_variations = [
+                base_query,
+                f"top {query} in {location}" if location else f"top {query}",
+                f"best {query} in {location}" if location else f"best {query}",
+                f"{query} in North {location}" if location else f"{query} in North",
+                f"{query} in South {location}" if location else f"{query} in South"
+            ]
+            
+            print(f"[PLACES_API] Searching with variations to target Max Results: {max_results}")
             
             all_businesses = []
-            next_page_token = None
-            total_fetched = 0
-            api_page_size = min(60, page_size)  # Google API prefers smaller page sizes
+            seen_place_ids = set()
+            api_page_size = min(60, page_size)  # Google API API page limit
             
-            # Fetch all results up to max_results
-            while total_fetched < max_results:
-                fetch_size = min(api_page_size, max_results - total_fetched)
-                payload = {
-                    'textQuery': search_query,
-                    'pageSize': fetch_size,
-                    'languageCode': 'en'
-                }
-                if next_page_token:
-                    payload['pageToken'] = next_page_token
-                
-                response = requests.post(
-                    f"{api_endpoint}?key={api_key}",
-                    headers=headers,
-                    json=payload,
-                    timeout=30
-                )
-                
-                if response.status_code != 200:
-                    print(f"[PLACES_API] Error {response.status_code}: {response.text}")
-                    return {
-                        'success': False,
-                        'error': f'Google Places API error: {response.status_code}',
-                        'details': response.text
-                    }
-                
-                api_results = response.json()
-                places = api_results.get('places', [])
-                
-                for place in places:
-                    all_businesses.append({
-                        'id': place.get('id', ''),
-                        'name': place.get('displayName', {}).get('text', ''),
-                        'address': place.get('formattedAddress', ''),
-                        'phone': place.get('internationalPhoneNumber', ''),
-                        'website': place.get('websiteUri', ''),
-                        'description': '',
-                        'latitude': place.get('location', {}).get('latitude'),
-                        'longitude': place.get('location', {}).get('longitude'),
-                        'rating': place.get('rating'),
-                        'userRatingCount': place.get('userRatingCount'),
-                        'matchAccuracy': 'high' if place.get('rating') else 'medium',
-                        'isPrimary': False,
-                        'placeId': place.get('id', '')
-                    })
-                
-                total_fetched += len(places)
-                next_page_token = api_results.get('nextPageToken')
-                
-                if not next_page_token or len(places) == 0:
+            # Fetch across all variations until max_results is reached
+            for current_query in query_variations:
+                if len(all_businesses) >= max_results:
                     break
+                    
+                print(f"[PLACES_API] Running query: '{current_query}'")
+                next_page_token = None
+                
+                while len(all_businesses) < max_results:
+                    fetch_size = min(api_page_size, max_results - len(all_businesses))
+                    payload = {
+                        'textQuery': current_query,
+                        'pageSize': fetch_size,
+                        'languageCode': 'en'
+                    }
+                    if next_page_token:
+                        payload['pageToken'] = next_page_token
+                    
+                    response = requests.post(
+                        f"{api_endpoint}?key={api_key}",
+                        headers=headers,
+                        json=payload,
+                        timeout=30
+                    )
+                    
+                    if response.status_code != 200:
+                        print(f"[PLACES_API] Error {response.status_code}: {response.text}")
+                        # If a variation fails, break and try the next variation instead of failing the whole request
+                        break
+                    
+                    api_results = response.json()
+                    places = api_results.get('places', [])
+                    
+                    for place in places:
+                        place_id = place.get('id', '')
+                        if not place_id or place_id in seen_place_ids:
+                            continue
+                            
+                        seen_place_ids.add(place_id)
+                        all_businesses.append({
+                            'id': place_id,
+                            'name': place.get('displayName', {}).get('text', ''),
+                            'address': place.get('formattedAddress', ''),
+                            'phone': place.get('internationalPhoneNumber', ''),
+                            'website': place.get('websiteUri', ''),
+                            'description': '',
+                            'latitude': place.get('location', {}).get('latitude'),
+                            'longitude': place.get('location', {}).get('longitude'),
+                            'rating': place.get('rating'),
+                            'userRatingCount': place.get('userRatingCount'),
+                            'matchAccuracy': 'high' if place.get('rating') else 'medium',
+                            'isPrimary': False,
+                            'placeId': place_id
+                        })
+                        
+                        if len(all_businesses) >= max_results:
+                            break
+                    
+                    next_page_token = api_results.get('nextPageToken')
+                    
+                    # If this specific query variation ran out of pages/results, move to the next variation
+                    if not next_page_token or len(places) == 0:
+                        break
             
             print(f"[PLACES_API] Found {len(all_businesses)} total results")
             

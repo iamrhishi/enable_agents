@@ -22,3 +22,12 @@ data/
 # Temporary files
 temp_files/
 uploads/
+.venv-win/
+
+
+instance/
+
+tools/instance/
+
+*.db
+
