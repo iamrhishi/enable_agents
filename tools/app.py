@@ -6242,6 +6242,93 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+def generate_email_content(business, sender_name):
+    import json
+    import os
+    from openai import OpenAI
+    
+    prompt = f"""We have a market research agent that scrapes company websites and 
+extracts leads including company name, industry, decision maker name, 
+email, and a short company summary from their website.
+
+I need you to build an email personalization layer on top of this.
+
+When the user clicks "Send Email" for a lead, before sending, the system 
+should call the AI to fill in the following variables dynamically using 
+the lead data we already have:
+
+- first_name -> extract from the contact name we scraped
+- company_name -> from lead data
+- one_line_company_summary -> generate a one line summary of what the company does based on the website content we already scraped
+- industry -> detected from the company description
+- pain_point -> infer the most likely business pain point for this industry and company size
+- value_proposition -> tailor this to the industry, e.g. for FinTech say something different than for SaaS
+- sender_name -> from the logged in client's profile
+
+The base template is:
+
+Subject: Quick idea for {{{{company_name}}}}
+
+Hi {{{{first_name}}}},
+
+I came across {{{{company_name}}}} and noticed {{{{one_line_company_summary}}}}.
+
+Companies in {{{{industry}}}} often struggle with {{{{pain_point}}}} - and that usually means lost time or missed opportunities.
+
+We built a solution that helps {{{{industry}}}} teams {{{{value_proposition}}}}.
+
+Would it make sense to connect for 15 minutes this week?
+
+Best,
+{sender_name}
+
+Return the final filled email as JSON in this format:
+{{
+  "subject": "...",
+  "body": "..."
+}}
+
+Lead Data:
+Company Name: {business.get('name', 'Unknown')}
+Content/Description: {business.get('description', '')} {business.get('summary', '')}
+Website: {business.get('website', 'Unknown')}
+Contact Name: {business.get('contact_name', 'There')}
+Industry: {business.get('industry', 'Unknown')}
+
+Do not add any explanation, just return the JSON.
+"""
+
+    client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+    response = client.chat.completions.create(
+        model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        response_format={ "type": "json_object" },
+        temperature=0.7
+    )
+    
+    return json.loads(response.choices[0].message.content)
+
+@app.route('/api/generate-email', methods=['POST'])
+@cross_origin()
+def generate_email():
+    """Generate a personalized email using an LLM."""
+    try:
+        from flask import request
+        data = request.get_json()
+        business = data.get('business', {})
+        sender_name = data.get('sender_name', 'Alex')
+        
+        result = generate_email_content(business, sender_name)
+        return jsonify(result), 200
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/send-bulk-emails', methods=['POST'])
 @cross_origin()
 def send_bulk_emails():
@@ -6261,8 +6348,9 @@ def send_bulk_emails():
         username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
 
 
-        if not subject or not body:
-            return jsonify({'success': False, 'error': 'Subject and body are required'}), 400
+        use_ai_personalization = data.get('use_ai_personalization', False)
+        if not use_ai_personalization and (not subject or not body):
+            return jsonify({'success': False, 'error': 'Subject and body are required unless using AI personalization'}), 400
 
         valid_emails = [b.get('email') for b in businesses if b.get('email') and b.get('email') != 'N/A' and '@' in b.get('email')]
 
@@ -6315,13 +6403,24 @@ def send_bulk_emails():
                 continue
 
             business_name = b.get('name', 'Business Owner')
-            # optionally customize body with business name
-            custom_body = body.replace('{{Company}}', business_name)
+            actual_subject = subject or "Quick Idea"
+            custom_body = body or "Hi"
+            
+            if use_ai_personalization:
+                try:
+                    ai_res = generate_email_content(b, username)
+                    actual_subject = ai_res.get('subject', actual_subject)
+                    custom_body = ai_res.get('body', custom_body)
+                except Exception as err:
+                    print(f"Failed AI generation for {recipient}: {err}")
+                    custom_body = custom_body.replace('{{Company}}', business_name)
+            else:
+                custom_body = custom_body.replace('{{Company}}', business_name)
 
             msg = MIMEMultipart()
             msg['From'] = email_user
             msg['To'] = recipient
-            msg['Subject'] = subject
+            msg['Subject'] = actual_subject
             msg.attach(MIMEText(custom_body, 'plain'))
             
             server.send_message(msg)

@@ -33,6 +33,8 @@ function RequirementsGathering() {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState({});
+  const [selectedLead, setSelectedLead] = useState(null); const [useAiBulk, setUseAiBulk] = useState(false);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
     clientSecret: '',
@@ -574,12 +576,46 @@ function RequirementsGathering() {
       }
     };
 
-    const handleSendEmails = async () => {
-    if (!emailSubject || !emailBody) {
-      alert("Subject and Body are required");
+    const handleGeneratePersonalizedEmail = async (business, index) => {
+    setIsGeneratingEmail(prev => ({ ...prev, [index]: true }));
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/generate-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business: business,
+          sender_name: getCurrentUsername()
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.subject && data.body) {
+        setEmailSubject(data.subject);
+        setEmailBody(data.body);
+        setCampaignName('Personalized: ' + (business.name || 'Company'));
+        setSelectedLead(business);
+        setShowEmailModal(true);
+      } else {
+        alert('Failed to generate personalized email.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error generating email.');
+    } finally {
+      setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
+    }
+  }; const handleSendEmails = async () => {
+    if (!useAiBulk && (!emailSubject || !emailBody)) {
+      alert("Subject and Body required unless using AI Personalization");
       return;
     }
-    const validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+    
+    let validEmails = [];
+    if (selectedLead) {
+      validEmails = [selectedLead];
+    } else {
+      validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+    }
+    
     if (validEmails.length === 0) {
       alert("No valid emails found to send to");
       return;
@@ -587,14 +623,15 @@ function RequirementsGathering() {
 
     setIsSendingEmails(true);
     try {
-      const response = await fetch('http://127.0.0.1:5000/send-bulk-emails', {
+      const response = await fetch('http://127.0.0.1:5000/send-bulk-emails', {  
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          campaignName: campaignName,
+          campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
           subject: emailSubject,
           body: emailBody,
-          businesses: validEmails
+          businesses: validEmails,
+          use_ai_personalization: useAiBulk
         })
       });
       const data = await response.json();
@@ -603,6 +640,7 @@ function RequirementsGathering() {
         setShowEmailModal(false);
         setEmailSubject('');
         setEmailBody('');
+        setSelectedLead(null);
       } else {
         alert('Error : ' + data.error);
       }
@@ -822,13 +860,22 @@ function RequirementsGathering() {
                                 )}
                               </td>
                               <td>
-                                {business.email && business.email !== 'N/A' ? (
-                                  business.email
+                                {business.email && business.email !== 'N/A' ? ( 
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <span>{business.email}</span>
+                                    <button
+                                      onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                      disabled={!!isGeneratingEmail[index]}
+                                      style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                    >
+                                      {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
+                                    </button>
+                                  </div>
                                 ) : (
                                   <button
                                     className="extract-email-button"
                                     onClick={() => handleExtractEmailForBusiness(business, index)}
-                                    disabled={!!extractingEmailRows[index]}
+                                    disabled={!!extractingEmailRows[index]}     
                                   >
                                     {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
                                   </button>
@@ -872,7 +919,7 @@ function RequirementsGathering() {
               <button className="export-button compact" onClick={() => setShowExportModal(true)}>
                   Export Data
                 </button>
-                <button className="send-emails-button compact" onClick={() => setShowEmailModal(true)} style={{ backgroundColor: '#10B981', color: '#fff', border: 'none', marginLeft: '10px' }}>
+                <button className="send-emails-button compact" onClick={() => { setSelectedLead(null); setShowEmailModal(true); }} style={{ backgroundColor: '#10B981', color: '#fff', border: 'none', marginLeft: '10px' }}>
                   Send Emails
                 </button>
                 </div>
@@ -1099,6 +1146,19 @@ function RequirementsGathering() {
                 style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
               />
             </div>
+            {!selectedLead && (
+              <div className="input-group" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input 
+                  type="checkbox" 
+                  checked={useAiBulk} 
+                  onChange={(e) => setUseAiBulk(e.target.checked)} 
+                  id="useAiBulkCheck"
+                />
+                <label htmlFor="useAiBulkCheck" style={{ fontWeight: 'bold', margin: 0, cursor: 'pointer' }}>
+                  Use AI Personalization for Bulk Emails
+                </label>
+              </div>
+            )}
             <div className="input-group" style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Subject</label>
               <input 
@@ -1122,7 +1182,7 @@ function RequirementsGathering() {
             <div className="modal-buttons" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '15px' }}>
               <button 
                 className="cancel-button" 
-                onClick={() => setShowEmailModal(false)}
+                onClick={() => { setShowEmailModal(false); setSelectedLead(null); }}
                 style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
               >
                 Cancel
