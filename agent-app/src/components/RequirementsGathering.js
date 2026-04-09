@@ -868,6 +868,7 @@ function RequirementsGathering() {
                             <th>Phone</th>
                             <th>Website</th>
                             <th>Email</th>
+                            <th>LinkedIn</th>
                             <th>Match Accuracy</th>
                             <th>Primary</th>
                           </tr>
@@ -906,6 +907,26 @@ function RequirementsGathering() {
                                     disabled={!!extractingEmailRows[index]}     
                                   >
                                     {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                                  </button>
+                                )}
+                              </td>
+                              <td>
+                                {business.linkedin ? (
+                                  business.linkedin !== 'N/A' ? (
+                                    <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                      View Profile
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                  )
+                                ) : (
+                                  <button
+                                    className="extract-email-button"
+                                    style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                    onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                    disabled={!!extractingLinkedInRows[index]}
+                                  >
+                                    {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
                                   </button>
                                 )}
                               </td>
@@ -1050,6 +1071,7 @@ function RequirementsGathering() {
                       <th>Phone</th>
                       <th>Website</th>
                       <th>Email</th>
+                      <th>LinkedIn</th>
                       <th>Match Accuracy</th>
                       <th>Primary</th>
                     </tr>
