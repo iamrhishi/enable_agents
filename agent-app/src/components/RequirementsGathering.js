@@ -725,8 +725,12 @@ function RequirementsGathering() {
               </button>
             </div>
             <div className="input-block button-block">
-              <button className="generate-req-btn" onClick={handleGenerate}>
-                Generate Requirements
+              <button className="generate-req-btn" onClick={handleGenerate} disabled={isLoadingResearch}>
+                {isLoadingResearch ? (
+                  <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}>
+                    <span className="spinner"></span> Generating...
+                  </span>
+                ) : 'Generate Requirements'}
               </button>
             </div>
           </div>
@@ -741,7 +745,13 @@ function RequirementsGathering() {
 
           <div className="workspace-content-box">
             <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
-              {(!aiRequirements && !customerResearchResults) ? (
+              {isLoadingResearch ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
+                    <div className="loader" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #ff725e', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
+                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing leads... please wait...</p>
+                    <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+                  </div>
+              ) : (!aiRequirements && !customerResearchResults) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px' }}>
                   <div style={{ background: '#EAE1D9', borderRadius: '12px', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8E9BAb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
