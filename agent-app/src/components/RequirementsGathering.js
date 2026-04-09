@@ -794,49 +794,31 @@ function RequirementsGathering() {
                       <span className="badge-label">Results</span>
                       <span className="badge-value">{customerResearchResults.totalResults}</span>
                     </div>
-                  </div>
-
-                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginRight: '4px', background: '#fff', padding: '6px 12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '0.05em', marginBottom: '4px' }}>EMAILS EXTRACTED</span>
-                      <div style={{ position: 'relative', width: '46px', height: '46px' }}>
-                        <svg fill="none" viewBox="0 0 50 50" style={{ transform: 'rotate(-90deg)' }}>
-                          <circle cx="25" cy="25" r="21" stroke="#333" strokeWidth="5" />
-                          <circle 
-                            cx="25" cy="25" r="21" 
-                            stroke="#10B981" 
-                            strokeWidth="5" 
-                            strokeDasharray={2 * Math.PI * 21} 
-                            strokeDashoffset={(2 * Math.PI * 21) - ((customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0) / 100) * (2 * Math.PI * 21)} 
-                            strokeLinecap="round" 
-                          />
-                        </svg>
-                        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '800', borderBottom: '1px solid #ccc', lineHeight: '1.1', width: '50%', textAlign: 'center', paddingBottom: '1px', marginBottom: '1px' }}>
-                            {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}
-                          </span>
-                          <span style={{ fontSize: '11px', fontWeight: '800', lineHeight: '1' }}>100</span>
-                        </div>
-                      </div>
+                    <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', background: '#eefcf5', border: '1px solid #c2ebd9', marginLeft: '4px' }}>
+                        <span className="badge-label" style={{ marginBottom: 0, color: '#555' }}>Extracted</span>
+                        <span className="badge-value" style={{ color: '#0f766e', fontWeight: 'bold' }}>
+                          {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
+                        </span>
                     </div>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                  </div>
+                  
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <button 
                         className="get-emails-button compact"
                         onClick={handleGetEmails}
                         disabled={isLoadingEmails}
+                        style={{ margin: 0, padding: '8px 16px' }}
                       >
                         {isLoadingEmails ? (
                           <>
-                            <span className="spinner"></span>
+                            <span className="spinner" style={{ marginRight: '6px' }}></span>
                             Extracting...
                           </>
                         ) : 'Get All Emails'}
                       </button>
-                      <button className="restore-popup-button" onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}>
+                      <button className="restore-popup-button" onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }} style={{ margin: 0, padding: '8px 16px' }}>
                         Maximize
                       </button>
-                    </div>
                   </div>
                 </div>
                 <div className="minimized-content-scroll">
