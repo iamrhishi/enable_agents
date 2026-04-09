@@ -24,7 +24,8 @@ function RequirementsGathering() {
   const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
-  const [extractingEmailRows, setExtractingEmailRows] = useState({});
+  const [extractingEmailRows, setExtractingEmailRows] = useState({})
+  const [extractingLinkedInRows, setExtractingLinkedInRows] = useState({});
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [extractionUsage, setExtractionUsage] = useState(null);
@@ -269,6 +270,41 @@ function RequirementsGathering() {
       alert(`Error: ${error.message}`);
     } finally {
       setIsLoadingEmails(false);
+    }
+  };
+
+  const handleExtractLinkedInForBusiness = async (business, index) => {
+    if (!business) return;
+    setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      // Mock logic or call to a simple backend
+      // Normally we'd call an API here that returns the linkedIn URL
+      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-linkedin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businesses: [business], username: getCurrentUsername() }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch LinkedIn data');
+
+      const data = await response.json();
+      if (data.success && data.data && data.data.businesses && data.data.businesses.length > 0) {
+        const enrichedBusiness = data.data.businesses[0];
+        setCustomerResearchResults(prev => {
+          if (!prev) return prev;
+          const updatedBusinesses = [...prev.businesses];
+          updatedBusinesses[index] = { ...updatedBusinesses[index], linkedin: enrichedBusiness.linkedin };
+          return { ...prev, businesses: updatedBusinesses };
+        });
+      } else {
+        alert(data.error || 'No LinkedIn profile found.');
+      }
+    } catch (error) {
+      console.error('LinkedIn extraction error:', error);
+      alert('Error extracting LinkedIn. Check console.');
+    } finally {
+      setExtractingLinkedInRows((prev) => ({ ...prev, [index]: false }));
     }
   };
 
