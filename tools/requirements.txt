@@ -23,4 +23,5 @@ python-docx
 networkx
 selenium
 webdriver-manager
-openpyxl
+openpyxlddgs
+duckduckgo-search

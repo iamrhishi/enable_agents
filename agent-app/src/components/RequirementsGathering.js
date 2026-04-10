@@ -19,9 +19,40 @@ function RequirementsGathering() {
   const [showPromptsPopup, setShowPromptsPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [googleBusinessConnected, setGoogleBusinessConnected] = useState(false);
-  const [customerResearchResults, setCustomerResearchResults] = useState(null);
-  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(false);
-  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
+  const [customerResearchResults, setCustomerResearchResults] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('customerResearchResults');
+      return item ? JSON.parse(item) : null;
+    } catch { return null; }
+  });
+  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('showCustomerResearchTable');
+      return item ? JSON.parse(item) : false;
+    } catch { return false; }
+  });
+  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('minimizedCustomerResearch');
+      return item ? JSON.parse(item) : false;
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (customerResearchResults !== null) {
+      sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
+    } else {
+      sessionStorage.removeItem('customerResearchResults');
+    }
+  }, [customerResearchResults]);
+
+  useEffect(() => {
+    sessionStorage.setItem('showCustomerResearchTable', JSON.stringify(showCustomerResearchTable));
+  }, [showCustomerResearchTable]);
+
+  useEffect(() => {
+    sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
+  }, [minimizedCustomerResearch]);
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [extractingEmailRows, setExtractingEmailRows] = useState({})
@@ -1050,9 +1081,16 @@ function RequirementsGathering() {
       {/* Customer Research Results Table */}
 
       {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-        <div className="popup-overlay">
-          <div className="popup-content customer-research-table">
-            <div className="research-summary-row">
+          <div className="popup-overlay">
+            <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
+              <button 
+                onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
+                style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
+                title="Minimize Table"
+              >
+                &times;
+              </button>
+              <div className="research-summary-row">
               <span><strong>Search:</strong> {customerResearchResults.query}</span>
               <span><strong>Location:</strong> {customerResearchResults.location}</span>
               <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
@@ -1077,38 +1115,67 @@ function RequirementsGathering() {
                     </tr>
                   </thead>
                   <tbody>
-                    {customerResearchResults.businesses.map((business, index) => (
-                      <tr key={index}>
-                        <td>{business.name || 'N/A'}</td>
-                        <td>{business.address || 'N/A'}</td>
-                        <td>{business.phone || 'N/A'}</td>
-                        <td>
-                          {business.website ? (
-                            <a href={business.website} target="_blank" rel="noopener noreferrer">
-                              Visit
-                            </a>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td>
-                          {business.email && business.email !== 'N/A' ? (
-                            business.email
-                          ) : (
-                            <button
-                              className="extract-email-button"
-                              onClick={() => handleExtractEmailForBusiness(business, index)}
-                              disabled={!!extractingEmailRows[index]}
-                            >
-                              {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                            </button>
-                          )}
-                        </td>
-                        <td>{business.matchAccuracy || 'N/A'}</td>
-                        <td>{business.isPrimary ? 'Yes' : 'No'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
+                      {customerResearchResults.businesses.map((business, index) => (
+                        <tr key={index}>
+                          <td>{business.name || 'N/A'}</td>
+                          <td>{business.address || 'N/A'}</td>
+                          <td>{business.phone || 'N/A'}</td>
+                          <td>
+                            {business.website ? (
+                              <a href={business.website} target="_blank" rel="noopener noreferrer">
+                                Visit
+                              </a>
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
+                          <td>
+                            {business.email && business.email !== 'N/A' ? ( 
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <span>{business.email}</span>
+                                <button
+                                  onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                  disabled={!!isGeneratingEmail[index]}
+                                  style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="extract-email-button"
+                                onClick={() => handleExtractEmailForBusiness(business, index)}
+                                disabled={!!extractingEmailRows[index]}
+                              >
+                                {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                              </button>
+                            )}
+                          </td>
+                          <td>
+                            {business.linkedin ? (
+                              business.linkedin !== 'N/A' ? (
+                                <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                  View Profile
+                                </a>
+                              ) : (
+                                <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                              )
+                            ) : (
+                              <button
+                                className="extract-email-button"
+                                style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                disabled={!!extractingLinkedInRows[index]}
+                              >
+                                {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
+                              </button>
+                            )}
+                          </td>
+                          <td>{business.matchAccuracy || 'N/A'}</td>
+                          <td>{business.isPrimary ? 'Yes' : 'No'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
                 </table>
               </div>
             ) : (

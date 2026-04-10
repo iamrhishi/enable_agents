@@ -6893,16 +6893,28 @@ def enrich_businesses_with_linkedin():
         data = request.get_json()
         businesses = data.get('businesses', [])
         
-        # Simulating LinkedIn extraction simply by grabbing domain name in real world, or LLM. Wait we need to read what tools app.py has. I'll just use a mock or simple google search pattern as placeholder if needed? Let's check how scrap.io was used first.
-        # Wait, the prompt says "do same like email that extract linkedin will be there just like extract mail for email".
+        # Use duckduckgo-search to intelligently grab the most relevant linkedin company URL based on business name
         
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            DDGS = None
+            
         enriched_businesses = []
         for b in businesses:
-            name = b.get('name', '').replace(' ', '').lower()
-            if name:
-                b['linkedin'] = f"https://www.linkedin.com/company/{name}"
-            else:
-                b['linkedin'] = "N/A"
+            raw_name = b.get('name', '')
+            b['linkedin'] = "N/A"
+            if raw_name and DDGS:
+                try:
+                    search_query = f"{raw_name} linkedin company"
+                    results = DDGS().text(search_query, max_results=3)
+                    for r in results:
+                        if 'linkedin.com/company' in r.get('href', ''):
+                            b['linkedin'] = r['href']
+                            break
+                except Exception as e:
+                    print(f"Error searching linkedin for {raw_name}:", e)
+            
             enriched_businesses.append(b)
 
         return jsonify({
@@ -6913,6 +6925,6 @@ def enrich_businesses_with_linkedin():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-        
-\n\nif __name__ == '__main__':
+
+if __name__ == '__main__':
     app.run(debug=True)
