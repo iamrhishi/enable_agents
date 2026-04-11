@@ -3,6 +3,7 @@ import Header from './Header';
 import '../styles/RequirementsGathering.css';
 
 function CampaignDashboard() {
+  const userId = localStorage.getItem("firstName") || "";
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [recipients, setRecipients] = useState([]);
@@ -15,7 +16,7 @@ function CampaignDashboard() {
   const fetchCampaigns = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/campaigns/stats');
+      const res = await fetch(`http://127.0.0.1:5000/api/campaigns/stats?username=${encodeURIComponent(userId)}`);
       const data = await res.json();
       if (data.success) {
         setCampaigns(data.campaigns);

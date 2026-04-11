@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import '../styles/Header.css';
 
@@ -11,6 +11,7 @@ function Header({ onProcessClick }) {
   const firstName = localStorage.getItem('firstName'); 
   const [showModal, setShowModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const navigate = useNavigate();
   const [selectedSystemTab, setSelectedSystemTab] = useState(0);
   const handleUserIconClick = () => {
     setShowUserDropdown((prev) => !prev);
@@ -23,9 +24,10 @@ function Header({ onProcessClick }) {
   };
 
   const handleSignOutClick = () => {
-    // Implement sign out logic here
-    alert('Sign out clicked!');
+    localStorage.removeItem('firstName');
+    sessionStorage.clear();
     setShowUserDropdown(false);
+    navigate('/login');
   };
   const [testResult, setTestResult] = useState('');
   const [dbRows, setDbRows] = useState([]);

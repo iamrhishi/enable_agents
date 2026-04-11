@@ -21,7 +21,7 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
-          <Route path="/" element={<Navigate to="/agents" replace />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
           <Route path="/requirements" element={<RequirementsGathering />} />

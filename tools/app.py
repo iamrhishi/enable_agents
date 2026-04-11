@@ -231,7 +231,7 @@ class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(512), nullable=False)
     first_name = db.Column(db.String(80))
     last_name = db.Column(db.String(80))
     email = db.Column(db.String(120))
@@ -4224,7 +4224,7 @@ def save_requirements():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    username = data.get('username')
+    username = data.get('email') # Use email as username
     password = data.get('password')
     first_name = data.get('first_name')
     last_name = data.get('last_name')
@@ -4234,10 +4234,12 @@ def register():
     short_intro = data.get('short_intro')
     company_intro = data.get('company_intro')
 
-    if not username or not password:
-        return jsonify({'error': 'Username and password required'}), 400
+    if not password or not email:
+        return jsonify({'error': 'Email and password required'}), 400
     if User.query.filter_by(username=username).first():
         return jsonify({'error': 'Username already exists'}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already registered'}), 400
 
     try:
         hashed_password = generate_password_hash(password)
@@ -4262,18 +4264,18 @@ def register():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    username = data.get('username')
+    email = data.get('email')
     password = data.get('password')
 
-    if not username or not password:
-        return jsonify({'error': 'Username and password required'}), 400
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
 
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password, password):
-        # You can return user info or a token here if you want
-        return jsonify({'message': 'Login successful', 'username': user.username}), 200
+        # Login via email, but still return the username for frontend session storage if needed
+        return jsonify({'message': 'Login successful', 'username': user.username, 'email': user.email}), 200
     else:
-        return jsonify({'error': 'Invalid username or password'}), 401
+        return jsonify({'error': 'Invalid email or password'}), 401
     
 
 @app.route('/file_to_json_convert', methods=['POST'])
@@ -6359,23 +6361,8 @@ def send_bulk_emails():
 
         email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
         email_port = int(os.getenv('EMAIL_PORT', 587))
-        email_user = os.getenv('EMAIL_USER', 'dalviharsh93@gmail.com')
-        email_pass = os.getenv('EMAIL_PASS', 'sxfncbmxfemwsngy')
-
-        # Initialize DB Tables if needed
-        _ensure_email_usage_tables()
-        
-        # Create Campaign Record
-        import uuid
-        campaign_id = str(uuid.uuid4())
-        campaign = EmailCampaign(
-            id=campaign_id,
-            name=campaign_name,
-            subject=subject,
-            username=username
-        )
-        db.session.add(campaign)
-        db.session.commit()
+        email_user = os.getenv('EMAIL_USER')
+        email_pass = os.getenv('EMAIL_PASS')
 
         # Initialize DB Tables if needed
         _ensure_email_usage_tables()
@@ -6418,7 +6405,8 @@ def send_bulk_emails():
                 custom_body = custom_body.replace('{{Company}}', business_name)
 
             msg = MIMEMultipart()
-            msg['From'] = email_user
+            msg['From'] = username
+            msg['Reply-To'] = username
             msg['To'] = recipient
             msg['Subject'] = actual_subject
             msg.attach(MIMEText(custom_body, 'plain'))
@@ -6503,9 +6491,15 @@ def handle_email_reply():
 @app.route('/api/campaigns/stats', methods=['GET'])
 @cross_origin()
 def get_campaign_stats():
-    """Returns analytics for all campaigns."""
+    """Returns analytics for campaigns filtered by user."""
     try:
-        campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
+        username = request.args.get('username') or request.args.get('userId') or request.args.get('email')
+        username = _normalize_username(username) if username else None
+        
+        if username:
+            campaigns = EmailCampaign.query.filter_by(username=username).order_by(EmailCampaign.created_at.desc()).all()
+        else:
+            campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
         results = []
         for c in campaigns:
             recipients = EmailCampaignRecipient.query.filter_by(campaign_id=c.id).all()

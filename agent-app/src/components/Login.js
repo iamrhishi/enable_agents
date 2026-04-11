@@ -3,13 +3,13 @@ import '../styles/Login.css';
 import { useNavigate } from 'react-router-dom';
 
 function Login() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [bgIndex, setBgIndex] = useState(0);
-  const [step, setStep] = useState('username');
+  const [step, setStep] = useState('email');
   const navigate = useNavigate();
 
-  // List of background images
+  const [bgIndex, setBgIndex] = useState(0);
+
   const bgImages = [
     `${process.env.PUBLIC_URL}/assets/background_images/pexels-googledeepmind-17483867.jpg`,
     `${process.env.PUBLIC_URL}/assets/background_images/pexels-googledeepmind-17483868.jpg`,
@@ -17,7 +17,6 @@ function Login() {
     `${process.env.PUBLIC_URL}/assets/background_images/pexels-googledeepmind-17483874.jpg`
   ];
 
-  // Cycle background images every 6 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setBgIndex(prev => (prev + 1) % bgImages.length);
@@ -25,9 +24,9 @@ function Login() {
     return () => clearInterval(interval);
   }, [bgImages.length]);
 
-  const handleUsernameSubmit = (e) => {
+  const handleEmailSubmit = (e) => {
     e.preventDefault();
-    if (username.trim()) {
+    if (email.trim()) {
       setStep('password');
     }
   };
@@ -39,11 +38,11 @@ function Login() {
       const response = await fetch('http://localhost:5000/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
       if (response.ok) {
-        localStorage.setItem('firstName', data.username);
+        localStorage.setItem('firstName', data.username || data.first_name || 'User');
         navigate('/agents');
       } else {
         alert(data.error || 'Login failed');
@@ -56,81 +55,57 @@ function Login() {
   return (
     <div className="login-page" style={{
       backgroundImage: `url(${bgImages[bgIndex]})`,
-      transition: 'background-image 2s ease-in-out',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       minHeight: '100vh',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       position: 'relative'
     }}>
-      <div className="login-bg-overlay" />
-      <div className="login-card enhanced-card" style={{ minWidth: 340, maxWidth: 400, width: '100%', padding: '40px 32px 32px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}>
-        <div className="logo-wrapper" style={{ marginBottom: '18px' }}>
-          <img
-            src={`${process.env.PUBLIC_URL}/logo192.svg`}
-            alt="Enable Logo"
-            className="logo"
-            style={{ height: '56px' }}
-          />
+      <div className="login-card-container">
+        <div className="enable-logo">
+          Enable<span className="dot">.</span>
         </div>
-  {/* <div className="platform-title">Agents Assembly Platform</div> */}
-        {step === 'username' && (
-          <form onSubmit={handleUsernameSubmit} style={{ width: '100%' }}>
+        
+        {step === 'email' && (
+          <form onSubmit={handleEmailSubmit} className="login-form">
             <input
               type="text"
-              placeholder="Username"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
+              placeholder="Email Address"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               required
-              className="login-input"
-              style={{ fontSize: '1.08rem', padding: '14px', borderRadius: '10px', width: '100%' }}
+              className="styled-input centered-placeholder"
               autoFocus
             />
-            <div className="register-link" style={{ textAlign: 'center', marginTop: '8px' }}>
-              <span
-                style={{ color: '#2a5298', fontWeight: 500, cursor: 'pointer' }}
-                onClick={() => navigate('/register')}
-              >
-                New User?
-              </span>
+            <div className="new-user-link" onClick={() => navigate('/register')}>
+              New User?
             </div>
           </form>
         )}
+
         {step === 'password' && (
-          <form onSubmit={handlePasswordSubmit} style={{ width: '100%' }}>
+          <form onSubmit={handlePasswordSubmit} className="login-form">
             <input
               type="password"
               placeholder="Password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="login-input"
-              style={{ fontSize: '1.08rem', padding: '14px', borderRadius: '10px', width: '100%' }}
+              className="styled-input centered-placeholder"
               autoFocus
             />
-            <div className="register-link" style={{ textAlign: 'center', marginTop: '8px' }}>
-              <button
-                type="button"
-                onClick={() => { setStep('username'); setPassword(''); }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#2a5298',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                  padding: 0
-                }}
-              >Back</button>
+            <button type="submit" className="login-button" style={{marginTop: '15px', display: 'none'}}>Login</button>
+            <div className="new-user-link" onClick={() => setStep('email')}>
+              Back
             </div>
           </form>
         )}
       </div>
-      <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, textAlign: 'center', zIndex: 2 }}>
-        <a href="https://enableyou.co" target="_blank" rel="noopener noreferrer" style={{ color: '#191a1bff', fontWeight: 400, fontSize: '1.05rem', textDecoration: 'none', letterSpacing: '0.02em' }}>enableyou.co</a>
-      </div>
+
+      <div className="footer-text">enableyou.co</div>
     </div>
   );
 }

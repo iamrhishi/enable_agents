@@ -694,6 +694,7 @@ function RequirementsGathering() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId: localStorage.getItem("firstName") || "",
           campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
           subject: emailSubject,
           body: emailBody,
@@ -773,7 +774,8 @@ function RequirementsGathering() {
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
               >
-                 <option value="Detailed PRD">Detailed PRD</option>
+                   <option value="" disabled hidden>Select Format...</option>
+                   <option value="Detailed PRD">Detailed PRD</option>
                  <option value="Customer Research">Customer Research</option>
                  <option value="Industry Use Cases">Industry Use Cases</option>
                  <option value="Product Requirements">Product Requirements</option>
