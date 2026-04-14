@@ -26,6 +26,11 @@ import hashlib
 import http.client
 import json
 import glob
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+import googleapiclient.discovery
+from email.message import EmailMessage
+import base64
 from flask_cors import CORS  # Import Flask-CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash
@@ -126,6 +131,11 @@ PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agent
 app = Flask(__name__)
 CORS(app)
 
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev
+
 # Database config (env override + local fallback)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URI',
@@ -140,8 +150,8 @@ MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # Content Marketing Agent Configuration
-CONTENT_MARKETING_UPLOAD_FOLDER = os.path.join(os.path.expanduser('~'), 'Enable/Software_Development/enable_agents/data/content_marketing_uploads')
-CONTENT_MARKETING_DB_PATH = os.path.join(os.path.expanduser('~'), 'Enable/Software_Development/enable_agents/data/content_marketing.db')
+CONTENT_MARKETING_UPLOAD_FOLDER = os.environ.get('CONTENT_MARKETING_UPLOAD_FOLDER', os.path.join(os.path.dirname(__file__), 'data', 'content_marketing_uploads'))
+CONTENT_MARKETING_DB_PATH = os.environ.get('CONTENT_MARKETING_DB_PATH', os.path.join(os.path.dirname(__file__), 'data', 'content_marketing.db'))
 CONTENT_MARKETING_ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'xlsx', 'html', 'md'}
 os.makedirs(CONTENT_MARKETING_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(os.path.dirname(CONTENT_MARKETING_DB_PATH), exist_ok=True)
@@ -239,6 +249,17 @@ class User(db.Model):
     linkedin = db.Column(db.String(256))
     short_intro = db.Column(db.String(256))
     company_intro = db.Column(db.String(256))
+
+class GoogleOAuthToken(db.Model):
+    __tablename__ = 'google_oauth_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), db.ForeignKey('users.username'), nullable=False)
+    token = db.Column(db.Text, nullable=False)
+    refresh_token = db.Column(db.Text)
+    token_uri = db.Column(db.String(512))
+    client_id = db.Column(db.String(512))
+    client_secret = db.Column(db.String(512))
+    scopes = db.Column(db.Text)
 
 
 EMAIL_EXTRACTION_UNIT_COST = float(os.getenv('EMAIL_EXTRACTION_UNIT_COST', '0.20'))
@@ -4276,7 +4297,84 @@ def login():
         return jsonify({'message': 'Login successful', 'username': user.username, 'email': user.email}), 200
     else:
         return jsonify({'error': 'Invalid email or password'}), 401
+
+GOOGLE_CLIENT_CONFIG = {
+    "web": {
+        "client_id": GOOGLE_CLIENT_ID,
+        "project_id": "enable-agents",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uris": [GOOGLE_REDIRECT_URI]
+    }
+}
+
+SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/gmail.send"
+]
+
+@app.route('/auth/google/start', methods=['GET'])
+def google_auth_start():
+    # Use direct URL generation to avoid PKCE code_verifier state issues
+    params = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'redirect_uri': GOOGLE_REDIRECT_URI,
+        'response_type': 'code',
+        'scope': ' '.join(SCOPES),
+        'access_type': 'offline',
+        'prompt': 'consent',
+        'state': 'user_login_flow'
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return jsonify({"auth_url": auth_url, "state": "user_login_flow"})
+
+
+@app.route('/emails/send_via_gmail', methods=['POST'])
+def send_via_gmail():
+    data = request.get_json()
+    email = data.get('user_email')
+    to_email = data.get('to')
+    subject = data.get('subject')
+    body = data.get('body')
     
+    if not all([email, to_email, subject, body]):
+        return jsonify({'error': 'Missing required fields'}), 400
+    
+    token_record = GoogleOAuthToken.query.filter_by(username=email).first()
+    if not token_record:
+        return jsonify({'error': 'Google account not connected'}), 401
+        
+    creds = Credentials(
+        token=token_record.token,
+        refresh_token=token_record.refresh_token,
+        token_uri=token_record.token_uri,
+        client_id=token_record.client_id,
+        client_secret=token_record.client_secret,
+        scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
+    )
+    
+    try:
+        service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
+        message = EmailMessage()
+        message.set_content(body)
+        message['To'] = to_email
+        message['From'] = email
+        message['Subject'] = subject
+        
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        create_message = {
+            'raw': encoded_message
+        }
+        
+        send_message = (service.users().messages().send(userId="me", body=create_message).execute())
+        return jsonify({'message': 'Email sent successfully via Gmail API', 'id': send_message['id']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/file_to_json_convert', methods=['POST'])
 def convert_file():
@@ -5808,8 +5906,68 @@ def google_auth_callback():
                 'error': 'No authorization code received'
             }), 400
         
-        # Exchange code for refresh token
+        state = request.args.get('state')
+        
+        if state == 'user_login_flow':
+            # This is the login callback
+            token_data = {
+                'code': auth_code,
+                'client_id': GOOGLE_CLIENT_ID,
+                'client_secret': GOOGLE_CLIENT_SECRET,
+                'redirect_uri': GOOGLE_REDIRECT_URI,
+                'grant_type': 'authorization_code'
+            }
+            res = requests.post("https://oauth2.googleapis.com/token", data=token_data)
+            
+            if res.status_code != 200:
+                print("Google Token Exchange Error:", res.text)
+                return jsonify({'error': 'Failed to exchange token', 'details': res.json()}), 400
+                
+            token_response = res.json()
+            access_token = token_response.get('access_token')
+            refresh_token = token_response.get('refresh_token')
+            scopes_received = token_response.get('scope', '')
+            
+            session_req = requests.Session()
+            user_info = session_req.get('https://www.googleapis.com/oauth2/v1/userinfo', params={'access_token': access_token}).json()
+            email = user_info.get('email')
+            
+            if not email:
+                return jsonify({'error': 'Could not get email from Google'}), 400
+                
+            user = User.query.filter_by(email=email).first()
+            if not user:
+                user = User(
+                    username=email,
+                    email=email,
+                    first_name=user_info.get('given_name', ''),
+                    last_name=user_info.get('family_name', ''),
+                    password=generate_password_hash(str(uuid4()))
+                )
+                db.session.add(user)
+                db.session.commit()
+                
+            token_record = GoogleOAuthToken.query.filter_by(username=email).first()
+            if not token_record:
+                token_record = GoogleOAuthToken(username=email)
+                db.session.add(token_record)
+                
+            token_record.token = access_token
+            if refresh_token:
+                token_record.refresh_token = refresh_token
+            token_record.client_id = GOOGLE_CLIENT_ID
+            token_record.client_secret = GOOGLE_CLIENT_SECRET
+            token_record.token_uri = "https://oauth2.googleapis.com/token"
+            token_record.scopes = scopes_received
+            db.session.commit()
+            
+            # Redirecting to login page with params to automatically log in the user on the frontend
+            return redirect(f"http://localhost:3000/login?google_auth=success&email={email}")
+
+        # Exchange code for refresh token for Google Business
+
         client_id = os.getenv('GOOGLE_CLIENT_ID')
+
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         redirect_uri = os.getenv('GOOGLE_REDIRECT_URI')
         
@@ -6335,20 +6493,22 @@ def generate_email():
 @cross_origin()
 def send_bulk_emails():
     """
-    Send emails to a list of extracted businesses using SMTP credentials.
-    Expects JSON: { subject: str, body: str, businesses: list }
+    Send emails to a list of extracted businesses.
+    Uses user's Google OAuth credentials if available, otherwise falls back to system SMTP.
+    Expects JSON: { subject: str, body: str, businesses: list, userEmail: str }
     """
+    import smtplib
+    from email.message import EmailMessage
+    import traceback
+    
     try:
         data = request.get_json()
         subject = data.get('subject')
         body = data.get('body')
         businesses = data.get('businesses', [])
+        user_email = data.get('userEmail')
         campaign_name = data.get('campaignName', 'Untitled Campaign')
         username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
-
-        campaign_name = data.get('campaignName', 'Untitled Campaign')
-        username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
-
 
         use_ai_personalization = data.get('use_ai_personalization', False)
         if not use_ai_personalization and (not subject or not body):
@@ -6358,11 +6518,6 @@ def send_bulk_emails():
 
         if not valid_emails:
             return jsonify({'success': False, 'error': 'No valid emails found to send to'}), 400
-
-        email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-        email_port = int(os.getenv('EMAIL_PORT', 587))
-        email_user = os.getenv('EMAIL_USER')
-        email_pass = os.getenv('EMAIL_PASS')
 
         # Initialize DB Tables if needed
         _ensure_email_usage_tables()
@@ -6378,10 +6533,41 @@ def send_bulk_emails():
         )
         db.session.add(campaign)
         db.session.commit()
-
-        server = smtplib.SMTP(email_host, email_port)
-        server.starttls()
-        server.login(email_user, email_pass)
+        
+        # Check if user has Google credentials connected
+        token_record = None
+        if user_email:
+            token_record = GoogleOAuthToken.query.filter_by(username=user_email).first()
+        
+        service = None
+        server = None
+        
+        if token_record and token_record.token:
+            # Use Gmail API
+            from google.oauth2.credentials import Credentials
+            import googleapiclient.discovery
+            
+            creds = Credentials(
+                token=token_record.token,
+                refresh_token=token_record.refresh_token,
+                token_uri=token_record.token_uri,
+                client_id=token_record.client_id,
+                client_secret=token_record.client_secret,
+                scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
+            )
+            service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
+        else:
+            # Fallback to system SMTP
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', 587))
+            email_user = os.getenv('EMAIL_USER')
+            email_pass = os.getenv('EMAIL_PASS')
+            if not email_user or not email_pass:
+                return jsonify({'success': False, 'error': 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'}), 500
+                
+            server = smtplib.SMTP(email_host, email_port)
+            server.starttls()
+            server.login(email_user, email_pass)
 
         sent_count = 0
         for b in businesses:
@@ -6390,52 +6576,61 @@ def send_bulk_emails():
                 continue
 
             business_name = b.get('name', 'Business Owner')
-            actual_subject = subject or "Quick Idea"
-            custom_body = body or "Hi"
             
+            # Message personalization
+            current_body = body
             if use_ai_personalization:
                 try:
-                    ai_res = generate_email_content(b, username)
-                    actual_subject = ai_res.get('subject', actual_subject)
-                    custom_body = ai_res.get('body', custom_body)
-                except Exception as err:
-                    print(f"Failed AI generation for {recipient}: {err}")
-                    custom_body = custom_body.replace('{{Company}}', business_name)
+                    result = generate_email_content(b, username)
+                    current_subject = result.get('subject', subject or 'Exclusive Offer')
+                    current_body = result.get('body', current_body or '')
+                except Exception as e:
+                    print("Failed AI personalization for", business_name, e)
+                    current_subject = subject or 'Exclusive Offer'
             else:
-                custom_body = custom_body.replace('{{Company}}', business_name)
+                current_subject = subject.replace('{{name}}', business_name) if subject else subject
+                if current_body:
+                    current_body = current_body.replace('{{name}}', business_name)
 
-            msg = MIMEMultipart()
-            msg['From'] = username
-            msg['Reply-To'] = username
+            msg = EmailMessage()
+            msg.set_content(current_body)
+            msg['Subject'] = current_subject
             msg['To'] = recipient
-            msg['Subject'] = actual_subject
-            msg.attach(MIMEText(custom_body, 'plain'))
             
-            server.send_message(msg)
+            if service:
+                msg['From'] = user_email
+                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                create_message = {'raw': encoded_message}
+                service.users().messages().send(userId="me", body=create_message).execute()
+            else:
+                msg['From'] = email_user
+                server.send_message(msg)
+                
+            sent_count += 1
             
-            # Log Recipient
-            recipient_log = EmailCampaignRecipient(
+            # Record recipient for tracking
+            recipient_record = EmailCampaignRecipient(
                 campaign_id=campaign_id,
                 receiver_email=recipient,
                 receiver_name=business_name,
-                status='Sent',
+                status='SENT',
                 reply_status='No Reply'
             )
-            db.session.add(recipient_log)
-            sent_count += 1
-            
-            # Commit every 10 or at end
-            if sent_count % 10 == 0:
-                db.session.commit()
+            db.session.add(recipient_record)
 
         db.session.commit()
-        server.quit()
-        return jsonify({'success': True, 'sentCount': sent_count})
-
+        
+        if server:
+            server.quit()
+            
+        # Commit any leftover recipient records
+        db.session.commit()
+        
+        return jsonify({'success': True, 'count': sent_count, 'message': 'Emails successfully sent via user account!' if service else 'Emails sent via system account.'})
     except Exception as e:
-        print(f"[SMTP ERROR] {str(e)}")
+        db.session.rollback()
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/webhook/zapier/email-reply', methods=['POST'])
 @cross_origin()
@@ -6921,4 +7116,6 @@ def enrich_businesses_with_linkedin():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
