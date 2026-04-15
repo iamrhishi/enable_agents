@@ -12,6 +12,7 @@ agent-app/build/
 tools/.env
 tools/.venv
 tools/venv
+venv/
 
 # Data files (consolidated - no duplicates)
 data/
@@ -22,3 +23,12 @@ data/
 # Temporary files
 temp_files/
 uploads/
+.venv-win/
+
+
+instance/
+
+tools/instance/
+
+*.db
+
