@@ -369,16 +369,6 @@ function Header({ onProcessClick }) {
         <div className="header-icons">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <img
-              src="/assets/icons/dashboards.png"
-              alt="Campaigns"
-              className="icon"
-              style={{ cursor: 'pointer' }}
-              onClick={() => window.location.href='/campaign-dashboard'}
-            />
-            <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>campaigns</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <img
               src="/assets/icons/api.png"
               alt="Data"
               className="icon"
