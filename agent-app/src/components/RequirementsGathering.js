@@ -768,6 +768,8 @@ function RequirementsGathering() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId: localStorage.getItem("firstName") || "",
+          userEmail: localStorage.getItem("userEmail") || "",
           campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
           subject: emailSubject,
           body: emailBody,
