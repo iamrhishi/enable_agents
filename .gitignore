@@ -43,12 +43,27 @@ venv-win/
 ENV/
 env/
 
-# Database
-*.sqlite3
-*.db
+# Environment files
+tools/.env
+tools/.venv
+tools/venv
+venv/
+
+# Data files (consolidated - no duplicates)
+data/
+*.pkl
+*.faiss
+*.json
+
+# Temporary files
+temp_files/
+uploads/
+.venv-win/
+
+
 instance/
 
-# OS/IDE
-.DS_Store
-.vscode/
-.idea/
+tools/instance/
+
+*.db
+
