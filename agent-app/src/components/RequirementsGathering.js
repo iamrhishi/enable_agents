@@ -38,6 +38,20 @@ function RequirementsGathering() {
     } catch { return false; }
   });
 
+  // Email Modal State
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [campaignName, setCampaignName] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState({});
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [useAiBulk, setUseAiBulk] = useState(false);
+  const [existingCampaigns, setExistingCampaigns] = useState([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [isAddingNewCampaign, setIsAddingNewCampaign] = useState(false);
+  const [emailImages, setEmailImages] = useState([]);
+
   useEffect(() => {
     if (customerResearchResults !== null) {
       sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
@@ -53,6 +67,73 @@ function RequirementsGathering() {
   useEffect(() => {
     sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
   }, [minimizedCustomerResearch]);
+
+  // Fetch existing campaigns when email modal opens
+  useEffect(() => {
+    if (showEmailModal && !selectedLead) {
+      fetchExistingCampaigns();
+    }
+  }, [showEmailModal]);
+
+  const fetchExistingCampaigns = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:5000/get-campaigns', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.campaigns) {
+          setExistingCampaigns(data.campaigns);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+    }
+  };
+
+  const handleCampaignSelect = async (campaignId) => {
+    if (campaignId === 'new') {
+      setIsAddingNewCampaign(true);
+      setSelectedCampaignId('');
+      setCampaignName('');
+      setEmailSubject('');
+    } else {
+      setIsAddingNewCampaign(false);
+      const campaign = existingCampaigns.find(c => c.id === campaignId);
+      if (campaign) {
+        setSelectedCampaignId(campaignId);
+        setCampaignName(campaign.name);
+        setEmailSubject(campaign.subject || '');
+      }
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setEmailImages(prev => [...prev, {
+          name: file.name,
+          data: event.target?.result
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeEmailImage = (index) => {
+    setEmailImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const insertImageIntoBody = (index) => {
+    if (emailImages[index]) {
+      const imageMarkdown = `\n<img src="${emailImages[index].data}" alt="${emailImages[index].name}" style="max-width: 100%; height: auto; border-radius: 4px;" />\n`;
+      setEmailBody(prev => prev + imageMarkdown);
+    }
+  };
+
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [extractingEmailRows, setExtractingEmailRows] = useState({})
@@ -60,13 +141,6 @@ function RequirementsGathering() {
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [extractionUsage, setExtractionUsage] = useState(null);
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [campaignName, setCampaignName] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
-  const [isSendingEmails, setIsSendingEmails] = useState(false);
-  const [isGeneratingEmail, setIsGeneratingEmail] = useState({});
-  const [selectedLead, setSelectedLead] = useState(null); const [useAiBulk, setUseAiBulk] = useState(false);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
     clientSecret: '',
@@ -694,7 +768,6 @@ function RequirementsGathering() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: localStorage.getItem("firstName") || "",
           campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
           subject: emailSubject,
           body: emailBody,
@@ -727,14 +800,7 @@ function RequirementsGathering() {
         <div className="requirements-header-bar">
           <div className="header-bar-top">
             <div className="overview-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '8px', color: '#1E3A5F'}}>
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              <span>Requirement Overview</span>
+              <span>Market Research Agent</span>
             </div>
             <div className="integration-badge">
               <span className="dot"></span> 3RD PARTY INTEGRATION READY
@@ -745,7 +811,7 @@ function RequirementsGathering() {
               <label>PROJECT CONTEXT & DESCRIPTION</label>
               <input
                 type="text"
-                placeholder="Enter goals..."
+                placeholder="What is the product or service you need research on?"
                 value={overview}
                 onChange={(e) => setOverview(e.target.value)}
               />
@@ -774,8 +840,8 @@ function RequirementsGathering() {
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
               >
-                   <option value="" disabled hidden>Select Format...</option>
-                   <option value="Detailed PRD">Detailed PRD</option>
+                 <option value="">Select format...</option>
+                 <option value="Detailed PRD">Detailed PRD</option>
                  <option value="Customer Research">Customer Research</option>
                  <option value="Industry Use Cases">Industry Use Cases</option>
                  <option value="Product Requirements">Product Requirements</option>
@@ -799,7 +865,7 @@ function RequirementsGathering() {
                   <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}>
                     <span className="spinner"></span> Generating...
                   </span>
-                ) : 'Generate Requirements'}
+                ) : 'Get Research Insights'}
               </button>
             </div>
           </div>
@@ -863,15 +929,15 @@ function RequirementsGathering() {
                       <span className="badge-label">Results</span>
                       <span className="badge-value">{customerResearchResults.totalResults}</span>
                     </div>
-                    <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', background: '#eefcf5', border: '1px solid #c2ebd9', marginLeft: '4px' }}>
-                        <span className="badge-label" style={{ marginBottom: 0, color: '#555' }}>Extracted</span>
-                        <span className="badge-value" style={{ color: '#0f766e', fontWeight: 'bold' }}>
-                          {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
-                        </span>
-                    </div>
                   </div>
                   
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
+                        <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
+                        <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                          {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
+                        </span>
+                      </div>
                       <button 
                         className="get-emails-button compact"
                         onClick={handleGetEmails}
@@ -883,10 +949,39 @@ function RequirementsGathering() {
                             <span className="spinner" style={{ marginRight: '6px' }}></span>
                             Extracting...
                           </>
-                        ) : 'Get All Emails'}
+                        ) : 'Extract Emails'}
                       </button>
-                      <button className="restore-popup-button" onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }} style={{ margin: 0, padding: '8px 16px' }}>
-                        Maximize
+                      <button 
+                        className="action-icon-button"
+                        onClick={handleCopyToClipboard}
+                        title="Copy to Clipboard"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/copy.png" alt="Copy" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => setShowExportModal(true)}
+                        title="Export Data"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
+                        title="Send Emails"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/mail.png" alt="Send Emails" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
+                        title="Maximize"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/maximize.png" alt="Maximize" style={{ width: '20px', height: '20px' }} />
                       </button>
                   </div>
                 </div>
@@ -993,19 +1088,7 @@ function RequirementsGathering() {
             <p className="empty-message">Generate requirements to see results here...</p>
           )}
 
-          {customerResearchResults && (
-            <div className="research-actions-row">
-              <button className="copy-button compact" onClick={handleCopyToClipboard}>
-                Copy to Clipboard
-              </button>
-              <button className="export-button compact" onClick={() => setShowExportModal(true)}>
-                  Export Data
-                </button>
-                <button className="send-emails-button compact" onClick={() => { setSelectedLead(null); setShowEmailModal(true); }} style={{ backgroundColor: '#10B981', color: '#fff', border: 'none', marginLeft: '10px' }}>
-                  Send Emails
-                </button>
-                </div>
-          )}
+
                 </>
               )}
 </div>
@@ -1253,66 +1336,179 @@ function RequirementsGathering() {
 
         {showEmailModal && (
         <div className="popup-overlay">
-          <div className="popup-content email-modal" style={{ maxWidth: '600px', width: '90%' }}>
-            <h3>Draft Email Campaign</h3>
-            <div className="input-group" style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Campaign Name</label>
-              <input 
-                type="text" 
-                value={campaignName} 
-                onChange={(e) => setCampaignName(e.target.value)} 
-                placeholder="e.g., Tech Startups Dec 2026"
-                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
-              />
-            </div>
-            {!selectedLead && (
-              <div className="input-group" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input 
-                  type="checkbox" 
-                  checked={useAiBulk} 
-                  onChange={(e) => setUseAiBulk(e.target.checked)} 
-                  id="useAiBulkCheck"
-                />
-                <label htmlFor="useAiBulkCheck" style={{ fontWeight: 'bold', margin: 0, cursor: 'pointer' }}>
-                  Use AI Personalization for Bulk Emails
-                </label>
-              </div>
-            )}
-            <div className="input-group" style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Subject</label>
-              <input 
-                type="text" 
-                value={emailSubject} 
-                onChange={(e) => setEmailSubject(e.target.value)} 
-                placeholder="Email Subject"
-                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
-              />
-            </div>
-            <div className="input-group" style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Body</label>
-              <textarea 
-                value={emailBody} 
-                onChange={(e) => setEmailBody(e.target.value)} 
-                placeholder="Type your email body here...\n\nYou can use {{Company}} to automatically insert the business's name." 
-                rows={8}
-                style={{ width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit' }}
-              ></textarea>
-            </div>
-            <div className="modal-buttons" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '15px' }}>
+          <div className="popup-content email-modal-large">
+            <div className="email-modal-header">
+              <h3>Draft Email Campaign</h3>
               <button 
-                className="cancel-button" 
-                onClick={() => { setShowEmailModal(false); setSelectedLead(null); }}
-                style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+                className="modal-close-btn"
+                onClick={() => { 
+                  setShowEmailModal(false); 
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="email-modal-body">
+              {/* Campaign Name - Dropdown with Add New Option */}
+              {!selectedLead && (
+                <div className="input-group">
+                  <label>Campaign Name</label>
+                  {existingCampaigns.length > 0 && !isAddingNewCampaign ? (
+                    <div className="campaign-selector">
+                      <select 
+                        value={selectedCampaignId} 
+                        onChange={(e) => handleCampaignSelect(e.target.value)}
+                        className="campaign-dropdown"
+                      >
+                        <option value="">Select an existing campaign...</option>
+                        {existingCampaigns.map(campaign => (
+                          <option key={campaign.id} value={campaign.id}>
+                            {campaign.name}
+                          </option>
+                        ))}
+                        <option value="new">+ Add New Campaign</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <input 
+                        type="text" 
+                        value={campaignName} 
+                        onChange={(e) => setCampaignName(e.target.value)} 
+                        placeholder="e.g., Tech Startups Dec 2026"
+                        className="campaign-input"
+                      />
+                      {!isAddingNewCampaign && existingCampaigns.length > 0 && (
+                        <button 
+                          className="use-existing-btn"
+                          onClick={() => setIsAddingNewCampaign(false)}
+                        >
+                          Use Existing Campaign
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Personalization Checkbox - Properly Aligned */}
+              {!selectedLead && (
+                <div className="checkbox-group">
+                  <input 
+                    type="checkbox" 
+                    checked={useAiBulk} 
+                    onChange={(e) => setUseAiBulk(e.target.checked)} 
+                    id="useAiBulkCheck"
+                    className="checkbox-input"
+                  />
+                  <label htmlFor="useAiBulkCheck" className="checkbox-label">
+                    Use AI Personalization for Bulk Emails
+                  </label>
+                </div>
+              )}
+
+              {/* Subject Field */}
+              <div className="input-group">
+                <label>Subject Line</label>
+                <input 
+                  type="text" 
+                  value={emailSubject} 
+                  onChange={(e) => setEmailSubject(e.target.value)} 
+                  placeholder="Email Subject"
+                  className="subject-input"
+                />
+              </div>
+
+              {/* Email Body with Image Support */}
+              <div className="input-group">
+                <div className="body-label-row">
+                  <label>Email Body</label>
+                  <span className="body-helper-text">You can use {"{"}Company{"}"} for dynamic content</span>
+                </div>
+                <textarea 
+                  value={emailBody} 
+                  onChange={(e) => setEmailBody(e.target.value)} 
+                  placeholder="Type your email body here..." 
+                  rows={10}
+                  className="body-textarea"
+                ></textarea>
+
+                {/* Image Upload Section */}
+                <div className="image-upload-section">
+                  <label className="image-label">Add Images to Email</label>
+                  <div className="image-upload-controls">
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="image-file-input"
+                      id="emailImageInput"
+                    />
+                    <label htmlFor="emailImageInput" className="image-upload-button">
+                      Choose Images
+                    </label>
+                  </div>
+
+                  {emailImages.length > 0 && (
+                    <div className="image-gallery">
+                      <p className="gallery-title">Selected Images ({emailImages.length}):</p>
+                      <div className="image-list">
+                        {emailImages.map((img, index) => (
+                          <div key={index} className="image-item">
+                            <div className="image-preview">
+                              <img src={img.data} alt={img.name} />
+                            </div>
+                            <div className="image-actions">
+                              <button 
+                                type="button"
+                                className="image-insert-btn"
+                                onClick={() => insertImageIntoBody(index)}
+                                title="Insert into body"
+                              >
+                                Insert
+                              </button>
+                              <button 
+                                type="button"
+                                className="image-remove-btn"
+                                onClick={() => removeEmailImage(index)}
+                                title="Remove image"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer with Improved Buttons */}
+            <div className="email-modal-footer">
+              <button 
+                className="email-cancel-button" 
+                onClick={() => { 
+                  setShowEmailModal(false); 
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}
               >
                 Cancel
               </button>
               <button 
-                className="send-button" 
+                className="email-send-button" 
                 onClick={handleSendEmails} 
                 disabled={isSendingEmails}
-                style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: isSendingEmails ? 'not-allowed' : 'pointer', opacity: isSendingEmails ? 0.7 : 1 }}
               >
-                {isSendingEmails ? 'Sending...' : 'Send'}
+                {isSendingEmails ? 'Sending...' : 'Send Email'}
               </button>
             </div>
           </div>
