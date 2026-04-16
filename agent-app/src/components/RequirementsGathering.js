@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import Header from './Header';
 import '../styles/RequirementsGathering.css';
 
@@ -16,17 +19,137 @@ function RequirementsGathering() {
   const [showPromptsPopup, setShowPromptsPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [googleBusinessConnected, setGoogleBusinessConnected] = useState(false);
-  const [customerResearchResults, setCustomerResearchResults] = useState(null);
-  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(false);
-  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
+  const [customerResearchResults, setCustomerResearchResults] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('customerResearchResults');
+      return item ? JSON.parse(item) : null;
+    } catch { return null; }
+  });
+  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('showCustomerResearchTable');
+      return item ? JSON.parse(item) : false;
+    } catch { return false; }
+  });
+  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(() => {
+    try {
+      const item = sessionStorage.getItem('minimizedCustomerResearch');
+      return item ? JSON.parse(item) : false;
+    } catch { return false; }
+  });
+
+  // Email Modal State
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [campaignName, setCampaignName] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState({});
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [useAiBulk, setUseAiBulk] = useState(false);
+  const [existingCampaigns, setExistingCampaigns] = useState([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [isAddingNewCampaign, setIsAddingNewCampaign] = useState(false);
+  const [emailImages, setEmailImages] = useState([]);
+
+  useEffect(() => {
+    if (customerResearchResults !== null) {
+      sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
+    } else {
+      sessionStorage.removeItem('customerResearchResults');
+    }
+  }, [customerResearchResults]);
+
+  useEffect(() => {
+    sessionStorage.setItem('showCustomerResearchTable', JSON.stringify(showCustomerResearchTable));
+  }, [showCustomerResearchTable]);
+
+  useEffect(() => {
+    sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
+  }, [minimizedCustomerResearch]);
+
+  // Fetch existing campaigns when email modal opens
+  useEffect(() => {
+    if (showEmailModal && !selectedLead) {
+      fetchExistingCampaigns();
+    }
+  }, [showEmailModal]);
+
+  const fetchExistingCampaigns = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:5000/get-campaigns', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.campaigns) {
+          setExistingCampaigns(data.campaigns);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+    }
+  };
+
+  const handleCampaignSelect = async (campaignId) => {
+    if (campaignId === 'new') {
+      setIsAddingNewCampaign(true);
+      setSelectedCampaignId('');
+      setCampaignName('');
+      setEmailSubject('');
+    } else {
+      setIsAddingNewCampaign(false);
+      const campaign = existingCampaigns.find(c => c.id === campaignId);
+      if (campaign) {
+        setSelectedCampaignId(campaignId);
+        setCampaignName(campaign.name);
+        setEmailSubject(campaign.subject || '');
+      }
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setEmailImages(prev => [...prev, {
+          name: file.name,
+          data: event.target?.result
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeEmailImage = (index) => {
+    setEmailImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const insertImageIntoBody = (index) => {
+    if (emailImages[index]) {
+      const imageMarkdown = `\n<img src="${emailImages[index].data}" alt="${emailImages[index].name}" style="max-width: 100%; height: auto; border-radius: 4px;" />\n`;
+      setEmailBody(prev => prev + imageMarkdown);
+    }
+  };
+
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
+  const [extractingEmailRows, setExtractingEmailRows] = useState({})
+  const [extractingLinkedInRows, setExtractingLinkedInRows] = useState({});
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [extractionUsage, setExtractionUsage] = useState(null);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
     clientSecret: '',
     redirectUri: ''
   });
+
+  const getCurrentUsername = () => {
+    return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
+  };
 
   // Check if user just returned from Google OAuth authorization
   useEffect(() => {
@@ -62,6 +185,21 @@ function RequirementsGathering() {
     };
     
     fetchCredentials();
+
+    const fetchEmailUsage = async () => {
+      try {
+        const username = getCurrentUsername();
+        const response = await fetch(`http://127.0.0.1:5000/email-extraction-usage?username=${encodeURIComponent(username)}`);
+        const data = await response.json();
+        if (response.ok && data.success && data.usageSummary) {
+          setExtractionUsage(data.usageSummary);
+        }
+      } catch (error) {
+        console.error('Error fetching email extraction usage:', error);
+      }
+    };
+
+    fetchEmailUsage();
   }, []);
 
   const handleFileUpload = (e) => {
@@ -78,11 +216,8 @@ function RequirementsGathering() {
     try {
       // Check if Customer Research format is selected
       if (responseFormat === 'Customer Research') {
-        // Check if Google Business is connected
-        if (!googleBusinessConnected) {
-          alert('Google Business Account is not connected. Please connect first to perform customer research.');
-          return;
-        }
+        // Allow customer research even when OAuth is not connected.
+        // Backend can run this flow via Google Places API key.
 
         // Validate required inputs for customer research
         if (!overview || !industries || !countries) {
@@ -101,7 +236,7 @@ function RequirementsGathering() {
           body: JSON.stringify({
             query: overview, // Use overview as the search query
             location: countries, // Use countries as location
-            limit: 15 // Get 15 matching businesses
+            page_size: 200 // Get 200 matching businesses
           }),
         });
 
@@ -170,36 +305,9 @@ function RequirementsGathering() {
     }
   };
 
-  const handleSavePrompt = async () => {
-    try {
-      const payload = {
-        overview,
-        context,
-        countries,
-        industries,
-        businessFunctions,
-        analysisFrameworks,
-        responseFormat,
-      };
+  
 
-      const response = await fetch('http://127.0.0.1:5000/save-prompt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to save prompt');
-      }
-
-      alert('Prompt saved successfully!');
-    } catch (error) {
-      console.error('Error saving prompt:', error);
-      alert('Failed to save prompt.');
-    }
-  };
 
   const handleFetchPreviousPrompts = async () => {
     try {
@@ -234,7 +342,8 @@ function RequirementsGathering() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          businesses: customerResearchResults.businesses
+          businesses: customerResearchResults.businesses,
+          username: getCurrentUsername()
         }),
       });
 
@@ -244,6 +353,9 @@ function RequirementsGathering() {
       }
 
       const enrichedData = await response.json();
+      if (enrichedData.usageSummary) {
+        setExtractionUsage(enrichedData.usageSummary);
+      }
 
       if (enrichedData.success && enrichedData.businesses) {
         // Update the customer research results with enriched businesses
@@ -251,7 +363,10 @@ function RequirementsGathering() {
           ...customerResearchResults,
           businesses: enrichedData.businesses
         });
-        alert(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!`);
+        const usageLine = enrichedData.usageSummary
+          ? `\nUsed: ${enrichedData.usageSummary.usedCount}/${enrichedData.usageSummary.totalAllowed} | Remaining: ${enrichedData.usageSummary.remainingCount}`
+          : '';
+        alert(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`);
       } else {
         alert('Failed to enrich businesses with emails');
       }
@@ -260,6 +375,100 @@ function RequirementsGathering() {
       alert(`Error: ${error.message}`);
     } finally {
       setIsLoadingEmails(false);
+    }
+  };
+
+  const handleExtractLinkedInForBusiness = async (business, index) => {
+    if (!business) return;
+    setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      // Mock logic or call to a simple backend
+      // Normally we'd call an API here that returns the linkedIn URL
+      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-linkedin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businesses: [business], username: getCurrentUsername() }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch LinkedIn data');
+
+      const data = await response.json();
+      if (data.success && data.data && data.data.businesses && data.data.businesses.length > 0) {
+        const enrichedBusiness = data.data.businesses[0];
+        setCustomerResearchResults(prev => {
+          if (!prev) return prev;
+          const updatedBusinesses = [...prev.businesses];
+          updatedBusinesses[index] = { ...updatedBusinesses[index], linkedin: enrichedBusiness.linkedin };
+          return { ...prev, businesses: updatedBusinesses };
+        });
+      } else {
+        alert(data.error || 'No LinkedIn profile found.');
+      }
+    } catch (error) {
+      console.error('LinkedIn extraction error:', error);
+      alert('Error extracting LinkedIn. Check console.');
+    } finally {
+      setExtractingLinkedInRows((prev) => ({ ...prev, [index]: false }));
+    }
+  };
+
+  const handleExtractEmailForBusiness = async (business, index) => {
+    if (!business || !business.website) {
+      alert('Website not available for this business.');
+      return;
+    }
+
+    setExtractingEmailRows((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          businesses: [business],
+          username: getCurrentUsername()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to extract email for this business');
+      }
+
+      const enrichedData = await response.json();
+      if (enrichedData.usageSummary) {
+        setExtractionUsage(enrichedData.usageSummary);
+      }
+      const enrichedBusiness = enrichedData?.businesses?.[0];
+
+      if (!enrichedBusiness) {
+        throw new Error('No enriched business data returned');
+      }
+
+      setCustomerResearchResults((prev) => {
+        if (!prev || !prev.businesses) {
+          return prev;
+        }
+
+        const updatedBusinesses = [...prev.businesses];
+        updatedBusinesses[index] = {
+          ...updatedBusinesses[index],
+          email: enrichedBusiness.email || 'N/A'
+        };
+
+        return {
+          ...prev,
+          businesses: updatedBusinesses
+        };
+      });
+    } catch (error) {
+      console.error('Error extracting email for business:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setExtractingEmailRows((prev) => ({ ...prev, [index]: false }));
     }
   };
 
@@ -298,6 +507,141 @@ function RequirementsGathering() {
     } catch (error) {
       console.error('Error copying to clipboard:', error);
       alert('Failed to copy data to clipboard');
+    }
+  };
+
+  const getCustomerResearchRows = () => {
+    if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
+      return [];
+    }
+
+    return customerResearchResults.businesses.map((business) => ({
+      businessName: business.name || 'N/A',
+      address: business.address || 'N/A',
+      phone: business.phone || 'N/A',
+      website: business.website || 'N/A',
+      email: business.email || 'N/A',
+      matchAccuracy: business.matchAccuracy || 'N/A',
+      primary: business.isPrimary ? 'Yes' : 'No'
+    }));
+  };
+
+  const downloadTextFile = (filename, content, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const escapeCsvValue = (value) => {
+    const safeValue = String(value ?? '');
+    if (safeValue.includes('"') || safeValue.includes(',') || safeValue.includes('\n')) {
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    }
+    return safeValue;
+  };
+
+  const buildCsvContent = (rows) => {
+    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+    const csvRows = rows.map((row) => [
+      row.businessName,
+      row.address,
+      row.phone,
+      row.website,
+      row.email,
+      row.matchAccuracy,
+      row.primary
+    ].map(escapeCsvValue).join(','));
+
+    return [headers.join(','), ...csvRows].join('\n');
+  };
+
+  const handleExport = async (format) => {
+    const rows = getCustomerResearchRows();
+    if (rows.length === 0) {
+      alert('No data available to export.');
+      return;
+    }
+
+    const fileBaseName = `market_research_${new Date().toISOString().slice(0, 10)}`;
+    const csvContent = buildCsvContent(rows);
+
+    try {
+      if (format === 'excel') {
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Market Research');
+        XLSX.writeFile(workbook, `${fileBaseName}.xlsx`);
+      }
+
+      if (format === 'csv') {
+        downloadTextFile(`${fileBaseName}.csv`, csvContent, 'text/csv;charset=utf-8;');
+      }
+
+      if (format === 'json') {
+        downloadTextFile(`${fileBaseName}.json`, JSON.stringify(rows, null, 2), 'application/json;charset=utf-8;');
+      }
+
+      if (format === 'pdf') {
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+        doc.setFontSize(12);
+        doc.text('Market Research Export', 40, 36);
+
+        autoTable(doc, {
+          startY: 50,
+          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary']],
+          body: rows.map((row) => [
+            row.businessName,
+            row.address,
+            row.phone,
+            row.website,
+            row.email,
+            row.matchAccuracy,
+            row.primary
+          ]),
+          styles: { fontSize: 8, cellPadding: 4 },
+          headStyles: { fillColor: [30, 58, 95] }
+        });
+
+        doc.save(`${fileBaseName}.pdf`);
+      }
+
+      if (format === 'sheets') {
+        const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+        const matrixRows = rows.map((row) => [
+          row.businessName,
+          row.address,
+          row.phone,
+          row.website,
+          row.email,
+          row.matchAccuracy,
+          row.primary
+        ]);
+
+        const toSheetsSafeValue = (value) => {
+          const strValue = String(value ?? '');
+          return /^[=+\-@]/.test(strValue) ? `'${strValue}` : strValue;
+        };
+
+        const tsvContent = [
+          headers.join('\t'),
+          ...matrixRows.map((row) => row.map(toSheetsSafeValue).join('\t'))
+        ].join('\n');
+
+        await navigator.clipboard.writeText(tsvContent);
+        window.open('https://docs.google.com/spreadsheets/create', '_blank', 'noopener,noreferrer');
+        alert('Google Sheets opened. Data is copied to clipboard, paste with Ctrl+V.');
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setShowExportModal(false);
     }
   };
 
@@ -369,144 +713,200 @@ function RequirementsGathering() {
       }
     } catch (error) {
       console.error('Error fetching Google Business data:', error);
-      return null;
+        return null;
+      }
+    };
+
+    const handleGeneratePersonalizedEmail = async (business, index) => {
+    setIsGeneratingEmail(prev => ({ ...prev, [index]: true }));
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/generate-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business: business,
+          sender_name: getCurrentUsername()
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.subject && data.body) {
+        setEmailSubject(data.subject);
+        setEmailBody(data.body);
+        setCampaignName('Personalized: ' + (business.name || 'Company'));
+        setSelectedLead(business);
+        setShowEmailModal(true);
+      } else {
+        alert('Failed to generate personalized email.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error generating email.');
+    } finally {
+      setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
+    }
+  }; const handleSendEmails = async () => {
+    if (!useAiBulk && (!emailSubject || !emailBody)) {
+      alert("Subject and Body required unless using AI Personalization");
+      return;
+    }
+    
+    let validEmails = [];
+    if (selectedLead) {
+      validEmails = [selectedLead];
+    } else {
+      validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+    }
+    
+    if (validEmails.length === 0) {
+      alert("No valid emails found to send to");
+      return;
+    }
+
+    setIsSendingEmails(true);
+    try {
+      const response = await fetch('http://127.0.0.1:5000/send-bulk-emails', {  
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
+          subject: emailSubject,
+          body: emailBody,
+          businesses: validEmails,
+          use_ai_personalization: useAiBulk
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        alert('Successfully sent ' + validEmails.length + ' emails!');
+        setShowEmailModal(false);
+        setEmailSubject('');
+        setEmailBody('');
+        setSelectedLead(null);
+      } else {
+        alert('Error : ' + data.error);
+      }
+    } catch (e) {
+      alert('Error sending emails: ' + e.message);
+    } finally {
+      setIsSendingEmails(false);
     }
   };
 
-  return (
+    return (
     <div className="requirements-page">
       <Header />
       <div className="requirements-container">
-        <div className="user-input">
-          <h2>User Input</h2>
-          <div className="input-group">
-            <label>Requirement Overview</label>
-            <textarea
-              placeholder="Your business requirements: Product, Solution, Service, Business Idea/Name "
-              value={overview}
-              onChange={(e) => setOverview(e.target.value)}
-              rows="3"
-            />
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-third">
-              <label>Response Format</label>
-              <select
-                value={responseFormat}
-                onChange={(e) => setResponseFormat(e.target.value)}
-              >
-                <option value="">Select a format</option>
-                <option value="Customer Research">Customer Research</option>
-                <option value="Industry Use Cases">Industry Use Cases</option>
-                <option value="Product Requirements">Product Requirements</option>
-                <option value="Competitive Research">Competitive Research</option>
-              </select>
+        
+        <div className="requirements-header-bar">
+          <div className="header-bar-top">
+            <div className="overview-title">
+              <span>Market Research Agent</span>
             </div>
-            <div className="input-group input-col-third">
-              <label>Reference File</label>
-              <div className="file-upload-wrapper">
-                <input 
-                  type="file" 
-                  id="file-input"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-                <button 
-                  className="upload-button"
-                  onClick={() => document.getElementById('file-input').click()}
-                >
-                  {uploadedFile ? `✓ ${uploadedFile.name}` : 'Upload'}
-                </button>
-              </div>
-            </div>
-            <div className="input-group input-col-third">
-              <label>3rd Party Integration</label>
-              <button 
-                className={`google-business-button ${googleBusinessConnected ? 'connected' : ''}`}
-                onClick={() => setShowIntegrationModal(true)}
-              >
-                {googleBusinessConnected ? (
-                  <>
-                    <span className="button-text-normal">Connected</span>
-                    <span className="button-text-hover">Reconnect</span>
-                  </>
-                ) : 'Connect Google Business'}
-              </button>
+            <div className="integration-badge">
+              <span className="dot"></span> 3RD PARTY INTEGRATION READY
             </div>
           </div>
-
-          <div className="input-group">
-            <label>Context</label>
-            <textarea
-              placeholder="Provide additional context for your requirements."
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              rows="3"
-            />
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-half">
-              <label>Region / Country of Interest</label>
+          <div className="header-bar-inputs">
+            <div className="input-block flex-grow">
+              <label>PROJECT CONTEXT & DESCRIPTION</label>
               <input
                 type="text"
-                placeholder="Country or Region of interest"
-                value={countries}
-                onChange={(e) => setCountries(e.target.value)}
+                placeholder="What is the product or service you need research on?"
+                value={overview}
+                onChange={(e) => setOverview(e.target.value)}
               />
             </div>
-            <div className="input-group input-col-half">
-              <label>Industry</label>
+            <div className="input-block">
+              <label>INDUSTRY</label>
               <input
                 type="text"
-                placeholder="Enter Relevant industry"
+                placeholder="e.g. Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
               />
             </div>
-          </div>
-
-          <div className="input-row">
-            <div className="input-group input-col-half">
-              <label>Business Function</label>
+            <div className="input-block">
+              <label>REGION</label>
               <input
                 type="text"
-                placeholder="Marketing, Sales, Finance, etc."
-                value={businessFunctions}
-                onChange={(e) => setBusinessFunctions(e.target.value)}
+                placeholder="e.g. North Ame"
+                value={countries}
+                onChange={(e) => setCountries(e.target.value)}
               />
             </div>
-            <div className="input-group input-col-half">
-              <label>Analysis Frameworks</label>
+            <div className="input-block">
+              <label>FORMAT</label>
               <select
-                value={analysisFrameworks}
-                onChange={handleGenerateAnalysisFrameworks}
+                value={responseFormat}
+                onChange={(e) => setResponseFormat(e.target.value)}
               >
-                <option value="">Select a framework</option>
-                <option value="PESTLE">PESTLE</option>
-                <option value="VRIO">VRIO</option>
-                <option value="3-Horizon">3-Horizon</option>
-                <option value="5 Forces">5 Forces</option>
+                 <option value="">Select format...</option>
+                 <option value="Detailed PRD">Detailed PRD</option>
+                 <option value="Customer Research">Customer Research</option>
+                 <option value="Industry Use Cases">Industry Use Cases</option>
+                 <option value="Product Requirements">Product Requirements</option>
+                 <option value="Competitive Research">Competitive Research</option>
               </select>
             </div>
-          </div>
-
-          <div className="button-group">
-            <button className="generate-button large-action-btn" onClick={handleGenerate}>
-              Generate Requirements
-            </button>
-            <button className="save-button large-action-btn" onClick={handleSavePrompt}>
-              Save Prompt
-            </button>
-            <button className="previous-prompts-button large-action-btn" onClick={handleFetchPreviousPrompts}>
-              Previous Prompts
-            </button>
+            <div className="input-block button-block">
+              <input type="file" id="file-input" onChange={handleFileUpload} style={{ display: 'none' }} />
+              <button className="upload-btn" onClick={() => document.getElementById('file-input').click()}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px'}}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                {uploadedFile ? uploadedFile.name : 'Upload Ref'}
+              </button>
+            </div>
+            <div className="input-block button-block">
+              <button className="generate-req-btn" onClick={handleGenerate} disabled={isLoadingResearch}>
+                {isLoadingResearch ? (
+                  <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}>
+                    <span className="spinner"></span> Generating...
+                  </span>
+                ) : 'Get Research Insights'}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="ai-assisted">
-          <h2>AI-Assisted Requirements</h2>
+        <div className="main-workspace-area">
+
+          <div className="tabs-container">
+            <button className="workspace-tab active-tab">Leads</button>
+            <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
+          </div>
+
+          <div className="workspace-content-box">
+            <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
+              {isLoadingResearch ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
+                    <div className="loader" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #ff725e', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
+                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing leads... please wait...</p>
+                    <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+                  </div>
+              ) : (!aiRequirements && !customerResearchResults) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px' }}>
+                  <div style={{ background: '#EAE1D9', borderRadius: '12px', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8E9BAb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                    </svg>
+                  </div>
+                  <h2 style={{ color: '#0D2644', fontSize: '1.5rem', marginBottom: '12px' }}>Awaiting Configuration</h2>
+                  <p style={{ color: '#6C7F99', textAlign: 'center', maxWidth: '400px', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '16px' }}>
+                    Refine the requirements in the bar above to generate structured architectural specifications. Our AI will analyze your context, industry, and region to produce a precise specification.
+                  </p>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>READY TO ANALYZE</div>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>SECURE END-TO-END</div>
+                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>ENTERPRISE LLM</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+
+
 
           {/* Show Customer Research Results */}
           {customerResearchResults && (
@@ -530,9 +930,60 @@ function RequirementsGathering() {
                       <span className="badge-value">{customerResearchResults.totalResults}</span>
                     </div>
                   </div>
-                  <button className="restore-popup-button" style={{marginLeft: 'auto'}} onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}>
-                    Maximize
-                  </button>
+                  
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
+                        <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
+                        <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                          {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
+                        </span>
+                      </div>
+                      <button 
+                        className="get-emails-button compact"
+                        onClick={handleGetEmails}
+                        disabled={isLoadingEmails}
+                        style={{ margin: 0, padding: '8px 16px' }}
+                      >
+                        {isLoadingEmails ? (
+                          <>
+                            <span className="spinner" style={{ marginRight: '6px' }}></span>
+                            Extracting...
+                          </>
+                        ) : 'Extract Emails'}
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={handleCopyToClipboard}
+                        title="Copy to Clipboard"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/copy.png" alt="Copy" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => setShowExportModal(true)}
+                        title="Export Data"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
+                        title="Send Emails"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/mail.png" alt="Send Emails" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
+                        title="Maximize"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/maximize.png" alt="Maximize" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                  </div>
                 </div>
                 <div className="minimized-content-scroll">
                   {customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
@@ -545,6 +996,7 @@ function RequirementsGathering() {
                             <th>Phone</th>
                             <th>Website</th>
                             <th>Email</th>
+                            <th>LinkedIn</th>
                             <th>Match Accuracy</th>
                             <th>Primary</th>
                           </tr>
@@ -564,7 +1016,48 @@ function RequirementsGathering() {
                                   'N/A'
                                 )}
                               </td>
-                              <td>{business.email || 'N/A'}</td>
+                              <td>
+                                {business.email && business.email !== 'N/A' ? ( 
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <span>{business.email}</span>
+                                    <button
+                                      onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                      disabled={!!isGeneratingEmail[index]}
+                                      style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                    >
+                                      {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="extract-email-button"
+                                    onClick={() => handleExtractEmailForBusiness(business, index)}
+                                    disabled={!!extractingEmailRows[index]}     
+                                  >
+                                    {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                                  </button>
+                                )}
+                              </td>
+                              <td>
+                                {business.linkedin ? (
+                                  business.linkedin !== 'N/A' ? (
+                                    <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                      View Profile
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                  )
+                                ) : (
+                                  <button
+                                    className="extract-email-button"
+                                    style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                    onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                    disabled={!!extractingLinkedInRows[index]}
+                                  >
+                                    {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
+                                  </button>
+                                )}
+                              </td>
                               <td>{business.matchAccuracy || 'N/A'}</td>
                               <td>{business.isPrimary ? 'Yes' : 'No'}</td>
                             </tr>
@@ -595,12 +1088,10 @@ function RequirementsGathering() {
             <p className="empty-message">Generate requirements to see results here...</p>
           )}
 
-          {customerResearchResults && (
-            <button className="copy-button" onClick={handleCopyToClipboard}>
-              Copy to Clipboard
-            </button>
-          )}
-        </div>
+
+                </>
+              )}
+</div>
       </div>
 
       {/* Google Business Integration Modal */}
@@ -675,9 +1166,16 @@ function RequirementsGathering() {
       {/* Customer Research Results Table */}
 
       {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-        <div className="popup-overlay">
-          <div className="popup-content customer-research-table">
-            <div className="research-summary-row">
+          <div className="popup-overlay">
+            <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
+              <button 
+                onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
+                style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
+                title="Minimize Table"
+              >
+                &times;
+              </button>
+              <div className="research-summary-row">
               <span><strong>Search:</strong> {customerResearchResults.query}</span>
               <span><strong>Location:</strong> {customerResearchResults.location}</span>
               <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
@@ -696,31 +1194,73 @@ function RequirementsGathering() {
                       <th>Phone</th>
                       <th>Website</th>
                       <th>Email</th>
+                      <th>LinkedIn</th>
                       <th>Match Accuracy</th>
                       <th>Primary</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {customerResearchResults.businesses.map((business, index) => (
-                      <tr key={index}>
-                        <td>{business.name || 'N/A'}</td>
-                        <td>{business.address || 'N/A'}</td>
-                        <td>{business.phone || 'N/A'}</td>
-                        <td>
-                          {business.website ? (
-                            <a href={business.website} target="_blank" rel="noopener noreferrer">
-                              Visit
-                            </a>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td>{business.email || 'N/A'}</td>
-                        <td>{business.matchAccuracy || 'N/A'}</td>
-                        <td>{business.isPrimary ? 'Yes' : 'No'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
+                      {customerResearchResults.businesses.map((business, index) => (
+                        <tr key={index}>
+                          <td>{business.name || 'N/A'}</td>
+                          <td>{business.address || 'N/A'}</td>
+                          <td>{business.phone || 'N/A'}</td>
+                          <td>
+                            {business.website ? (
+                              <a href={business.website} target="_blank" rel="noopener noreferrer">
+                                Visit
+                              </a>
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
+                          <td>
+                            {business.email && business.email !== 'N/A' ? ( 
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <span>{business.email}</span>
+                                <button
+                                  onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                  disabled={!!isGeneratingEmail[index]}
+                                  style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                >
+                                  {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="extract-email-button"
+                                onClick={() => handleExtractEmailForBusiness(business, index)}
+                                disabled={!!extractingEmailRows[index]}
+                              >
+                                {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                              </button>
+                            )}
+                          </td>
+                          <td>
+                            {business.linkedin ? (
+                              business.linkedin !== 'N/A' ? (
+                                <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                  View Profile
+                                </a>
+                              ) : (
+                                <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                              )
+                            ) : (
+                              <button
+                                className="extract-email-button"
+                                style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                disabled={!!extractingLinkedInRows[index]}
+                              >
+                                {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
+                              </button>
+                            )}
+                          </td>
+                          <td>{business.matchAccuracy || 'N/A'}</td>
+                          <td>{business.isPrimary ? 'Yes' : 'No'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
                 </table>
               </div>
             ) : (
@@ -728,18 +1268,6 @@ function RequirementsGathering() {
             )}
 
             <div className="modal-buttons">
-              <button 
-                className="get-emails-button" 
-                onClick={handleGetEmails}
-                disabled={isLoadingEmails}
-              >
-                {isLoadingEmails ? (
-                  <>
-                    <span className="spinner"></span>
-                    Extracting Emails...
-                  </>
-                ) : 'Get Emails'}
-              </button>
               <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
                 Minimize
               </button>
@@ -781,8 +1309,216 @@ function RequirementsGathering() {
         </div>
       )}
 
+      {showExportModal && (
+        <div className="popup-overlay">
+          <div className="popup-content export-options-modal">
+            <h3>Export Market Research</h3>
+            <div className="export-options-grid">
+              <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
+              <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
+              <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
+              <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
+              <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
+            </div>
+            <div className="modal-buttons">
+              <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-    </div>
+
+      
+
+      
+
+        {showEmailModal && (
+        <div className="popup-overlay">
+          <div className="popup-content email-modal-large">
+            <div className="email-modal-header">
+              <h3>Draft Email Campaign</h3>
+              <button 
+                className="modal-close-btn"
+                onClick={() => { 
+                  setShowEmailModal(false); 
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="email-modal-body">
+              {/* Campaign Name - Dropdown with Add New Option */}
+              {!selectedLead && (
+                <div className="input-group">
+                  <label>Campaign Name</label>
+                  {existingCampaigns.length > 0 && !isAddingNewCampaign ? (
+                    <div className="campaign-selector">
+                      <select 
+                        value={selectedCampaignId} 
+                        onChange={(e) => handleCampaignSelect(e.target.value)}
+                        className="campaign-dropdown"
+                      >
+                        <option value="">Select an existing campaign...</option>
+                        {existingCampaigns.map(campaign => (
+                          <option key={campaign.id} value={campaign.id}>
+                            {campaign.name}
+                          </option>
+                        ))}
+                        <option value="new">+ Add New Campaign</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <input 
+                        type="text" 
+                        value={campaignName} 
+                        onChange={(e) => setCampaignName(e.target.value)} 
+                        placeholder="e.g., Tech Startups Dec 2026"
+                        className="campaign-input"
+                      />
+                      {!isAddingNewCampaign && existingCampaigns.length > 0 && (
+                        <button 
+                          className="use-existing-btn"
+                          onClick={() => setIsAddingNewCampaign(false)}
+                        >
+                          Use Existing Campaign
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Personalization Checkbox - Properly Aligned */}
+              {!selectedLead && (
+                <div className="checkbox-group">
+                  <input 
+                    type="checkbox" 
+                    checked={useAiBulk} 
+                    onChange={(e) => setUseAiBulk(e.target.checked)} 
+                    id="useAiBulkCheck"
+                    className="checkbox-input"
+                  />
+                  <label htmlFor="useAiBulkCheck" className="checkbox-label">
+                    Use AI Personalization for Bulk Emails
+                  </label>
+                </div>
+              )}
+
+              {/* Subject Field */}
+              <div className="input-group">
+                <label>Subject Line</label>
+                <input 
+                  type="text" 
+                  value={emailSubject} 
+                  onChange={(e) => setEmailSubject(e.target.value)} 
+                  placeholder="Email Subject"
+                  className="subject-input"
+                />
+              </div>
+
+              {/* Email Body with Image Support */}
+              <div className="input-group">
+                <div className="body-label-row">
+                  <label>Email Body</label>
+                  <span className="body-helper-text">You can use {"{"}Company{"}"} for dynamic content</span>
+                </div>
+                <textarea 
+                  value={emailBody} 
+                  onChange={(e) => setEmailBody(e.target.value)} 
+                  placeholder="Type your email body here..." 
+                  rows={10}
+                  className="body-textarea"
+                ></textarea>
+
+                {/* Image Upload Section */}
+                <div className="image-upload-section">
+                  <label className="image-label">Add Images to Email</label>
+                  <div className="image-upload-controls">
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="image-file-input"
+                      id="emailImageInput"
+                    />
+                    <label htmlFor="emailImageInput" className="image-upload-button">
+                      Choose Images
+                    </label>
+                  </div>
+
+                  {emailImages.length > 0 && (
+                    <div className="image-gallery">
+                      <p className="gallery-title">Selected Images ({emailImages.length}):</p>
+                      <div className="image-list">
+                        {emailImages.map((img, index) => (
+                          <div key={index} className="image-item">
+                            <div className="image-preview">
+                              <img src={img.data} alt={img.name} />
+                            </div>
+                            <div className="image-actions">
+                              <button 
+                                type="button"
+                                className="image-insert-btn"
+                                onClick={() => insertImageIntoBody(index)}
+                                title="Insert into body"
+                              >
+                                Insert
+                              </button>
+                              <button 
+                                type="button"
+                                className="image-remove-btn"
+                                onClick={() => removeEmailImage(index)}
+                                title="Remove image"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer with Improved Buttons */}
+            <div className="email-modal-footer">
+              <button 
+                className="email-cancel-button" 
+                onClick={() => { 
+                  setShowEmailModal(false); 
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="email-send-button" 
+                onClick={handleSendEmails} 
+                disabled={isSendingEmails}
+              >
+                {isSendingEmails ? 'Sending...' : 'Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+          </div>
+          
+        </div>
+      </div>
   );
 }
 
