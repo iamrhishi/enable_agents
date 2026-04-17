@@ -1,4 +1,4 @@
-from flask import Flask,request, jsonify, redirect
+﻿from flask import Flask,request, jsonify, redirect
 import requests
 import sqlite3
 import shutil
@@ -307,6 +307,34 @@ class EmailCampaignRecipient(db.Model):
     sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     replied_at = db.Column(db.DateTime, nullable=True)
 
+class SavedProject(db.Model):
+    __tablename__ = 'saved_projects'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(120), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    query_used = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+class SavedLead(db.Model):
+    __tablename__ = 'saved_leads'
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('saved_projects.id', ondelete='CASCADE'), nullable=False)
+    
+    name = db.Column(db.String(255))
+    website = db.Column(db.String(512))
+    phone = db.Column(db.String(100))
+    address = db.Column(db.String(512))
+    
+    emails = db.Column(db.Text) 
+    linkedin_links = db.Column(db.Text)
+    social_links = db.Column(db.Text)
+    
+    has_extracted = db.Column(db.Boolean, default=False)
+    
+    raw_data = db.Column(db.Text) 
+    
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
 
 
 def _ensure_email_usage_tables():
@@ -385,7 +413,7 @@ class State(TypedDict):
     answer: str
 
 
-# ============= CONTENT MARKETING AGENT CLASSES & HELPERS =============
+# ====== CONTENT MARKETING AGENT CLASSES & HELPERS ======
 
 class DomainSpecializationAnalyzer:
     """Analyzes documents to extract domain specialization information"""
@@ -1451,11 +1479,11 @@ def parse_simple_query_enhanced(user_query):
         system_prompt = """You are a search query parser that extracts search criteria accurately from user queries. Extract search criteria accurately from user queries. Include information that is explicitly mentioned but also matching terms that are close to what is mentioned. They could be singular or plural forms, sub-strings or variations, etc.
 
 SPECIAL COMMANDS TO DETECT:
-- "show all companies" / "list companies" / "all companies" → show_all_companies
-- "show all titles" / "list titles" / "all titles" / "job titles" → show_all_titles  
-- "show all locations" / "list locations" / "all locations" → show_all_locations
-- "show all skills" / "list skills" / "all skills" → show_all_skills
-- "show favorites" / "my favorites" / "show saved" / "saved profiles" → show_favorites
+- "show all companies" / "list companies" / "all companies" â†’ show_all_companies
+- "show all titles" / "list titles" / "all titles" / "job titles" â†’ show_all_titles  
+- "show all locations" / "list locations" / "all locations" â†’ show_all_locations
+- "show all skills" / "list skills" / "all skills" â†’ show_all_skills
+- "show favorites" / "my favorites" / "show saved" / "saved profiles" â†’ show_favorites
 
 Extract both specific search terms AND any special commands detected. If the query contains both search terms and special commands, include both in the response."""
 
@@ -2406,16 +2434,16 @@ def find_interactive_elements(driver):
             'a:contains("Product Measurements")', 'button:contains("Product Measurements")',
             
             # German selectors
-            'a:contains("Größentabelle")', 'button:contains("Größentabelle")',
-            'a:contains("Größenführung")', 'button:contains("Größenführung")',
-            'a:contains("Maße")', 'button:contains("Maße")',
+            'a:contains("GrÃ¶ÃŸentabelle")', 'button:contains("GrÃ¶ÃŸentabelle")',
+            'a:contains("GrÃ¶ÃŸenfÃ¼hrung")', 'button:contains("GrÃ¶ÃŸenfÃ¼hrung")',
+            'a:contains("MaÃŸe")', 'button:contains("MaÃŸe")',
             
             # French selectors
             'a:contains("Guide des tailles")', 'button:contains("Guide des tailles")',
             'a:contains("Tableau des tailles")', 'button:contains("Tableau des tailles")',
             
             # Spanish selectors
-            'a:contains("Guía de tallas")', 'button:contains("Guía de tallas")',
+            'a:contains("GuÃ­a de tallas")', 'button:contains("GuÃ­a de tallas")',
             'a:contains("Tabla de tallas")', 'button:contains("Tabla de tallas")',
             
             # Generic attribute selectors
@@ -2821,7 +2849,7 @@ def extract_size_patterns(text):
     patterns = {}
     
     # Pattern for size ranges (e.g., "XS: 32-34", "Size S: 36-38")
-    size_range_pattern = r'(?:Size\s+)?([XS]{1,2}|[SML]{1,2}|\d{2})\s*:?\s*(\d{1,3}(?:\.\d)?)\s*[-–]\s*(\d{1,3}(?:\.\d)?)'
+    size_range_pattern = r'(?:Size\s+)?([XS]{1,2}|[SML]{1,2}|\d{2})\s*:?\s*(\d{1,3}(?:\.\d)?)\s*[-â€“]\s*(\d{1,3}(?:\.\d)?)'
     matches = re.finditer(size_range_pattern, text, re.IGNORECASE)
     
     for match in matches:
@@ -2919,7 +2947,7 @@ def close_popup(driver):
         # ZARA specific close buttons
         '.zara-modal-close', '.modal-backdrop',
         # Generic close patterns
-        'button:contains("Close")', 'button:contains("×")', 
+        'button:contains("Close")', 'button:contains("Ã—")', 
         'a:contains("Close")', '[title="Close"]',
         # ESC key simulation
         '.modal.show', '.modal.in'  # For backdrop click
@@ -3198,7 +3226,7 @@ def generate(selected_chunks, query):
     prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:" 
     # response = client.chat.completions.create( 
     #     model="gpt-4", 
-    #     messages=[ {"role": "system", "content": "You are a legal research and reasoning assistant trained in Indian income tax law, especially capital gains exemptions under the Income Tax Act. Your job is to analyze a user's scenario, determine applicability of specific sections (like Section 54F), and generate responses following a clear structure: Start with statutory interpretation — quote the relevant section (e.g., Section 54F) and clearly list the conditions in bullet points. Apply the law to the user’s case — mention whether conditions are satisfied and explain eligibility for exemption. Cite relevant case law in support of the position taken. Choose cases that match the factual scenario and jurisdiction where possible. Include citation (e.g., ITA 4012/Mum/2023 - Abdul Nayab Shaikh). Quote only favourable rulings unless otherwise requested. Prefer recent, relevant, and jurisdictionally appropriate cases. Discuss any common exceptions or judicial deviations — e.g., benefit being allowed even when more than one residential unit is purchased, especially if adjacent or used as a single unit. Quote examples from case law or factual scenarios to support the interpretation or exception. Keep the examples precise and relevant. Format your response in a professional, advisory tone suitable for a tax consultant’s opinion. Do not speculate — rely only on clear statutory provisions, circulars, and judicial precedents."}, {"role": "user", "content": prompt} ], 
+    #     messages=[ {"role": "system", "content": "You are a legal research and reasoning assistant trained in Indian income tax law, especially capital gains exemptions under the Income Tax Act. Your job is to analyze a user's scenario, determine applicability of specific sections (like Section 54F), and generate responses following a clear structure: Start with statutory interpretation â€” quote the relevant section (e.g., Section 54F) and clearly list the conditions in bullet points. Apply the law to the userâ€™s case â€” mention whether conditions are satisfied and explain eligibility for exemption. Cite relevant case law in support of the position taken. Choose cases that match the factual scenario and jurisdiction where possible. Include citation (e.g., ITA 4012/Mum/2023 - Abdul Nayab Shaikh). Quote only favourable rulings unless otherwise requested. Prefer recent, relevant, and jurisdictionally appropriate cases. Discuss any common exceptions or judicial deviations â€” e.g., benefit being allowed even when more than one residential unit is purchased, especially if adjacent or used as a single unit. Quote examples from case law or factual scenarios to support the interpretation or exception. Keep the examples precise and relevant. Format your response in a professional, advisory tone suitable for a tax consultantâ€™s opinion. Do not speculate â€” rely only on clear statutory provisions, circulars, and judicial precedents."}, {"role": "user", "content": prompt} ], 
     #     max_tokens=400, 
     #     temperature=0.1 ) 
 
@@ -3566,7 +3594,7 @@ def enterprise_chat():
     # Define the sequence and mapping of questions
     questions = [
         {"key": "industry", "question": "To get a bit of context, which industry does your business operate in?"},
-        {"key": "role_department", "question": "What’s your role within the company, and what is your department mainly focused on right now?"},
+        {"key": "role_department", "question": "Whatâ€™s your role within the company, and what is your department mainly focused on right now?"},
         {"key": "tools", "question": "What tools or software do you and your team rely on most, and what do you use them for?"},
         {"key": "business_need", "question": "If you could change or improve one thing about how your team works today, what would it be?"}
     ]
@@ -5007,7 +5035,7 @@ def recommend_agents():
 #     return jsonify(financial_KPIs)
 
 
-# ========== KNOWLEDGE GRAPH + RAG API ==========
+# === KNOWLEDGE GRAPH + RAG API ===
 
 import boto3
 from docx import Document as DocxDocument
@@ -5308,7 +5336,7 @@ def kg_rag_cache_status():
             'error': str(e)
         }), 500
 
-# ==================== ENTITY MANAGEMENT SYSTEM ====================
+# ====== ENTITY MANAGEMENT SYSTEM ======
 # Domain-agnostic persistent knowledge graph + vector DB system
 # Works for ANY domain: HR, Sales, Research, Healthcare, Legal, etc.
 # Note: Commented out pending completion of entity_system module
@@ -5325,9 +5353,9 @@ def kg_rag_cache_status():
 # kg_manager = EntityKnowledgeGraphManager(db)
 # vector_manager = EntityVectorStoreManager(chroma_client)
 
-# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# === ENTITY ENDPOINTS (Disabled - Pending entity_system module) ===
 # 
-# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# === ENTITY ENDPOINTS (Disabled - Pending entity_system module) ===
 # These endpoints require the entity_system module which is not yet implemented
 #
 # All entity-related endpoints are disabled including:
@@ -5340,10 +5368,10 @@ def kg_rag_cache_status():
 #
 # This module will be enabled once entity_system.py is properly implemented
 # with EntityKnowledgeGraphManager, EntityVectorStoreManager, and related utilities
-# ============================================================================
+# ======
 
 
-# ========== ENTITY ENDPOINTS (Disabled - Pending entity_system module) ==========
+# === ENTITY ENDPOINTS (Disabled - Pending entity_system module) ===
 # These endpoints require the entity_system module which is not yet implemented
 #
 # All entity-related endpoints disabled including:
@@ -5354,10 +5382,10 @@ def kg_rag_cache_status():
 # - list_entities
 # - system_health
 #
-# ============================================================================
+# ======
 
 
-# ============= CONTENT MARKETING AGENT API ENDPOINTS =============
+# ====== CONTENT MARKETING AGENT API ENDPOINTS ======
 
 @app.route('/api/content-marketing/projects', methods=['POST'])
 @cross_origin()
@@ -6861,11 +6889,11 @@ def enrich_businesses_with_emails():
                     extracted = email_item['email']
                     if extracted and extracted != 'N/A':
                         email = extracted
-                        print(f"[EMAIL_ENRICHMENT] ✅ Strategy 1 (emails array) found: {email}")
+                        print(f"[EMAIL_ENRICHMENT] âœ… Strategy 1 (emails array) found: {email}")
                         return email
                 elif isinstance(email_item, str) and email_item.strip():
                     email = email_item
-                    print(f"[EMAIL_ENRICHMENT] ✅ Strategy 1 (emails string) found: {email}")
+                    print(f"[EMAIL_ENRICHMENT] âœ… Strategy 1 (emails string) found: {email}")
                     return email
             
             # Strategy 2: Try contact information
@@ -6873,7 +6901,7 @@ def enrich_businesses_with_emails():
                 contact_info = website_data.get('contact_info', {})
                 if contact_info and contact_info.get('email'):
                     email = contact_info['email']
-                    print(f"[EMAIL_ENRICHMENT] ✅ Strategy 2 (contact_info) found: {email}")
+                    print(f"[EMAIL_ENRICHMENT] âœ… Strategy 2 (contact_info) found: {email}")
                     return email
             
             # Strategy 3: Extract from social profiles or other fields
@@ -6887,7 +6915,7 @@ def enrich_businesses_with_emails():
                                     found_emails = extract_emails_from_text(field_value)
                                     if found_emails:
                                         email = found_emails[0]
-                                        print(f"[EMAIL_ENRICHMENT] ✅ Strategy 3 ({key}.{field_key}) found: {email}")
+                                        print(f"[EMAIL_ENRICHMENT] âœ… Strategy 3 ({key}.{field_key}) found: {email}")
                                         return email
             
             # Strategy 4: Check for contact URLs and other fields
@@ -6899,7 +6927,7 @@ def enrich_businesses_with_emails():
                             found_emails = extract_emails_from_text(str(text_data))
                             if found_emails:
                                 email = found_emails[0]
-                                print(f"[EMAIL_ENRICHMENT] ✅ Strategy 4 ({key}) found: {email}")
+                                print(f"[EMAIL_ENRICHMENT] âœ… Strategy 4 ({key}) found: {email}")
                                 return email
             
             # Strategy 5: Fallback to phone if no email found
@@ -6908,7 +6936,7 @@ def enrich_businesses_with_emails():
                 if isinstance(phone_obj, dict) and 'phone' in phone_obj:
                     phone = phone_obj['phone']
                     email = f"Phone: {phone}"
-                    print(f"[EMAIL_ENRICHMENT] ℹ️  Strategy 5 (phone fallback) found: {email}")
+                    print(f"[EMAIL_ENRICHMENT] â„¹ï¸  Strategy 5 (phone fallback) found: {email}")
                     return email
             
             return email
@@ -6991,7 +7019,7 @@ def enrich_businesses_with_emails():
                 google_email = get_email_from_google_places(business)
                 if google_email:
                     email = google_email
-                    print(f"[EMAIL_ENRICHMENT] ✅ Found email from Google Places: {email}")
+                    print(f"[EMAIL_ENRICHMENT] âœ… Found email from Google Places: {email}")
                 else:
                     # Try calling scrap.io with retry mechanism for async processing
                     result, has_data = call_scrap_io_with_retry(domain, max_retries=2, delay=1)
@@ -7008,7 +7036,7 @@ def enrich_businesses_with_emails():
                         scraped_email = try_sync_website_scrape(website, business_name)
                         if scraped_email:
                             email = scraped_email
-                            print(f"[EMAIL_ENRICHMENT] ✅ Found via website scrape: {email}")
+                            print(f"[EMAIL_ENRICHMENT] âœ… Found via website scrape: {email}")
                     
                     # If still no email, generate common patterns for user reference
                     if email == 'N/A':
@@ -7016,14 +7044,14 @@ def enrich_businesses_with_emails():
                         if patterns:
                             # Use the most common pattern as suggestion
                             email = patterns[0]
-                            print(f"[EMAIL_ENRICHMENT] ℹ️  Using common pattern suggestion: {email}")
+                            print(f"[EMAIL_ENRICHMENT] â„¹ï¸  Using common pattern suggestion: {email}")
                 
                 business_copy = business.copy()
                 business_copy['email'] = email
                 enriched_businesses.append(business_copy)
                 
             except Exception as e:
-                print(f"[EMAIL_ENRICHMENT] ❌ Error processing {business_name}: {str(e)}")
+                print(f"[EMAIL_ENRICHMENT] âŒ Error processing {business_name}: {str(e)}")
                 business_copy = business.copy()
                 business_copy['email'] = 'Error'
                 enriched_businesses.append(business_copy)
@@ -7116,7 +7144,8 @@ def enrich_businesses_with_linkedin():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ========== HEALTH CHECK ENDPOINT ==========
+
+# === HEALTH CHECK ENDPOINT ===
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for Docker and load balancers"""
@@ -7125,6 +7154,103 @@ def health_check():
         'service': 'enable-agents-api',
         'timestamp': datetime.now().isoformat()
     }), 200
+
+
+@app.route('/api/save-project', methods=['POST'])
+@cross_origin()
+def save_project():
+    try:
+        data = request.json
+        username = data.get('username')
+        name = data.get('name')
+        query_used = data.get('query_used', '')
+        leads = data.get('leads', [])
+        
+        if not username or not name:
+            return jsonify({'success': False, 'error': 'Missing username or name'}), 400
+            
+        # Create Project
+        project = SavedProject(username=username, name=name, query_used=query_used)
+        db.session.add(project)
+        db.session.flush() # get project id
+        
+        # Add leads
+        import json
+        for lead_data in leads:
+            lead = SavedLead(
+                project_id=project.id,
+                name=lead_data.get('name', ''),
+                website=lead_data.get('website', ''),
+                phone=lead_data.get('phone', ''),
+                address=lead_data.get('address', ''),
+                emails=json.dumps(lead_data.get('emails', [])),
+                linkedin_links=json.dumps(lead_data.get('linkedin_urls', [])),
+                social_links=json.dumps(lead_data.get('social_links', {})),
+                raw_data=json.dumps(lead_data)
+            )
+            # If the lead already came with emails, mark has_extracted True maybe?
+            # Or always let extraction be separated
+            db.session.add(lead)
+            
+        db.session.commit()
+        return jsonify({'success': True, 'project_id': project.id, 'message': 'Leads saved successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/saved-projects', methods=['GET'])
+@cross_origin()
+def get_saved_projects():
+    try:
+        username = request.args.get('username')
+        if not username:
+             return jsonify({'success': False, 'error': 'Missing username'}), 400
+             
+        projects = SavedProject.query.filter_by(username=username).order_by(SavedProject.created_at.desc()).all()
+        result = []
+        for p in projects:
+            lead_count = SavedLead.query.filter_by(project_id=p.id).count()
+            result.append({
+                'id': p.id,
+                'name': p.name,
+                'query_used': p.query_used,
+                'created_at': p.created_at.isoformat(),
+                'lead_count': lead_count
+            })
+            
+        return jsonify({'success': True, 'projects': result})
+    except Exception as e:
+         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/saved-projects/<int:project_id>/leads', methods=['GET'])
+@cross_origin()
+def get_project_leads(project_id):
+    try:
+        username = request.args.get('username')
+        project = SavedProject.query.get(project_id)
+        
+        if not project or (username and project.username != username):
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+            
+        leads = SavedLead.query.filter_by(project_id=project_id).all()
+        import json
+        result = []
+        for l in leads:
+            result.append({
+                'id': l.id,
+                'name': l.name,
+                'website': l.website,
+                'phone': l.phone,
+                'address': l.address,
+                'emails': json.loads(l.emails) if l.emails else [],
+                'linkedin_urls': json.loads(l.linkedin_links) if l.linkedin_links else [],
+                'has_extracted': l.has_extracted,
+                'raw_data': json.loads(l.raw_data) if l.raw_data else {}
+            })
+            
+        return jsonify({'success': True, 'project': {'id': project.id, 'name': project.name}, 'leads': result})
+    except Exception as e:
+         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':

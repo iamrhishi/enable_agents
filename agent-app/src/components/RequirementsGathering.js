@@ -141,6 +141,14 @@ function RequirementsGathering() {
   const [extractingLinkedInRows, setExtractingLinkedInRows] = useState({});
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showSaveListModal, setShowSaveListModal] = useState(false);
+  const [saveListName, setSaveListName] = useState('');
+  const [isSavingList, setIsSavingList] = useState(false);
+  const [showSavedListsView, setShowSavedListsView] = useState(false);
+  const [savedLists, setSavedLists] = useState([]);
+  const [isLoadingSavedLists, setIsLoadingSavedLists] = useState(false);
+  const [activeSavedList, setActiveSavedList] = useState(null);
+
   const [extractionUsage, setExtractionUsage] = useState(null);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
@@ -557,6 +565,94 @@ function RequirementsGathering() {
     return [headers.join(','), ...csvRows].join('\n');
   };
 
+  const handleSaveList = async () => {
+    if (!saveListName.trim()) {
+      alert("Please provide a name for the list.");
+      return;
+    }
+    const rows = getCustomerResearchRows();
+    if (rows.length === 0) {
+      alert('No data available to save.');
+      return;
+    }
+
+    setIsSavingList(true);
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/save-project', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            username: userEmail || userId || 'default_user',
+            name: saveListName,
+            query_used: query,
+            leads: rows.map(r => ({
+                name: r.name,
+                website: r.website,
+                phone: r.phone,
+                address: r.address,
+                emails: r.emails ? r.emails.split(',').map(e => e.trim()).filter(e => e) : [],
+                linkedin_urls: r.linkedinUrls ? r.linkedinUrls : [],
+                social_links: r.primary ? {'primary': r.primary} : {}
+            }))
+         })
+      });
+      const data = await response.json();
+      if (data.success) {
+         alert('List saved successfully!');
+         setShowSaveListModal(false);
+         setSaveListName('');
+      } else {
+         alert('Error saving list: ' + data.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('An error occurred while saving the list: ' + e.message);
+    }
+    setIsSavingList(false);
+  };
+
+  const fetchSavedLists = async () => {
+     setIsLoadingSavedLists(true);
+     try {
+       const userIdentifier = userEmail || userId || 'default_user';
+       const res = await fetch(`http://127.0.0.1:5000/api/saved-projects?username=${encodeURIComponent(userIdentifier)}`);
+       const data = await res.json();
+       if (data.success) {
+          setSavedLists(data.projects);
+       }
+     } catch (e) {
+       console.error("Error fetching saved lists", e);
+     }
+     setIsLoadingSavedLists(false);
+  };
+
+  const loadSavedListDetails = async (projectId) => {
+     try {
+        const userIdentifier = userEmail || userId || 'default_user';
+        const res = await fetch(`http://127.0.0.1:5000/api/saved-projects/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
+        const data = await res.json();
+        if (data.success) {
+           // Hacky way to inject it into the existing generic display UI
+           setCustomerResearchResults({
+               businesses: data.leads.map(l => ({
+                   name: l.name,
+                   website: l.website,
+                   phone_number: l.phone,
+                   address: l.address,
+                   emails: l.emails,
+                   linkedin_urls: l.linkedin_urls,
+                   social_links: l.social_links,
+                   has_extracted: l.has_extracted
+               }))
+           });
+           setActiveSavedList(data.project);
+           setShowSavedListsView(false); // Back to Leads UI
+        }
+     } catch(e) {
+        console.error(e);
+     }
+  };
+
   const handleExport = async (format) => {
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
@@ -868,11 +964,47 @@ function RequirementsGathering() {
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className="workspace-tab active-tab">Leads</button>
+            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => setShowSavedListsView(false)}>Leads</button>
+            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>Saved Lists</button>
             <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
           </div>
 
           <div className="workspace-content-box">
+             {showSavedListsView ? (
+               <div className="saved-lists-container" style={{ padding: '20px' }}>
+                 {activeSavedList && (
+                    <button 
+                       onClick={() => { setActiveSavedList(null); fetchSavedLists(); }} 
+                       style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
+                    >
+                       ← Back to All Lists
+                    </button>
+                 )}
+                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
+                    {activeSavedList ? `Saved List: ${activeSavedList.name}` : `Saved Lists`}
+                 </h2>
+                 {isLoadingSavedLists ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
+                 ) : savedLists.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                 ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                       {savedLists.map((list) => (
+                           <div key={list.id} onClick={() => loadSavedListDetails(list.id)} style={{ padding: '20px', background: '#fff', border: '1px solid #e1e4e8', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                              <h3 style={{ fontSize: '18px', color: '#1E3A5F', margin: '0 0 10px 0' }}>{list.name}</h3>
+                              <p style={{ color: '#666', margin: '0 0 8px 0', fontSize: '14px' }}>Query: {list.query_used || 'N/A'}</p>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+                                 <span style={{ color: '#888', fontSize: '12px' }}>{new Date(list.created_at).toLocaleDateString()}</span>
+                                 <span style={{ display: 'inline-block', background: '#F0F4F8', color: '#1E3A5F', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>
+                                     {list.lead_count} Contacts
+                                 </span>
+                              </div>
+                           </div>
+                       ))}
+                    </div>
+                 )}
+               </div>
+            ) : (
             <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
               {isLoadingResearch ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
@@ -960,6 +1092,14 @@ function RequirementsGathering() {
                         style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
+                      </button>
+                      <button 
+                        className="action-icon-button"
+                        onClick={() => setShowSaveListModal(true)}
+                        title="Save to List"
+                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img src="/assets/icons/save.png" alt="Save" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/190/190411.png'}} />
                       </button>
                       <button 
                         className="action-icon-button"
@@ -1505,6 +1645,28 @@ function RequirementsGathering() {
                 disabled={isSendingEmails}
               >
                 {isSendingEmails ? 'Sending...' : 'Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved List Modal */}
+      {showSaveListModal && (
+        <div className="popup-overlay" style={{ zIndex: 3000 }}>
+          <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
+              <button onClick={() => setShowSaveListModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
+              <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <button onClick={() => setShowSaveListModal(false)} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
+              <button onClick={handleSaveList} disabled={isSavingList} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
+                {isSavingList ? 'Saving...' : 'Save List'}
               </button>
             </div>
           </div>
