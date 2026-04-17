@@ -1,0 +1,29 @@
+[
+  {
+    "title": "Automated Vendor Risk Scoring",
+    "outcome": "Faster supplier decisions",
+    "problem": "Procurement teams spend days manually reviewing supplier data from multiple systems.",
+    "solution": "Use AI to aggregate supplier records, score risk, and flag anomalies for quick approval.",
+    "persona": ["Procurement Lead", "Risk Manager"],
+    "category": ["AI Ops", "Supplier Management"],
+    "statistic": "Reduced vendor onboarding cycle time by 42%."
+  },
+  {
+    "title": "Smart PO Exception Handling",
+    "outcome": "Lower exception backlog",
+    "problem": "Purchase order mismatches create repetitive manual triage and delayed fulfillment.",
+    "solution": "Classify exceptions automatically, route to the right owner, and recommend corrective actions.",
+    "persona": ["Procurement Analyst", "Finance Ops"],
+    "category": ["Workflow Automation", "ERP"],
+    "statistic": "Cut PO exception resolution time from 3 days to 8 hours."
+  },
+  {
+    "title": "Contract Clause Intelligence",
+    "outcome": "Improved compliance visibility",
+    "problem": "Key contract clauses are hard to track across legacy agreements.",
+    "solution": "Extract clauses with NLP, detect non-standard terms, and surface renewal/compliance alerts.",
+    "persona": ["Sourcing Manager", "Legal Counsel"],
+    "category": ["NLP", "Contract Management"],
+    "statistic": "Increased contract compliance coverage to 95%."
+  }
+]
