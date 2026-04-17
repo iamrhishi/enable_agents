@@ -270,6 +270,67 @@ function Header({ onProcessClick }) {
     alert('Create Connection clicked!');
   };
 
+  const handleGoogleConnect = async () => {
+    const { googleEmail, googlePlacesApiKey } = connectionDetails;
+    
+    if (!googleEmail || !googlePlacesApiKey) {
+      setTestResult('Error: Please enter both email and API key');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/connect-google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: googleEmail,
+          api_key: googlePlacesApiKey,
+          description: connectionDetails.googlePlacesApiDescription || '',
+          user_id: firstName
+        }),
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setTestResult('✓ Google Account connected successfully!');
+        setIsConnected(true);
+      } else {
+        setTestResult(`Error: ${data.message || 'Connection failed'}`);
+      }
+    } catch (error) {
+      setTestResult('Error: Connection failed - ' + error.message);
+    }
+  };
+
+  const handleTestGoogleConnection = async () => {
+    const { googleEmail, googlePlacesApiKey } = connectionDetails;
+    
+    if (!googleEmail || !googlePlacesApiKey) {
+      setTestResult('Error: Please enter both email and API key first');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/test-google-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: googleEmail,
+          api_key: googlePlacesApiKey
+        }),
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setTestResult('✓ Google Places API connection successful!');
+      } else {
+        setTestResult(`Error: ${data.message || 'Test failed'}`);
+      }
+    } catch (error) {
+      setTestResult('Error: Test failed - ' + error.message);
+    }
+  };
+
   const [showSystemModal, setShowSystemModal] = useState(false);
   const [systemTools, setSystemTools] = useState([]);
   const [toolsSortAsc, setToolsSortAsc] = useState(true);
@@ -588,6 +649,14 @@ function Header({ onProcessClick }) {
                 <span role="img" aria-label="api"><img src="/assets/icons/api.png" alt="API" /></span>
                 <span>API</span>
               </button>
+              <button
+                className={`source-btn${selectedSource === 'Personal Account' ? ' selected' : ''}`}
+                title="Personal Account"
+                onClick={() => setSelectedSource('Personal Account')}
+              >
+                <span role="img" aria-label="personal"><img src="/assets/icons/user.png" alt="Personal Account" /></span>
+                <span>Personal Account</span>
+              </button>
             </div>
             <button className="modal-close" onClick={handleCloseModal}>×</button>
             <h2>Connect to Data Source</h2>
@@ -717,6 +786,48 @@ function Header({ onProcessClick }) {
                 <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
                   <button onClick={() => alert('Create API Connection logic here')}>Create Connection</button>
                   <button onClick={() => alert('Test API Connection logic here')}>Test Connection</button>
+                </div>
+                <textarea
+                  rows={3}
+                  value={testResult}
+                  readOnly
+                  placeholder="Test results will appear here"
+                  style={{ width: '100%', marginBottom: '12px' }}
+                />
+              </>
+            )}
+
+            {selectedSource === 'Personal Account' && (
+              <>
+                <h3 style={{ marginTop: '0', marginBottom: '16px', color: '#1E3A5F' }}>Google Account Connection</h3>
+                <p style={{ fontSize: '0.95em', color: '#475569', marginBottom: '16px' }}>
+                  Connect your Google account to use Google Places API for location-based services.
+                </p>
+                <input
+                  type="email"
+                  name="googleEmail"
+                  placeholder="Google Email Address"
+                  value={connectionDetails.googleEmail || ''}
+                  onChange={handleInputChange}
+                />
+                <input
+                  type="text"
+                  name="googlePlacesApiKey"
+                  placeholder="Google Places API Key"
+                  value={connectionDetails.googlePlacesApiKey || ''}
+                  onChange={handleInputChange}
+                />
+                <textarea
+                  name="googlePlacesApiDescription"
+                  placeholder="Optional: Add notes about your Google Places integration"
+                  value={connectionDetails.googlePlacesApiDescription || ''}
+                  onChange={handleInputChange}
+                  rows={3}
+                  style={{ width: '100%', marginBottom: '12px' }}
+                />
+                <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
+                  <button onClick={handleGoogleConnect}>Connect Google Account</button>
+                  <button onClick={handleTestGoogleConnection}>Test Connection</button>
                 </div>
                 <textarea
                   rows={3}
