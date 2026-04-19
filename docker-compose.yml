@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./tools
+      dockerfile: Dockerfile
+    container_name: enable_agents_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env.docker.local
+    volumes:
+      - ./tools/instance:/app/instance
+      - ./tools/data:/app/data
+    restart: unless-stopped
+    networks:
+      - enable-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./agent-app
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=http://backend:5000
+    container_name: enable_agents_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - enable-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  enable-network:
+    driver: bridge
