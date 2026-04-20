@@ -79,6 +79,7 @@ function AgentsAssembly() {
       name: 'Executive Assistant Agent',
       icon: '/assets/icons/networking.png',
       price: 'Free',
+      status: 'in-progress',
       keywords: ['executive assistant', 'task management', 'reminders', 'whatsapp', 'stakeholder updates'],
       businessContext: ['executive', 'management', 'personal productivity', 'team coordination'],
       industries: ['all industries'],
@@ -88,6 +89,7 @@ function AgentsAssembly() {
       name: 'Market Research', 
       icon: '/assets/icons/search-analysis.png', 
       price: '$29/month',
+      status: 'ready',
       keywords: ['market analysis', 'competitor research', 'customer insights', 'business intelligence', 'market trends'],
       businessContext: ['retail', 'ecommerce', 'startup', 'product launch', 'competitive analysis'],
       industries: ['retail', 'technology', 'healthcare', 'finance', 'manufacturing'],
@@ -97,6 +99,7 @@ function AgentsAssembly() {
       name: 'Sales Helper Agent',
       icon: '/assets/icons/increase.png',
       price: '$45/month',
+      status: 'in-progress',
       keywords: ['sales', 'sales enablement', 'CRM', 'lead management', 'sales strategy'],
       businessContext: ['sales', 'lead generation', 'customer acquisition', 'sales optimization', 'business growth'],
       industries: ['retail', 'technology', 'ecommerce', 'services', 'consulting'],
@@ -106,6 +109,7 @@ function AgentsAssembly() {
       name: 'Content Marketing Agent',
       icon: '/assets/icons/bullhorn.png',
       price: '$49/month',
+      status: 'in-progress',
       keywords: ['content marketing', 'content creation', 'marketing strategy', 'brand content', 'SEO'],
       businessContext: ['content marketing', 'brand building', 'digital marketing', 'social media', 'marketing strategy'],
       industries: ['retail', 'technology', 'media', 'education', 'ecommerce'],
@@ -115,6 +119,7 @@ function AgentsAssembly() {
       name: 'Hiring & Onboarding', 
       icon: '/assets/icons/hr.png', 
       price: '$45/month',
+      status: 'in-progress',
       keywords: ['recruitment', 'hiring process', 'employee onboarding', 'HR management', 'talent acquisition'],
       businessContext: ['growing business', 'startup', 'scaling team', 'remote work', 'human resources'],
       industries: ['all industries', 'technology', 'consulting', 'healthcare', 'finance'],
@@ -122,8 +127,9 @@ function AgentsAssembly() {
     },
     { 
       name: 'Documents', 
-      icon: '/assets/icons/documents.png', 
+      icon: '/assets/icons/document.png', 
       price: '$22/month',
+      status: 'in-progress',
       keywords: ['document management', 'file storage', 'document workflow', 'paperwork automation'],
       businessContext: ['office management', 'legal compliance', 'document processing', 'administrative tasks'],
       industries: ['all industries', 'legal', 'healthcare', 'finance', 'consulting'],
@@ -131,8 +137,9 @@ function AgentsAssembly() {
     },
     { 
       name: 'Supplier Tracking', 
-      icon: '/assets/icons/suppliers.png', 
+      icon: '/assets/icons/agreement.png', 
       price: '$32/month',
+      status: 'in-progress',
       keywords: ['supplier management', 'vendor tracking', 'procurement', 'supply chain', 'vendor relations'],
       businessContext: ['manufacturing', 'retail', 'food delivery', 'restaurant', 'supply chain management'],
       industries: ['manufacturing', 'retail', 'food service', 'construction', 'healthcare'],
@@ -142,6 +149,7 @@ function AgentsAssembly() {
       name: 'Invoices', 
       icon: '/assets/icons/invoices.png', 
       price: '$26/month',
+      status: 'in-progress',
       keywords: ['invoice management', 'billing', 'accounts receivable', 'payment processing', 'financial management'],
       businessContext: ['food delivery', 'service business', 'freelancing', 'small business', 'accounting'],
       industries: ['all industries', 'professional services', 'retail', 'food service', 'consulting'],
@@ -151,6 +159,7 @@ function AgentsAssembly() {
       name: 'Supply Chain Agent',
       icon: '/assets/icons/supply-chain-management.png',
       price: 'Custom',
+      status: 'in-progress',
       keywords: ['supply chain', 'impact analysis', 'dashboard', 'visualization', 'logistics'],
       businessContext: ['supply chain', 'logistics', 'operations', 'risk management'],
       industries: ['manufacturing', 'retail', 'logistics', 'operations'],
@@ -160,6 +169,7 @@ function AgentsAssembly() {
       name: 'Inventory', 
       icon: '/assets/icons/inventory.png', 
       price: '$25/month',
+      status: 'in-progress',
       keywords: ['stock management', 'inventory tracking', 'warehouse management', 'stock levels', 'supply chain'],
       businessContext: ['food delivery', 'restaurant', 'retail', 'ecommerce', 'manufacturing', 'warehouse'],
       industries: ['food service', 'retail', 'manufacturing', 'wholesale', 'logistics'],
@@ -169,6 +179,7 @@ function AgentsAssembly() {
       name: 'Orders', 
       icon: '/assets/icons/orders.png', 
       price: '$35/month',
+      status: 'in-progress',
       keywords: ['order management', 'order processing', 'order tracking', 'sales orders', 'purchase orders'],
       businessContext: ['food delivery', 'ecommerce', 'retail', 'restaurant', 'online store', 'marketplace'],
       industries: ['food service', 'retail', 'ecommerce', 'manufacturing', 'wholesale'],
@@ -178,6 +189,7 @@ function AgentsAssembly() {
       name: 'Travel Agent', 
       icon: '/assets/icons/travel.png', 
       price: '$42/month',
+      status: 'in-progress',
       keywords: ['travel management', 'trip planning', 'travel booking', 'expense management', 'business travel'],
       businessContext: ['business travel', 'remote work', 'consulting', 'sales team', 'client meetings'],
       industries: ['consulting', 'sales', 'technology', 'professional services', 'field service'],
@@ -187,6 +199,7 @@ function AgentsAssembly() {
       name: 'Community Network', 
       icon: '/assets/icons/community.png', 
       price: '$38/month',
+      status: 'in-progress',
       keywords: ['community management', 'network building', 'customer engagement', 'social platform', 'relationship management'],
       businessContext: ['customer engagement', 'brand building', 'social media', 'community building', 'customer loyalty'],
       industries: ['retail', 'technology', 'media', 'nonprofit', 'education'],
@@ -196,6 +209,7 @@ function AgentsAssembly() {
       name: 'Invest Agent',
       icon: '/assets/icons/save-money.png',
       price: 'Custom',
+      status: 'in-progress',
       keywords: ['investment', 'financial instruments', 'assessment', 'parameters', 'finance'],
       businessContext: ['finance', 'investment', 'portfolio management', 'financial analysis'],
       industries: ['finance', 'investment', 'banking', 'wealth management'],
@@ -205,6 +219,7 @@ function AgentsAssembly() {
       name: 'Reports', 
       icon: '/assets/icons/reports.png', 
       price: '$28/month',
+      status: 'in-progress',
       keywords: ['business reporting', 'analytics', 'data visualization', 'business intelligence', 'KPI tracking'],
       businessContext: ['business analysis', 'performance monitoring', 'decision making', 'data-driven insights'],
       industries: ['all industries', 'finance', 'retail', 'manufacturing', 'technology'],
@@ -214,6 +229,7 @@ function AgentsAssembly() {
       name: 'Team Performance', 
       icon: '/assets/icons/performance.png', 
       price: '$39/month',
+      status: 'in-progress',
       keywords: ['performance management', 'employee evaluation', 'productivity tracking', 'team analytics'],
       businessContext: ['management', 'team leadership', 'performance review', 'productivity improvement'],
       industries: ['all industries', 'consulting', 'technology', 'finance', 'healthcare'],
@@ -227,6 +243,7 @@ function AgentsAssembly() {
       name: 'Testing AI', 
       icon: '/assets/icons/checklist.png', 
       price: '$55/month',
+      status: 'in-progress',
       keywords: ['automated testing', 'quality assurance', 'test automation', 'bug detection'],
       businessContext: ['software development', 'quality control', 'testing'],
       industries: ['technology', 'software', 'development'],
@@ -236,6 +253,7 @@ function AgentsAssembly() {
       name: 'LLM Benchmarking', 
       icon: '/assets/icons/bar-chart.png', 
       price: '$65/month',
+      status: 'in-progress',
       keywords: ['AI performance', 'model evaluation', 'benchmarking', 'AI testing'],
       businessContext: ['AI development', 'machine learning', 'model evaluation'],
       industries: ['technology', 'AI', 'research'],
@@ -245,23 +263,24 @@ function AgentsAssembly() {
       name: 'Data Discovery', 
       icon: '/assets/icons/data-discovery.png', 
       price: '$48/month',
+      status: 'ready',
       keywords: ['data analysis', 'data mining', 'insights', 'data exploration'],
       businessContext: ['data analysis', 'business intelligence', 'analytics'],
       industries: ['all industries', 'technology', 'finance'],
       useCases: ['data exploration', 'business insights', 'data analysis']
     },
     // Simple modules without enhanced fields
-    { name: 'Users', icon: '/assets/icons/users.png', price: '$35/month' },
-    { name: 'Data Security', icon: '/assets/icons/data-security.png', price: '$75/month' },
-    { name: 'Alerts', icon: '/assets/icons/alerts.png', price: '$22/month' },
-    { name: 'Notifications', icon: '/assets/icons/notifications.png', price: '$18/month' },
-    { name: 'Dashboards', icon: '/assets/icons/dashboards.png', price: '$45/month' },
-    { name: 'AI Chatbot', icon: '/assets/icons/ai-chatbots.png', price: '$52/month' },
-    { name: 'Monitoring', icon: '/assets/icons/monitoring.png', price: '$38/month' },
-    { name: 'Analytics', icon: '/assets/icons/analytics.png', price: '$58/month' },
-    { name: 'Data Transformation', icon: '/assets/icons/data-transformation.png', price: '$68/month' },
-    { name: 'Integration', icon: '/assets/icons/integration.png', price: '$62/month' },
-    { name: 'Automation', icon: '/assets/icons/automation.png', price: '$55/month' }
+    { name: 'Users', icon: '/assets/icons/users.png', price: '$35/month', status: 'in-progress' },
+    { name: 'Data Security', icon: '/assets/icons/data-security.png', price: '$75/month', status: 'in-progress' },
+    { name: 'Alerts', icon: '/assets/icons/alerts.png', price: '$22/month', status: 'in-progress' },
+    { name: 'Notifications', icon: '/assets/icons/notifications.png', price: '$18/month', status: 'in-progress' },
+    { name: 'Dashboards', icon: '/assets/icons/dashboards.png', price: '$45/month', status: 'in-progress' },
+    { name: 'AI Chatbot', icon: '/assets/icons/ai-chatbots.png', price: '$52/month', status: 'in-progress' },
+    { name: 'Monitoring', icon: '/assets/icons/monitoring.png', price: '$38/month', status: 'in-progress' },
+    { name: 'Analytics', icon: '/assets/icons/analytics.png', price: '$58/month', status: 'in-progress' },
+    { name: 'Data Transformation', icon: '/assets/icons/data-transformation.png', price: '$68/month', status: 'in-progress' },
+    { name: 'Integration', icon: '/assets/icons/integration.png', price: '$62/month', status: 'in-progress' },
+    { name: 'Automation', icon: '/assets/icons/automation.png', price: '$55/month', status: 'in-progress' }
   ];
 
   // FIXED: Use useEffect to handle filtering instead of calling setState during render
@@ -616,21 +635,16 @@ const handleEnterpriseChat = async (userInput) => {
         )}
         <h2>Agents Assembly</h2>
         
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', gap: '16px' }}>
-          <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--primary-dark)', letterSpacing: '0.01em' }}>Agent Stage</span>
-          <div
-            className={`ai-toggle-switch minimal-toggle${showChatbot ? ' active' : ''}`}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', gap: '12px' }}>
+          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1f2937', letterSpacing: '0.01em' }}>Agent Stage</span>
+          <button
+            className={`modern-toggle-button ${showChatbot ? 'active' : 'inactive'}`}
             onClick={() => setShowChatbot(!showChatbot)}
-            title={showChatbot ? 'Disable Agent Stage' : 'Enable Agent Stage'}
+            title={showChatbot ? 'Agent Stage: Active' : 'Agent Stage: Inactive'}
           >
-            <div className={`toggle-knob${showChatbot ? ' on' : ''}`}
-              style={{
-                transform: showChatbot ? 'translateX(24px)' : 'translateX(0px)',
-                background: showChatbot ? 'var(--primary-dark)' : 'var(--accent-soft)',
-                boxShadow: showChatbot ? '0 2px 8px #1E3A5F33' : '0 2px 4px #0002',
-              }}
-            />
-          </div>
+            <span className="toggle-circle"></span>
+            <span className="toggle-label">{showChatbot ? 'Active' : 'Inactive'}</span>
+          </button>
         </div>
 
         {showChatbot && (
@@ -1032,19 +1046,21 @@ const handleEnterpriseChat = async (userInput) => {
           </select>
         </div>
 
-        {/* Module Tabs */}
-        <div className="module-tabs" style={{ display: 'flex', gap: '12px', marginBottom: '20px', borderBottom: '2px solid #D6C7B8', paddingBottom: '12px' }}>
+        {/* Module Tabs - Modern Professional */}
+        <div className="module-tabs" style={{ display: 'flex', gap: '0', marginBottom: '32px', borderBottom: '1px solid #e8ecf1', paddingBottom: '0' }}>
           <button
             onClick={() => setModuleTab('business')}
             style={{
-              padding: '10px 20px',
-              borderBottom: moduleTab === 'business' ? '3px solid #C2410C' : 'none',
+              padding: '14px 28px',
+              borderBottom: moduleTab === 'business' ? '3px solid #c2410c' : '3px solid transparent',
               background: 'transparent',
               cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: moduleTab === 'business' ? '600' : '500',
-              color: moduleTab === 'business' ? '#C2410C' : '#1E3A5F',
-              transition: 'all 0.3s ease'
+              fontSize: '0.95rem',
+              fontWeight: moduleTab === 'business' ? '700' : '600',
+              color: moduleTab === 'business' ? '#c2410c' : '#475569',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              letterSpacing: '-0.2px',
+              marginRight: '24px'
             }}
           >
             Business Modules ({businessModules.length})
@@ -1052,14 +1068,15 @@ const handleEnterpriseChat = async (userInput) => {
           <button
             onClick={() => setModuleTab('technical')}
             style={{
-              padding: '10px 20px',
-              borderBottom: moduleTab === 'technical' ? '3px solid #3B82F6' : 'none',
+              padding: '14px 28px',
+              borderBottom: moduleTab === 'technical' ? '3px solid #475569' : '3px solid transparent',
               background: 'transparent',
               cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: moduleTab === 'technical' ? '600' : '500',
-              color: moduleTab === 'technical' ? '#3B82F6' : '#1E3A5F',
-              transition: 'all 0.3s ease'
+              fontSize: '0.95rem',
+              fontWeight: moduleTab === 'technical' ? '700' : '600',
+              color: moduleTab === 'technical' ? '#475569' : '#1e3a5f',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              letterSpacing: '-0.2px'
             }}
           >
             Technical Modules ({technicalModules.length})
@@ -1077,6 +1094,12 @@ const handleEnterpriseChat = async (userInput) => {
                   return technicalModules.some(t => t.name === module.name);
                 }
               })
+              .sort((a, b) => {
+                // Sort ready agents first, then in-progress
+                if (a.status === 'ready' && b.status !== 'ready') return -1;
+                if (a.status !== 'ready' && b.status === 'ready') return 1;
+                return 0;
+              })
               .map((module, index) => (
                 <div
                   key={index}
@@ -1088,8 +1111,32 @@ const handleEnterpriseChat = async (userInput) => {
                   onClick={() => handleCardClick(module.name)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <img src={module.icon} alt={module.name} />
-                  <p>{module.name}</p>
+                  {module.status && (
+                    <div className="status-badge" style={{
+                      position: 'absolute',
+                      top: '12px',
+                      right: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.7rem',
+                      fontWeight: '700',
+                      backgroundColor: module.status === 'ready' ? '#10b981' : '#f97316',
+                      color: '#ffffff',
+                      boxShadow: module.status === 'ready' ? 
+                        '0 4px 12px rgba(16, 185, 129, 0.25)' : 
+                        '0 4px 12px rgba(249, 115, 22, 0.25)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      border: 'none',
+                      zIndex: 3
+                    }}>
+                      {module.status === 'ready' ? '✓ Ready' : '⚡ In Progress'}
+                    </div>
+                  )}
+                  <div className="card-header">
+                    <img src={module.icon} alt={module.name} />
+                    <p>{module.name}</p>
+                  </div>
                   
                   <div className="card-buttons">
                     <button 

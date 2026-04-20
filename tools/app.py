@@ -7115,6 +7115,18 @@ def enrich_businesses_with_linkedin():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+# ========== HEALTH CHECK ENDPOINT ==========
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Docker and load balancers"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'enable-agents-api',
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

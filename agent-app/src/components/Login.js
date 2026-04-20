@@ -80,47 +80,40 @@ function Login() {
   };
 
   return (
-    <div className="login-page" style={{
-      backgroundImage: `url(${bgImages[bgIndex]})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative'
-    }}>
+    <div className="login-page">
       <div className="login-card-container">
-        <div className="enable-logo">
-          Enable<span className="dot">.</span>
+        <div className="login-header">
+          <img 
+            src={`${process.env.PUBLIC_URL}/logo192.svg`} 
+            alt="Enable Logo" 
+            className="login-logo"
+          />
         </div>
         
         {step === 'email' && (
           <form onSubmit={handleEmailSubmit} className="login-form">
             <input
-              type="text"
+              type="email"
               placeholder="Email Address"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="styled-input centered-placeholder"
+              className="styled-input"
               autoFocus
             />
-            <div className="new-user-link" onClick={() => navigate('/register')}>
-              New User?
-            </div>
-            
-            <div style={{ margin: '20px 0', color: '#999', fontSize: '14px', width: '100%', textAlign: 'center' }}>
-              OR
-            </div>
-            <button type="button" onClick={handleGoogleLogin} className="styled-input" style={{ backgroundColor: '#fff', color: '#333', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-              <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google logo" style={{width: '20px'}}/>
-              Sign in with Google
+            <button type="submit" className="primary-button">
+              Continue
             </button>
+            <div className="form-divider">OR</div>
+            <button type="button" onClick={handleGoogleLogin} className="google-button">
+              <img src="/assets/icons/google.png" alt="Google" className="google-icon" />
+              Continue with Google
+            </button>
+            <p className="login-footer-text">
+              New to Enable? <span className="new-user-link" onClick={() => navigate('/register')}>Create account</span>
+            </p>
           </form>
         )}
-
 
         {step === 'password' && (
           <form onSubmit={handlePasswordSubmit} className="login-form">
@@ -130,18 +123,22 @@ function Login() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="styled-input centered-placeholder"
+              className="styled-input"
               autoFocus
             />
-            <button type="submit" className="login-button" style={{marginTop: '15px', display: 'none'}}>Login</button>
-            <div className="new-user-link" onClick={() => setStep('email')}>
-              Back
-            </div>
+            <button type="submit" className="primary-button">
+              Sign In
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setStep('email')}>
+              Back to Email
+            </button>
           </form>
         )}
       </div>
 
-      <div className="footer-text">enableyou.co</div>
+      <div className="footer-text">
+        <a href="https://enableyou.co/" target="_blank" rel="noopener noreferrer">enableyou.co</a>
+      </div>
     </div>
   );
 }

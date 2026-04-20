@@ -9,9 +9,8 @@ beautifulsoup4
 faiss-cpu
 PyMuPDF
 chromadb
-sentence-transformers
 rake-nltk
-numpy
+numpy<2
 scipy
 nltk
 pandas
@@ -26,3 +25,8 @@ webdriver-manager
 openpyxl
 duckduckgo-search
 torch==2.0.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+twilio
+google-auth-oauthlib
+google-auth
+google-api-python-client
+psutil
