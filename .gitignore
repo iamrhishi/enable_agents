@@ -12,6 +12,8 @@ env/
 tools/.env
 tools/.venv
 tools/venv
+venv
+
 
 # Node.js / Dependencies
 node_modules/
