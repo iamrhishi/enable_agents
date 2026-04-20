@@ -164,7 +164,8 @@ function RequirementsGathering() {
     // Fetch pre-configured Google credentials from .env
     const fetchCredentials = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:5000/get-google-credentials');
+        const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${apiUrl}/get-google-credentials`);
         const data = await response.json();
         
         if (data.success && data.credentials) {
@@ -659,7 +660,8 @@ function RequirementsGathering() {
     }
     
     try {
-      const response = await fetch('http://127.0.0.1:5000/connect-google-business', {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/connect-google-business`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
