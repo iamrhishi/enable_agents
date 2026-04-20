@@ -480,15 +480,13 @@ function RequirementsGathering() {
 
     try {
       // Create tab-separated values format for easy pasting into Excel
-      const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+      const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email'];
       const rows = customerResearchResults.businesses.map(business => [
         business.name || 'N/A',
         business.address || 'N/A',
         (business.phone || 'N/A').replace(/^\+/, ''),
         business.website || 'N/A',
-        business.email || 'N/A',
-        business.matchAccuracy || 'N/A',
-        business.isPrimary ? 'Yes' : 'No'
+        business.email || 'N/A'
       ]);
 
       // Create TSV (tab-separated values) content
@@ -520,9 +518,7 @@ function RequirementsGathering() {
       address: business.address || 'N/A',
       phone: business.phone || 'N/A',
       website: business.website || 'N/A',
-      email: business.email || 'N/A',
-      matchAccuracy: business.matchAccuracy || 'N/A',
-      primary: business.isPrimary ? 'Yes' : 'No'
+      email: business.email || 'N/A'
     }));
   };
 
@@ -547,15 +543,13 @@ function RequirementsGathering() {
   };
 
   const buildCsvContent = (rows) => {
-    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email'];
     const csvRows = rows.map((row) => [
       row.businessName,
       row.address,
       row.phone,
       row.website,
-      row.email,
-      row.matchAccuracy,
-      row.primary
+      row.email
     ].map(escapeCsvValue).join(','));
 
     return [headers.join(','), ...csvRows].join('\n');
@@ -594,15 +588,13 @@ function RequirementsGathering() {
 
         autoTable(doc, {
           startY: 50,
-          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary']],
+          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email']],
           body: rows.map((row) => [
             row.businessName,
             row.address,
             row.phone,
             row.website,
-            row.email,
-            row.matchAccuracy,
-            row.primary
+            row.email
           ]),
           styles: { fontSize: 8, cellPadding: 4 },
           headStyles: { fillColor: [30, 58, 95] }
@@ -612,15 +604,13 @@ function RequirementsGathering() {
       }
 
       if (format === 'sheets') {
-        const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'Match Accuracy', 'Primary'];
+        const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email'];
         const matrixRows = rows.map((row) => [
           row.businessName,
           row.address,
           row.phone,
           row.website,
-          row.email,
-          row.matchAccuracy,
-          row.primary
+          row.email
         ]);
 
         const toSheetsSafeValue = (value) => {
@@ -999,8 +989,7 @@ function RequirementsGathering() {
                             <th>Website</th>
                             <th>Email</th>
                             <th>LinkedIn</th>
-                            <th>Match Accuracy</th>
-                            <th>Primary</th>
+                            <th>Send Email</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1020,16 +1009,7 @@ function RequirementsGathering() {
                               </td>
                               <td>
                                 {business.email && business.email !== 'N/A' ? ( 
-                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <span>{business.email}</span>
-                                    <button
-                                      onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                      disabled={!!isGeneratingEmail[index]}
-                                      style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                    >
-                                      {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
-                                    </button>
-                                  </div>
+                                  <span>{business.email}</span>
                                 ) : (
                                   <button
                                     className="extract-email-button"
@@ -1060,8 +1040,19 @@ function RequirementsGathering() {
                                   </button>
                                 )}
                               </td>
-                              <td>{business.matchAccuracy || 'N/A'}</td>
-                              <td>{business.isPrimary ? 'Yes' : 'No'}</td>
+                              <td>
+                                {business.email && business.email !== 'N/A' ? (
+                                  <button
+                                    onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                    disabled={!!isGeneratingEmail[index]}
+                                    style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                  >
+                                    {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1197,8 +1188,7 @@ function RequirementsGathering() {
                       <th>Website</th>
                       <th>Email</th>
                       <th>LinkedIn</th>
-                      <th>Match Accuracy</th>
-                      <th>Primary</th>
+                      <th>Send Email</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1218,16 +1208,7 @@ function RequirementsGathering() {
                           </td>
                           <td>
                             {business.email && business.email !== 'N/A' ? ( 
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <span>{business.email}</span>
-                                <button
-                                  onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                  disabled={!!isGeneratingEmail[index]}
-                                  style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                >
-                                  {isGeneratingEmail[index] ? 'Drafting AI...' : 'AI Email'}
-                                </button>
-                              </div>
+                              <span>{business.email}</span>
                             ) : (
                               <button
                                 className="extract-email-button"
@@ -1258,8 +1239,19 @@ function RequirementsGathering() {
                               </button>
                             )}
                           </td>
-                          <td>{business.matchAccuracy || 'N/A'}</td>
-                          <td>{business.isPrimary ? 'Yes' : 'No'}</td>
+                          <td>
+                            {business.email && business.email !== 'N/A' ? (
+                              <button
+                                onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                disabled={!!isGeneratingEmail[index]}
+                                style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                              >
+                                {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
+                              </button>
+                            ) : (
+                              <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -9,9 +9,8 @@ beautifulsoup4
 faiss-cpu
 PyMuPDF
 chromadb
-sentence-transformers
 rake-nltk
-numpy
+numpy<2
 scipy
 nltk
 pandas
@@ -23,5 +22,10 @@ python-docx
 networkx
 selenium
 webdriver-manager
-openpyxlddgs
+openpyxl
 duckduckgo-search
+twilio
+google-auth-oauthlib
+google-auth
+google-api-python-client
+psutil
