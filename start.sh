@@ -76,6 +76,13 @@ kill_port 5000
 
 echo -e "${GREEN}✓ Ports cleaned${NC}\n"
 
+# Check if virtual environment exists
+if [ ! -d "$VENV_PATH" ]; then
+    echo -e "${RED}✗ Virtual environment not found at $VENV_PATH${NC}"
+    echo -e "${RED}Please run ./setup_db.sh first${NC}\n"
+    exit 1
+fi
+
 # Check if .logs directory exists, create if not
 if [ ! -d "$LOG_DIR" ]; then
     mkdir -p "$LOG_DIR"
@@ -87,17 +94,6 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
 fi
 
-# Check if virtual environment exists, create if not
-if [ ! -d "$VENV_PATH" ]; then
-    echo -e "${BLUE}Creating Python virtual environment...${NC}"
-    python3 -m venv "$VENV_PATH"
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}✗ Failed to create virtual environment${NC}\n"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ Virtual environment created${NC}"
-fi
-
 # Activate virtual environment
 echo -e "${BLUE}Activating Python virtual environment...${NC}"
 source "$VENV_PATH/bin/activate"
@@ -105,18 +101,7 @@ if [ $? -ne 0 ]; then
     echo -e "${RED}✗ Failed to activate virtual environment${NC}\n"
     exit 1
 fi
-echo -e "${GREEN}✓ Virtual environment activated${NC}"
-
-# Install Python dependencies
-echo -e "${BLUE}Installing Python dependencies...${NC}"
-cd "$TOOLS_DIR"
-pip install --upgrade pip --no-cache-dir -q
-pip install --no-cache-dir -r requirements.txt
-if [ $? -ne 0 ]; then
-    echo -e "${RED}✗ Failed to install Python dependencies${NC}\n"
-    exit 1
-fi
-echo -e "${GREEN}✓ Python dependencies installed${NC}"
+echo -e "${GREEN}✓ Virtual environment activated${NC}\n"
 
 # Start Python backend
 echo -e "${BLUE}Starting Python backend on port 5000...${NC}"
