@@ -10,7 +10,9 @@ env/
 .venv
 .venv-win/
 tools/.env
-tools/.venv
+agent-app/.env
+.env
+.env.local
 tools/venv
 venv
 
