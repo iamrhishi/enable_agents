@@ -41,6 +41,15 @@ echo -e "${YELLOW}========================================${NC}\n"
 # Kill any existing processes on ports 3000 and 5000
 echo -e "${BLUE}Cleaning up existing processes on ports 3000 and 5000...${NC}"
 
+# Kill all python app.py processes
+pkill -f "python.*app.py" 2>/dev/null || true
+sleep 1
+
+# Kill all npm/node processes on port 3000
+pkill -f "npm start" 2>/dev/null || true
+pkill -f "node.*3000" 2>/dev/null || true
+sleep 1
+
 # Function to kill process on a specific port
 kill_port() {
     local PORT=$1
@@ -48,23 +57,8 @@ kill_port() {
     
     if [ ! -z "$PID" ]; then
         echo -e "${YELLOW}Found process on port $PORT (PID: $PID), terminating...${NC}"
-        kill -TERM $PID 2>/dev/null || true
-        
-        # Wait up to 3 seconds for graceful shutdown
-        for i in {1..30}; do
-            if ! kill -0 $PID 2>/dev/null; then
-                echo -e "${GREEN}✓ Process on port $PORT terminated${NC}"
-                return 0
-            fi
-            sleep 0.1
-        done
-        
-        # Force kill if still running
-        if kill -0 $PID 2>/dev/null; then
-            echo -e "${YELLOW}Force killing process on port $PORT${NC}"
-            kill -9 $PID 2>/dev/null || true
-            echo -e "${GREEN}✓ Process on port $PORT force killed${NC}"
-        fi
+        kill -9 $PID 2>/dev/null || true
+        sleep 0.5
     else
         echo -e "${GREEN}✓ Port $PORT is clean${NC}"
     fi
