@@ -46,6 +46,25 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Starting Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
+# Kill any existing processes on ports 3000 and 5000
+echo -e "${YELLOW}Cleaning up existing processes...${NC}"
+
+# Kill port 3000 (React)
+if fuser 3000/tcp >/dev/null 2>&1; then
+    echo -e "${BLUE}  Stopping process on port 3000...${NC}"
+    fuser -k 3000/tcp >/dev/null 2>&1 || true
+    sleep 1
+fi
+
+# Kill port 5000 (Python)
+if fuser 5000/tcp >/dev/null 2>&1; then
+    echo -e "${BLUE}  Stopping process on port 5000...${NC}"
+    fuser -k 5000/tcp >/dev/null 2>&1 || true
+    sleep 1
+fi
+
+echo -e "${GREEN}✓ Cleanup complete${NC}\n"
+
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
     echo -e "${RED}✗ Virtual environment not found${NC}"
