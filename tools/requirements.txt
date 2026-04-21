@@ -24,7 +24,6 @@ selenium
 webdriver-manager
 openpyxl
 duckduckgo-search
-torch==2.0.1
 twilio
 google-auth-oauthlib
 google-auth
