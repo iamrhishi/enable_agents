@@ -4,8 +4,12 @@
  * Uses environment variables for remote/local deployment switching
  */
 
-// API Base URL - use environment variable or fallback to localhost
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// API Base URL - must be set via REACT_APP_API_URL environment variable
+const API_URL = process.env.REACT_APP_API_URL;
+
+if (!API_URL) {
+  throw new Error('REACT_APP_API_URL environment variable is not set. Please configure it in .env file.');
+}
 
 export const API_CONFIG = {
   API_URL,
