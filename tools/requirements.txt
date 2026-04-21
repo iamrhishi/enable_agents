@@ -24,7 +24,7 @@ selenium
 webdriver-manager
 openpyxl
 duckduckgo-search
-torch==2.0.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+torch==2.0.1
 twilio
 google-auth-oauthlib
 google-auth
