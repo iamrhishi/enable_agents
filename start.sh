@@ -139,7 +139,6 @@ fi
 # Start React frontend
 echo -e "${BLUE}Starting React frontend on port 3000...${NC}"
 cd "$APP_DIR"
-export REACT_APP_API_URL=http://localhost:5000
 nohup npm start > "$LOG_DIR/react.log" 2>&1 &
 FRONTEND_PID=$!
 sleep 3
