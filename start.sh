@@ -63,6 +63,11 @@ if fuser 5000/tcp >/dev/null 2>&1; then
     sleep 1
 fi
 
+# Also kill any lingering app.py processes
+echo -e "${BLUE}  Killing any lingering app.py processes...${NC}"
+pkill -9 -f "app.py" 2>/dev/null || true
+sleep 1
+
 echo -e "${GREEN}✓ Cleanup complete${NC}\n"
 
 # Check if virtual environment exists
