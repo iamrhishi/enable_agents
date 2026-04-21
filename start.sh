@@ -89,8 +89,8 @@ fi
 
 # Check if virtual environment exists, create if not
 if [ ! -d "$VENV_PATH" ]; then
-    echo -e "${BLUE}Creating Python 3.12 virtual environment...${NC}"
-    python3.12 -m venv "$VENV_PATH"
+    echo -e "${BLUE}Creating Python virtual environment...${NC}"
+    python3 -m venv "$VENV_PATH"
     if [ $? -ne 0 ]; then
         echo -e "${RED}✗ Failed to create virtual environment${NC}\n"
         exit 1
