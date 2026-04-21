@@ -1,3 +1,4 @@
+import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Header from './Header';
@@ -70,7 +71,7 @@ function CommunityNetworkAgent() {
   // Helper function to check existing files and compare sizes
   const checkExistingFile = async (fileName, newFileSize) => {
     try {
-      const response = await fetch('http://localhost:5000/check_existing_file', {
+      const response = await fetch(`${API_CONFIG.API_URL}/check_existing_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,7 +93,7 @@ function CommunityNetworkAgent() {
     try {
       const jsonFileName = originalFileName.replace(/\.(csv|xlsx|xls)$/i, '.json');
       
-      const response = await fetch('http://localhost:5000/save_json_file', {
+      const response = await fetch(`${API_CONFIG.API_URL}/save_json_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -115,7 +116,7 @@ function CommunityNetworkAgent() {
     try {
       addMessage("🔍 Searching through the data...", 'agent', null, 'markdown');
       
-      const response = await fetch('http://localhost:5000/simple_search', {
+      const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +197,7 @@ function CommunityNetworkAgent() {
       if (fileCheckResult.should_skip) {
         // Load existing JSON data
         const jsonFileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '.json');
-        const loadResponse = await fetch('http://localhost:5000/load_json_file', {
+        const loadResponse = await fetch(`${API_CONFIG.API_URL}/load_json_file`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -243,7 +244,7 @@ function CommunityNetworkAgent() {
       formData.append('folder_name', 'dataset');
       formData.append('multiple_sheets', 'false');
 
-      const response = await fetch('http://localhost:5000/file_to_json_convert', {
+      const response = await fetch(`${API_CONFIG.API_URL}/file_to_json_convert`, {
         method: 'POST',
         body: formData
       });
@@ -321,7 +322,7 @@ function CommunityNetworkAgent() {
 
   Return only company names separated by commas.`;
 
-      const response = await fetch('http://localhost:5000/search_suggestions', {
+      const response = await fetch(`${API_CONFIG.API_URL}/search_suggestions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -366,7 +367,7 @@ function CommunityNetworkAgent() {
       formData.append('file', file);
       formData.append('folder_name', 'cv_analysis');
 
-      const uploadResponse = await fetch('http://localhost:5000/upload', {
+      const uploadResponse = await fetch(`${API_CONFIG.API_URL}/upload`, {
         method: 'POST',
         body: formData
       });
@@ -388,7 +389,7 @@ function CommunityNetworkAgent() {
           Level: experience level
         `;
 
-        const ragResponse = await fetch('http://localhost:5000/rag_test', {
+        const ragResponse = await fetch(`${API_CONFIG.API_URL}/rag_test`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -575,7 +576,7 @@ function CommunityNetworkAgent() {
   // Function to save profile to favorites
   const saveToFavorites = async (profileData) => {
     try {
-      const response = await fetch('http://localhost:5000/save_user_favorite', {
+      const response = await fetch(`${API_CONFIG.API_URL}/save_user_favorite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -602,7 +603,7 @@ function CommunityNetworkAgent() {
   // Function to load user favorites
   const loadUserFavorites = async () => {
     try {
-      const response = await fetch('http://localhost:5000/get_user_favorites', {
+      const response = await fetch(`${API_CONFIG.API_URL}/get_user_favorites`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -789,7 +790,7 @@ function CommunityNetworkAgent() {
   // Fix 4: Add the missing removeFromFavorites function
   const removeFromFavorites = async (favoriteId) => {
     try {
-      const response = await fetch('http://localhost:5000/remove_user_favorite', {
+      const response = await fetch(`${API_CONFIG.API_URL}/remove_user_favorite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

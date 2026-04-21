@@ -1,3 +1,4 @@
+import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useEffect } from 'react';
 import '../styles/Login.css';
 import { useNavigate } from 'react-router-dom';
@@ -36,7 +37,7 @@ function RegisterUser() {
        return;
     }
     try {
-      const response = await fetch('http://localhost:5000/register', {
+      const response = await fetch(`${API_CONFIG.API_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

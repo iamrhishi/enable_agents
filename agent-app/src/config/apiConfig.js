@@ -7,12 +7,8 @@
 // API Base URL - use environment variable or fallback to localhost
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Frontend URL - use environment variable or fallback to localhost
-const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || 'http://localhost:3000';
-
 export const API_CONFIG = {
   API_URL,
-  FRONTEND_URL,
   
   // Auth endpoints
   GOOGLE_AUTH_START: `${API_URL}/auth/google/start`,

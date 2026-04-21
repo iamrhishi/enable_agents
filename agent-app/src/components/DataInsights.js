@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Header from './Header';
 import '../styles/DataInsights.css';
 import { PDFDocument } from 'pdf-lib';
+import { API_CONFIG } from '../config/apiConfig';
 
 function DataInsights() {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -68,7 +69,7 @@ function DataInsights() {
       const formData = new FormData();
       formData.append('file', uploadedFile);
   
-      const uploadResponse = await fetch('http://localhost:5000/upload', {
+      const uploadResponse = await fetch(`${API_CONFIG.API_URL}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -87,7 +88,7 @@ function DataInsights() {
       }
   
       // Step 2: Call the /rag_test API
-      const ragTestResponse = await fetch('http://localhost:5000/rag_test', {
+      const ragTestResponse = await fetch(`${API_CONFIG.API_URL}/rag_test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -173,7 +174,7 @@ function DataInsights() {
     const formData = new FormData();
     formData.append('file', mergedPdfFile);
 
-    const uploadResponse = await fetch('http://localhost:5000/upload', {
+    const uploadResponse = await fetch(`${API_CONFIG.API_URL}/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -186,7 +187,7 @@ function DataInsights() {
     console.log('Merged PDF upload response:', uploadData);
 
     // Now call your RAG API with the merged PDF file name
-    const ragTestResponse = await fetch('http://localhost:5000/rag_test', {
+    const ragTestResponse = await fetch(`${API_CONFIG.API_URL}/rag_test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
