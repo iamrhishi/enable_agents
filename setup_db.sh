@@ -43,8 +43,8 @@ echo -e "${GREEN}✓ Virtual environment activated${NC}\n"
 
 # Install dependencies
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install --upgrade pip --no-cache-dir > /dev/null 2>&1
-pip install --no-cache-dir -r "$TOOLS_DIR/requirements.txt" > /dev/null 2>&1
+pip install --upgrade pip --no-cache-dir
+pip install --no-cache-dir -r "$TOOLS_DIR/requirements.txt"
 echo -e "${GREEN}✓ Dependencies installed${NC}\n"
 
 # Run database migrations
