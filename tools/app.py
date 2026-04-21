@@ -119,7 +119,7 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(ENV_FILE, override=True)
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
-LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
+LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI')
 
 
 nltk.download('stopwords')
@@ -133,8 +133,8 @@ CORS(app)
 
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
-REACT_APP_API_URL = os.getenv('REACT_APP_API_URL', 'http://localhost:3000')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
+REACT_APP_API_URL = os.getenv('REACT_APP_API_URL')
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev
 
 # Database config (env override + local fallback)
