@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Header from './Header';
 import '../styles/SalesHelperAgent.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function SalesHelperAgent() {
   const [inputMessage, setInputMessage] = useState('');
@@ -70,7 +71,7 @@ function SalesHelperAgent() {
   // Helper function to check existing files and compare sizes
   const checkExistingFile = async (fileName, newFileSize) => {
     try {
-      const response = await fetch('http://localhost:5000/check_existing_file', {
+      const response = await fetch(`${API_CONFIG.API_URL}/check_existing_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,7 +93,7 @@ function SalesHelperAgent() {
     try {
       const jsonFileName = originalFileName.replace(/\.(csv|xlsx|xls)$/i, '.json');
       
-      const response = await fetch('http://localhost:5000/save_json_file', {
+      const response = await fetch(`${API_CONFIG.API_URL}/save_json_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -115,7 +116,7 @@ function SalesHelperAgent() {
     try {
       addMessage("🔍 Searching through sales data...", 'agent', null, 'markdown');
       
-      const response = await fetch('http://localhost:5000/simple_search', {
+      const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -277,7 +278,7 @@ function SalesHelperAgent() {
       if (fileCheckResult.should_skip) {
         // Load existing JSON data
         const jsonFileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '.json');
-        const loadResponse = await fetch('http://localhost:5000/load_json_file', {
+        const loadResponse = await fetch(`${API_CONFIG.API_URL}/load_json_file`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -318,7 +319,7 @@ function SalesHelperAgent() {
       formData.append('folder_name', 'sales_data');
       formData.append('multiple_sheets', 'false');
 
-      const response = await fetch('http://localhost:5000/file_to_json_convert', {
+      const response = await fetch(`${API_CONFIG.API_URL}/file_to_json_convert`, {
         method: 'POST',
         body: formData
       });
@@ -446,7 +447,7 @@ function SalesHelperAgent() {
       // Sample data for AI analysis
       const sampleData = csvData.slice(0, 10);
       
-      const response = await fetch('http://localhost:5000/chat_api', {
+      const response = await fetch(`${API_CONFIG.API_URL}/chat_api`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

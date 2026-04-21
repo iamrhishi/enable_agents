@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/Login.css';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { API_CONFIG } from '../config/apiConfig';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -47,8 +48,7 @@ function Login() {
     e.preventDefault();
     if (!password.trim()) return;
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/login`, {
+      const response = await fetch(`${API_CONFIG.API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -68,8 +68,7 @@ function Login() {
 
   const handleGoogleLogin = async () => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/auth/google/start`, {
+      const response = await fetch(`${API_CONFIG.API_URL}/auth/google/start`, {
         method: 'GET'
       });
       const data = await response.json();

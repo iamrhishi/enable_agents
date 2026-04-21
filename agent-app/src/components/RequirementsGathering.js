@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from './Header';
 import '../styles/RequirementsGathering.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function RequirementsGathering() {
   const [overview, setOverview] = useState('');
@@ -164,7 +165,7 @@ function RequirementsGathering() {
     // Fetch pre-configured Google credentials from .env
     const fetchCredentials = async () => {
       try {
-        const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const apiUrl = API_CONFIG.API_URL;
         const response = await fetch(`${apiUrl}/get-google-credentials`);
         const data = await response.json();
         
@@ -660,7 +661,7 @@ function RequirementsGathering() {
     }
     
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const apiUrl = API_CONFIG.API_URL;
       const response = await fetch(`${apiUrl}/connect-google-business`, {
         method: 'POST',
         headers: {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import '../styles/Header.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function Header({ onProcessClick }) {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -59,7 +60,7 @@ function Header({ onProcessClick }) {
     setIsLoadingHistory(true);
     
     try {
-      const response = await fetch('http://localhost:5000/chrome_history?user_id='+firstName);
+      const response = await fetch(`${API_CONFIG.API_URL}/chrome_history?user_id=${firstName}`);
       const result = await response.json();
       
       if (result.success) {
@@ -235,7 +236,7 @@ function Header({ onProcessClick }) {
       formData.append('folder_name', connectionDetails.folderName);
     }
     try {
-      const response = await fetch('http://localhost:5000/upload', {
+      const response = await fetch(`${API_CONFIG.API_URL}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -253,7 +254,7 @@ function Header({ onProcessClick }) {
   const handleTestConnection = async () => {
     // Example API call to test connection
     try {
-      const response = await fetch('http://localhost:5000/test-connection', {
+      const response = await fetch(`${API_CONFIG.API_URL}/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(connectionDetails),
@@ -312,7 +313,7 @@ function Header({ onProcessClick }) {
   const handleSystemClick = async () => {
     setShowSystemModal(true);
     try {
-      const toolsRes = await fetch('http://localhost:5000/get_tools_landscape');
+      const toolsRes = await fetch(`${API_CONFIG.API_URL}/get_tools_landscape`);
       const toolsResult = await toolsRes.json();
       let tools = Array.isArray(toolsResult.tools) ? toolsResult.tools : [];
       setSystemTools(tools);
@@ -324,7 +325,7 @@ function Header({ onProcessClick }) {
         role: role,
         business_description: businessDesc
       };
-      const agentsRes = await fetch('http://localhost:5000/recommend_agents', {
+      const agentsRes = await fetch(`${API_CONFIG.API_URL}/recommend_agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
