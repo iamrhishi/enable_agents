@@ -31,8 +31,8 @@ TOOLS_DIR="$PROJECT_ROOT/tools"
 
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
-    echo -e "${YELLOW}Virtual environment not found. Creating...${NC}"
-    python3 -m venv "$VENV_PATH"
+    echo -e "${YELLOW}Virtual environment not found. Creating with Python 3.12...${NC}"
+    python3.12 -m venv "$VENV_PATH"
     echo -e "${GREEN}✓ Virtual environment created${NC}\n"
 fi
 
@@ -43,15 +43,15 @@ echo -e "${GREEN}✓ Virtual environment activated${NC}\n"
 
 # Install dependencies
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
-pip install --upgrade pip > /dev/null 2>&1
-pip install -r "$TOOLS_DIR/requirements.txt" > /dev/null 2>&1
+pip install --upgrade pip --no-cache-dir > /dev/null 2>&1
+pip install --no-cache-dir -r "$TOOLS_DIR/requirements.txt" > /dev/null 2>&1
 echo -e "${GREEN}✓ Dependencies installed${NC}\n"
 
 # Run database migrations
 echo -e "${YELLOW}Setting up database...${NC}"
 cd "$TOOLS_DIR"
 
-python3 << 'EOF'
+python3.12 << 'EOF'
 import sys
 from app import app, db
 from migrations import init_db
