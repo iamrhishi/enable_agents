@@ -134,7 +134,7 @@ CORS(app)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+REACT_APP_API_URL = os.getenv('REACT_APP_API_URL', 'http://localhost:3000')
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev
 
 # Database config (env override + local fallback)
@@ -5963,7 +5963,7 @@ def google_auth_callback():
             db.session.commit()
             
             # Redirecting to login page with params to automatically log in the user on the frontend
-            return redirect(f"{FRONTEND_URL}/login?google_auth=success&email={email}")
+            return redirect(f"{REACT_APP_API_URL}/login?google_auth=success&email={email}")
 
         # Exchange code for refresh token for Google Business
 
@@ -5976,7 +5976,7 @@ def google_auth_callback():
         
         if success:
             # Redirect back to app with success
-            return redirect(f'{FRONTEND_URL}?google_connected=true')
+            return redirect(f'{REACT_APP_API_URL}?google_connected=true')
         else:
             return jsonify({
                 'success': False,
