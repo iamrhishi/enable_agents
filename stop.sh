@@ -3,16 +3,12 @@
 ###############################################################################
 # Stop Script
 # 
-# This script stops both the React frontend and Python backend services
-# that were started with the start.sh script.
+# This script stops all running services started by start.sh
+#
+# For PRODUCTION: Stops Flask backend and nginx
+# For DEVELOPMENT: Stops Flask backend and npm dev server
 #
 # Usage: ./stop.sh
-# 
-# The script:
-# 1. Reads the saved PID information
-# 2. Gracefully terminates both services
-# 3. Verifies they have stopped
-# 4. Cleans up PID file
 ###############################################################################
 
 # Colors for output
@@ -29,68 +25,108 @@ PROJECT_ROOT="$SCRIPT_DIR"
 # Paths
 PID_FILE="$PROJECT_ROOT/.pids"
 LOG_DIR="$PROJECT_ROOT/.logs"
+TOOLS_DIR="$PROJECT_ROOT/tools"
 
 echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Stopping Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
-# Check if PID file exists
-if [ ! -f "$PID_FILE" ]; then
-    echo -e "${RED}✗ No running services found (PID file not found)${NC}\n"
-    exit 0
+# Get environment
+ENVIRONMENT="development"
+if [ -f "$TOOLS_DIR/.env" ]; then
+    ENVIRONMENT=$(grep "^ENVIRONMENT=" "$TOOLS_DIR/.env" | cut -d'=' -f2 || echo "development")
 fi
 
-# Read PIDs from file
-PIDS=($(cat "$PID_FILE"))
-
-if [ ${#PIDS[@]} -eq 0 ]; then
-    echo -e "${RED}✗ No running services found (empty PID file)${NC}\n"
-    rm -f "$PID_FILE"
-    exit 0
-fi
-
-# Try to stop each process gracefully
+# Stop main processes from PID file
 STOPPED=0
-FAILED=0
 
-for PID in "${PIDS[@]}"; do
-    if kill -0 "$PID" 2>/dev/null; then
-        echo -e "${BLUE}Stopping process (PID: $PID)...${NC}"
-        
-        # First, try graceful termination
-        kill -TERM "$PID" 2>/dev/null || true
-        
-        # Wait up to 5 seconds for graceful shutdown
-        for i in {1..50}; do
-            if ! kill -0 "$PID" 2>/dev/null; then
-                echo -e "${GREEN}✓ Process stopped successfully${NC}"
-                ((STOPPED++))
-                break
-            fi
-            sleep 0.1
-        done
-        
-        # If still running, force kill
-        if kill -0 "$PID" 2>/dev/null; then
-            echo -e "${YELLOW}Force stopping process (PID: $PID)...${NC}"
-            kill -9 "$PID" 2>/dev/null || true
-            echo -e "${GREEN}✓ Process force stopped${NC}"
-            ((STOPPED++))
+if [ -f "$PID_FILE" ]; then
+    echo -e "${BLUE}Stopping tracked processes...${NC}"
+    
+    while IFS= read -r PID; do
+        if [ -z "$PID" ]; then
+            continue
         fi
-    else
-        echo -e "${YELLOW}Process (PID: $PID) not running${NC}"
-        ((STOPPED++))
+        
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "${BLUE}  Stopping PID $PID...${NC}"
+            
+            # Graceful shutdown
+            kill -TERM "$PID" 2>/dev/null || true
+            
+            # Wait up to 5 seconds
+            for i in {1..50}; do
+                if ! kill -0 "$PID" 2>/dev/null; then
+                    echo -e "${GREEN}  ✓ PID $PID stopped${NC}"
+                    ((STOPPED++))
+                    break
+                fi
+                sleep 0.1
+            done
+            
+            # Force kill if still running
+            if kill -0 "$PID" 2>/dev/null; then
+                echo -e "${YELLOW}  Force stopping PID $PID...${NC}"
+                kill -9 "$PID" 2>/dev/null || true
+                echo -e "${GREEN}  ✓ PID $PID force stopped${NC}"
+                ((STOPPED++))
+            fi
+        fi
+    done < "$PID_FILE"
+    
+    rm -f "$PID_FILE"
+fi
+
+# Stop any remaining Python processes
+echo -e "${BLUE}Cleaning up any remaining services...${NC}"
+
+PYTHON_PIDS=$(pgrep -f "app\.py" 2>/dev/null || true)
+if [ -n "$PYTHON_PIDS" ]; then
+    echo -e "${BLUE}  Stopping backend processes...${NC}"
+    pkill -9 -f "app\.py" 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}  ✓ Backend stopped${NC}"
+fi
+
+NPM_PIDS=$(pgrep -f "npm.*start" 2>/dev/null || true)
+if [ -n "$NPM_PIDS" ]; then
+    echo -e "${BLUE}  Stopping React dev server...${NC}"
+    pkill -9 -f "npm.*start" 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}  ✓ React dev server stopped${NC}"
+fi
+
+# Stop nginx on production
+if [ "$ENVIRONMENT" = "production" ]; then
+    NGINX_PID=$(pgrep -f "nginx" 2>/dev/null || true)
+    if [ -n "$NGINX_PID" ]; then
+        echo -e "${BLUE}  Stopping nginx...${NC}"
+        sudo nginx -s quit 2>/dev/null || sudo systemctl stop nginx 2>/dev/null || true
+        sleep 1
+        echo -e "${GREEN}  ✓ Nginx stopped${NC}"
     fi
-done
+fi
 
-# Clean up
-rm -f "$PID_FILE"
-
+# Final status
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ All services stopped successfully!${NC}"
+echo -e "${GREEN}✓ All services stopped!${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
 if [ -d "$LOG_DIR" ]; then
-    echo -e "${BLUE}Log files saved in: $LOG_DIR${NC}"
-    echo -e "${BLUE}View logs with: tail -f $LOG_DIR/{react,python}.log${NC}\n"
+    echo -e "${BLUE}Log files available:${NC}"
+    echo -e "  $LOG_DIR/python.log"
+    if [ "$ENVIRONMENT" != "production" ]; then
+        echo -e "  $LOG_DIR/react.log"
+    fi
+    echo
 fi
+
+echo -e "${BLUE}To view logs:${NC}"
+echo -e "  ${YELLOW}tail -f $LOG_DIR/python.log${NC}"
+if [ "$ENVIRONMENT" != "production" ]; then
+    echo -e "  ${YELLOW}tail -f $LOG_DIR/react.log${NC}"
+fi
+echo
+
+echo -e "${BLUE}To restart services:${NC}"
+echo -e "  ${YELLOW}./start.sh${NC}\n"
