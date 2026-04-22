@@ -73,8 +73,9 @@ echo $REACT_PID >> "$PID_FILE"
 echo -e "${GREEN}✓ React app started (PID: $REACT_PID)${NC}"
 echo -e "${BLUE}  Log file: $LOG_DIR/react.log${NC}\n"
 
-# Wait a moment for React to start
-sleep 3
+# Wait for React to start compilation
+echo -e "${YELLOW}Waiting for React to compile...${NC}"
+sleep 8
 
 # Start Python App
 echo -e "${BLUE}Starting Python backend...${NC}"
@@ -85,11 +86,23 @@ echo $PYTHON_PID >> "$PID_FILE"
 echo -e "${GREEN}✓ Python app started (PID: $PYTHON_PID)${NC}"
 echo -e "${BLUE}  Log file: $LOG_DIR/python.log${NC}\n"
 
-# Wait a moment for Python to start
-sleep 2
+# Wait for Python to start
+echo -e "${YELLOW}Waiting for Python backend to initialize...${NC}"
+sleep 5
 
 # Verify both processes are running
-if kill -0 $REACT_PID 2>/dev/null && kill -0 $PYTHON_PID 2>/dev/null; then
+REACT_RUNNING=false
+PYTHON_RUNNING=false
+
+if kill -0 $REACT_PID 2>/dev/null; then
+    REACT_RUNNING=true
+fi
+
+if kill -0 $PYTHON_PID 2>/dev/null; then
+    PYTHON_RUNNING=true
+fi
+
+if [ "$REACT_RUNNING" = true ] && [ "$PYTHON_RUNNING" = true ]; then
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}✓ All services started successfully!${NC}"
     echo -e "${GREEN}========================================${NC}\n"
@@ -110,6 +123,18 @@ if kill -0 $REACT_PID 2>/dev/null && kill -0 $PYTHON_PID 2>/dev/null; then
     echo -e "  ./stop.sh\n"
 else
     echo -e "${RED}✗ Failed to start services${NC}\n"
+    
+    if [ "$REACT_RUNNING" = false ]; then
+        echo -e "${RED}React failed to start. Last log entries:${NC}"
+        tail -n 10 "$LOG_DIR/react.log" 2>/dev/null || echo "No log file found"
+    fi
+    
+    if [ "$PYTHON_RUNNING" = false ]; then
+        echo -e "${RED}Python backend failed to start. Last log entries:${NC}"
+        tail -n 10 "$LOG_DIR/python.log" 2>/dev/null || echo "No log file found"
+    fi
+    echo ""
+    
     kill $REACT_PID 2>/dev/null || true
     kill $PYTHON_PID 2>/dev/null || true
     exit 1
