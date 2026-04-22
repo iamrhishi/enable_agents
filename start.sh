@@ -46,6 +46,26 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Starting Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
+# Kill any existing processes on ports 3000 and 5000
+echo -e "${YELLOW}Cleaning up existing processes on ports 3000 and 5000...${NC}"
+
+# Kill processes on port 3000
+PIDS_3000=$(lsof -ti:3000 2>/dev/null || true)
+if [ ! -z "$PIDS_3000" ]; then
+    echo "$PIDS_3000" | xargs kill -9 2>/dev/null || true
+    echo -e "${GREEN}✓ Killed process on port 3000${NC}"
+fi
+
+# Kill processes on port 5000
+PIDS_5000=$(lsof -ti:5000 2>/dev/null || true)
+if [ ! -z "$PIDS_5000" ]; then
+    echo "$PIDS_5000" | xargs kill -9 2>/dev/null || true
+    echo -e "${GREEN}✓ Killed process on port 5000${NC}"
+fi
+
+sleep 1  # Give ports time to be released
+echo ""
+
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
     echo -e "${RED}✗ Virtual environment not found${NC}"
