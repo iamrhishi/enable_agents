@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from './Header';
 import '../styles/RequirementsGathering.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function RequirementsGathering() {
   const [overview, setOverview] = useState('');
@@ -77,7 +78,7 @@ function RequirementsGathering() {
 
   const fetchExistingCampaigns = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:5000/get-campaigns', {
+      const response = await fetch(API_CONFIG.GET_CAMPAIGNS, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -164,7 +165,7 @@ function RequirementsGathering() {
     // Fetch pre-configured Google credentials from .env
     const fetchCredentials = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:5000/get-google-credentials');
+        const response = await fetch(API_CONFIG.GET_GOOGLE_CREDENTIALS);
         const data = await response.json();
         
         if (data.success && data.credentials) {
@@ -189,7 +190,8 @@ function RequirementsGathering() {
     const fetchEmailUsage = async () => {
       try {
         const username = getCurrentUsername();
-        const response = await fetch(`http://127.0.0.1:5000/email-extraction-usage?username=${encodeURIComponent(username)}`);
+        const response = await fetch(`${API_CONFIG.EMAIL_EXTRACTION_USAGE}?username=${encodeURIComponent(username)}`);
+
         const data = await response.json();
         if (response.ok && data.success && data.usageSummary) {
           setExtractionUsage(data.usageSummary);
@@ -228,7 +230,7 @@ function RequirementsGathering() {
         setIsLoadingResearch(true);
 
         // Call the search-google-businesses API
-        const searchResponse = await fetch('http://127.0.0.1:5000/search-google-businesses', {
+        const response = await fetch(API_CONFIG.SEARCH_GOOGLE_BUSINESSES, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -284,7 +286,7 @@ function RequirementsGathering() {
         googleBusinessData: googleData,
       };
 
-      const response = await fetch('http://127.0.0.1:5000/generate-requirements', {
+      const response = await fetch(API_CONFIG.GENERATE_REQUIREMENTS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -311,7 +313,7 @@ function RequirementsGathering() {
 
   const handleFetchPreviousPrompts = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:5000/previous-prompts', {
+      const response = await fetch(API_CONFIG.PREVIOUS_PROMPTS, {
         method: 'GET',
       });
 
@@ -336,7 +338,7 @@ function RequirementsGathering() {
     setIsLoadingEmails(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-emails', {
+      const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -385,7 +387,7 @@ function RequirementsGathering() {
     try {
       // Mock logic or call to a simple backend
       // Normally we'd call an API here that returns the linkedIn URL
-      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-linkedin', {
+      const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_LINKEDIN, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businesses: [business], username: getCurrentUsername() }),
@@ -422,7 +424,7 @@ function RequirementsGathering() {
     setExtractingEmailRows((prev) => ({ ...prev, [index]: true }));
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/enrich-businesses-with-emails', {
+      const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -659,7 +661,7 @@ function RequirementsGathering() {
     }
     
     try {
-      const response = await fetch('http://127.0.0.1:5000/connect-google-business', {
+      const response = await fetch(API_CONFIG.CONNECT_GOOGLE_BUSINESS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -687,7 +689,7 @@ function RequirementsGathering() {
 
   const fetchGoogleBusinessData = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:5000/get-google-business-data', {
+      const response = await fetch(API_CONFIG.GET_GOOGLE_BUSINESS_DATA, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -710,7 +712,7 @@ function RequirementsGathering() {
     const handleGeneratePersonalizedEmail = async (business, index) => {
     setIsGeneratingEmail(prev => ({ ...prev, [index]: true }));
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/generate-email', {
+      const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -754,7 +756,7 @@ function RequirementsGathering() {
 
     setIsSendingEmails(true);
     try {
-      const response = await fetch('http://127.0.0.1:5000/send-bulk-emails', {  
+      const response = await fetch(API_CONFIG.SEND_BULK_EMAILS, {  
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

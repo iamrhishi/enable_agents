@@ -64,6 +64,22 @@ export const API_CONFIG = {
   // RAG
   RAG_TEST: `${API_URL}/rag_test`,
   
+  // Requirements Gathering
+  GENERATE_REQUIREMENTS: `${API_URL}/generate-requirements`,
+  SEARCH_GOOGLE_BUSINESSES: `${API_URL}/search-google-businesses`,
+  ENRICH_BUSINESSES_WITH_EMAILS: `${API_URL}/enrich-businesses-with-emails`,
+  ENRICH_BUSINESSES_WITH_LINKEDIN: `${API_URL}/enrich-businesses-with-linkedin`,
+  GET_CAMPAIGNS: `${API_URL}/get-campaigns`,
+  GENERATE_EMAIL: `${API_URL}/api/generate-email`,
+  GET_GOOGLE_BUSINESS_DATA: `${API_URL}/get-google-business-data`,
+  PREVIOUS_PROMPTS: `${API_URL}/previous-prompts`,
+  GET_GOOGLE_CREDENTIALS: `${API_URL}/get-google-credentials`,
+  EMAIL_EXTRACTION_USAGE: `${API_URL}/email-extraction-usage`,
+  CONNECT_GOOGLE_BUSINESS: `${API_URL}/connect-google-business`,
+  SEND_BULK_EMAILS: `${API_URL}/send-bulk-emails`,
+  GET_CAMPAIGNS_STATS: `${API_URL}/api/campaigns/stats`,
+  GET_CAMPAIGN_RECIPIENTS: `${API_URL}/api/campaigns/{campaignId}/recipients`,
+  
   // Executive Assistant API
   EXECUTIVE_ASSISTANT_BASE: `${API_URL}/api`,
 };
