@@ -1135,7 +1135,7 @@ def pdf_loader(file_path):
 
 def web_loader():
     loader = WebBaseLoader(
-        web_paths=("https://lilianweng.github.io/posts/2023-06-23-agent/",),
+        web_paths=("http://lilianweng.github.io/posts/2023-06-23-agent/",),
         bs_kwargs=dict(parse_only=bs4.SoupStrainer(class_=("post-content", "post-title", "post-header"))),
     )
     docs = loader.load()
@@ -3348,7 +3348,7 @@ def universal_scraper():
             if not all([parsed.scheme, parsed.netloc]):
                 return jsonify({
                     'success': False,
-                    'error': 'Invalid URL format. Include http:// or https://'
+                    'error': 'Invalid URL format. Include http:// or http://'
                 }), 400
         except Exception as e:
             return jsonify({
