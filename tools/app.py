@@ -135,9 +135,7 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
 REACT_APP_API_URL = os.getenv('REACT_APP_API_URL')
-# OAuth requires HTTPS in production
-if os.getenv('FLASK_ENV') != 'production':
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP
 
 # Database config (env override + local fallback)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(

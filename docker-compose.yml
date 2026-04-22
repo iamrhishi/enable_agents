@@ -32,7 +32,7 @@ services:
       context: ./agent-app
       dockerfile: Dockerfile
       args:
-        - REACT_APP_API_URL=https://agents.enableyou.co:5000
+        - REACT_APP_API_URL=http://backend:5000
     container_name: enable_agents_frontend
     ports:
       - "80:80"
