@@ -6,6 +6,8 @@ function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState('email');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -46,38 +48,86 @@ function Login() {
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     if (!password.trim()) return;
+    setLoading(true);
+    setError('');
+    
     try {
       const apiUrl = process.env.REACT_APP_API_URL;
+      console.log('[Login] API URL:', apiUrl);
+      console.log('[Login] Attempting login for:', email);
+      
       const response = await fetch(`${apiUrl}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
+      
+      console.log('[Login] Response status:', response.status);
       const data = await response.json();
+      console.log('[Login] Response data:', data);
+      
       if (response.ok) {
+        console.log('[Login] Login successful');
         localStorage.setItem('firstName', data.username || data.first_name || 'User');
         localStorage.setItem('userEmail', email);
         navigate('/agents');
       } else {
-        alert(data.error || 'Login failed');
+        const errorMsg = data.error || 'Login failed';
+        console.error('[Login] Error:', errorMsg);
+        setError(errorMsg);
+        alert(errorMsg);
       }
     } catch (error) {
-      alert('Login failed');
+      console.error('[Login] Error:', error.message);
+      const errorMsg = `Connection failed: ${error.message}`;
+      setError(errorMsg);
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError('');
+    
     try {
       const apiUrl = process.env.REACT_APP_API_URL;
+      console.log('[Google Login] API URL:', apiUrl);
+      console.log('[Google Login] Full endpoint:', `${apiUrl}/auth/google/start`);
+      
       const response = await fetch(`${apiUrl}/auth/google/start`, {
-        method: 'GET'
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
       });
+      
+      console.log('[Google Login] Response status:', response.status);
+      console.log('[Google Login] Response ok:', response.ok);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('[Google Login] Response data:', data);
+      
       if (data.auth_url) {
+        console.log('[Google Login] Redirecting to:', data.auth_url);
         window.location.href = data.auth_url;
+      } else {
+        setError('No auth URL received from server');
+        console.error('[Google Login] No auth_url in response');
       }
     } catch (error) {
-      alert('Failed to initiate Google Login');
+      console.error('[Google Login] Error:', error.message);
+      console.error('[Google Login] Full error:', error);
+      const errorMsg = `Backend connection failed: ${error.message}. Make sure the backend is running on ${process.env.REACT_APP_API_URL}`;
+      setError(errorMsg);
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -94,6 +144,7 @@ function Login() {
         
         {step === 'email' && (
           <form onSubmit={handleEmailSubmit} className="login-form">
+            {error && <div style={{color: '#ff6b6b', marginBottom: '10px', fontSize: '14px'}}>{error}</div>}
             <input
               type="email"
               placeholder="Email Address"
@@ -107,9 +158,15 @@ function Login() {
               Continue
             </button>
             <div className="form-divider">OR</div>
-            <button type="button" onClick={handleGoogleLogin} className="google-button">
+            <button 
+              type="button" 
+              onClick={handleGoogleLogin} 
+              className="google-button"
+              disabled={loading}
+              style={{opacity: loading ? 0.6 : 1}}
+            >
               <img src="/assets/icons/google.png" alt="Google" className="google-icon" />
-              Continue with Google
+              {loading ? 'Connecting...' : 'Continue with Google'}
             </button>
             <p className="login-footer-text">
               New to Enable? <span className="new-user-link" onClick={() => navigate('/register')}>Create account</span>
@@ -119,6 +176,7 @@ function Login() {
 
         {step === 'password' && (
           <form onSubmit={handlePasswordSubmit} className="login-form">
+            {error && <div style={{color: '#ff6b6b', marginBottom: '10px', fontSize: '14px'}}>{error}</div>}
             <input
               type="password"
               placeholder="Password"
@@ -128,10 +186,10 @@ function Login() {
               className="styled-input"
               autoFocus
             />
-            <button type="submit" className="primary-button">
+            <button type="submit" className="primary-button" disabled={loading}>
               Sign In
             </button>
-            <button type="button" className="secondary-button" onClick={() => setStep('email')}>
+            <button type="button" className="secondary-button" onClick={() => {setStep('email'); setError('');}} disabled={loading}>
               Back to Email
             </button>
           </form>
