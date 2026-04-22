@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import '../styles/ExecutiveAssistantPage.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function ExecutiveAssistantPage() {
   const navigate = useNavigate();
@@ -173,7 +174,7 @@ function ExecutiveAssistantPage() {
 
     try {
       // WhatsApp integration via Twilio or WhatsApp Business API
-      const response = await fetch('http://localhost:5000/send-whatsapp-reminder', {
+      const response = await fetch(API_CONFIG.SEND_WHATSAPP_REMINDER, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

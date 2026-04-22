@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Header from './Header';
 import '../styles/ContentMarketingAgent.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function ContentMarketingAgent() {
   const [step, setStep] = useState('project'); // project, upload, generate, chat
@@ -52,7 +53,7 @@ function ContentMarketingAgent() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/content-marketing/projects', {
+      const response = await fetch(API_CONFIG.CONTENT_MARKETING_PROJECTS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,7 +96,7 @@ function ContentMarketingAgent() {
     });
 
     try {
-      const response = await fetch('http://localhost:5000/api/content-marketing/documents/upload', {
+      const response = await fetch(API_CONFIG.CONTENT_MARKETING_UPLOAD, {
         method: 'POST',
         body: formData
       });
@@ -141,7 +142,7 @@ function ContentMarketingAgent() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/content-marketing/generate-content', {
+      const response = await fetch(API_CONFIG.CONTENT_MARKETING_GENERATE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,7 +195,7 @@ function ContentMarketingAgent() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/content-marketing/chat', {
+      const response = await fetch(API_CONFIG.CONTENT_MARKETING_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

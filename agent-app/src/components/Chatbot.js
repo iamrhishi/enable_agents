@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from './Header';
 import '../styles/Chatbot.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function Chatbot({ fileName }) {
   const [messages, setMessages] = useState([
@@ -33,7 +34,7 @@ function Chatbot({ fileName }) {
   setLoading(true);
 
   try {
-    const response = await fetch('http://localhost:5000/chat_api', {
+    const response = await fetch(API_CONFIG.CHAT_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
