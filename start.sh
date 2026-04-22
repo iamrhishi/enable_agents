@@ -38,37 +38,50 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Restarting Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
+# Validate configuration files exist
+echo -e "${BLUE}Validating configuration...${NC}"
+
+if [ ! -f "$TOOLS_DIR/.env" ]; then
+    echo -e "${RED}✗ Missing: $TOOLS_DIR/.env${NC}"
+    echo -e "${RED}Please copy from .env.example and configure for your environment${NC}\n"
+    exit 1
+fi
+
+if [ ! -f "$APP_DIR/.env" ]; then
+    echo -e "${RED}✗ Missing: $APP_DIR/.env${NC}"
+    echo -e "${RED}Please copy from .env.example and configure for your environment${NC}\n"
+    exit 1
+fi
+
+# Check that PUBLIC_URL is set in backend .env
+if ! grep -q "^PUBLIC_URL=" "$TOOLS_DIR/.env"; then
+    echo -e "${RED}✗ PUBLIC_URL not set in $TOOLS_DIR/.env${NC}"
+    echo -e "${RED}Add: PUBLIC_URL=http://localhost:5000 (or your remote URL)${NC}\n"
+    exit 1
+fi
+
+# Check that REACT_APP_API_URL is set in frontend .env
+if ! grep -q "^REACT_APP_API_URL=" "$APP_DIR/.env"; then
+    echo -e "${RED}✗ REACT_APP_API_URL not set in $APP_DIR/.env${NC}"
+    echo -e "${RED}Add: REACT_APP_API_URL=http://localhost:5000 (or your remote URL)${NC}\n"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Configuration files validated${NC}\n"
+
 # Kill any existing processes on ports 3000 and 5000
 echo -e "${BLUE}Cleaning up existing processes on ports 3000 and 5000...${NC}"
 
-# Kill all python app.py processes
-pkill -f "python.*app.py" 2>/dev/null || true
+# Kill ALL app.py processes regardless of path
+pkill -9 -f "app\.py" 2>/dev/null || true
 sleep 1
 
-# Kill all npm/node processes on port 3000
-pkill -f "npm start" 2>/dev/null || true
-pkill -f "node.*3000" 2>/dev/null || true
+# Kill all npm/node processes
+pkill -9 -f "npm.*start" 2>/dev/null || true
+pkill -9 -f "node.*3000" 2>/dev/null || true
 sleep 1
 
-# Function to kill process on a specific port
-kill_port() {
-    local PORT=$1
-    local PID=$(lsof -ti:$PORT 2>/dev/null)
-    
-    if [ ! -z "$PID" ]; then
-        echo -e "${YELLOW}Found process on port $PORT (PID: $PID), terminating...${NC}"
-        kill -9 $PID 2>/dev/null || true
-        sleep 0.5
-    else
-        echo -e "${GREEN}✓ Port $PORT is clean${NC}"
-    fi
-}
-
-# Kill processes on both ports
-kill_port 3000
-kill_port 5000
-
-echo -e "${GREEN}✓ Ports cleaned${NC}\n"
+echo -e "${GREEN}✓ All processes killed${NC}\n"
 
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
@@ -153,9 +166,23 @@ echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}✓ All services started successfully!${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
+# Print configuration
+PUBLIC_URL=$(grep "^PUBLIC_URL=" "$TOOLS_DIR/.env" | cut -d'=' -f2)
+API_URL=$(grep "^REACT_APP_API_URL=" "$APP_DIR/.env" | cut -d'=' -f2)
+ENVIRONMENT=$(grep "^ENVIRONMENT=" "$TOOLS_DIR/.env" | cut -d'=' -f2 || echo "development")
+
+echo -e "${BLUE}CONFIGURATION:${NC}"
+echo -e "  Environment:    ${YELLOW}$ENVIRONMENT${NC}"
+echo -e "  Backend URL:    ${YELLOW}$PUBLIC_URL${NC}"
+echo -e "  Frontend API:   ${YELLOW}$API_URL${NC}\n"
+
 echo -e "${BLUE}Services running:${NC}"
-echo -e "  Frontend: ${GREEN}http://localhost:3000${NC}"
-echo -e "  Backend:  ${GREEN}http://localhost:5000${NC}\n"
+echo -e "  Frontend: ${GREEN}$API_URL${NC} (port 3000)"
+echo -e "  Backend:  ${GREEN}$PUBLIC_URL${NC} (port 5000)\n"
+
+echo -e "${BLUE}Endpoints:${NC}"
+echo -e "  Google Auth: ${GREEN}$PUBLIC_URL/auth/google/start${NC}"
+echo -e "  API Health:  ${GREEN}$PUBLIC_URL/health${NC} (if implemented)\n"
 
 echo -e "${BLUE}Log files:${NC}"
 echo -e "  React:   $LOG_DIR/react.log"
@@ -164,6 +191,12 @@ echo -e "  Python:  $LOG_DIR/python.log\n"
 echo -e "${BLUE}To view logs in real-time:${NC}"
 echo -e "  ${YELLOW}tail -f $LOG_DIR/react.log${NC}"
 echo -e "  ${YELLOW}tail -f $LOG_DIR/python.log${NC}\n"
+
+echo -e "${BLUE}Troubleshooting:${NC}"
+echo -e "  View Python errors:    ${YELLOW}cat $LOG_DIR/python.log${NC}"
+echo -e "  View React errors:     ${YELLOW}cat $LOG_DIR/react.log${NC}"
+echo -e "  Check if running:      ${YELLOW}lsof -i :5000${NC}"
+echo -e "  Stop services:         ${YELLOW}./stop.sh${NC}\n"
 
 echo -e "${BLUE}To stop services:${NC}"
 echo -e "  ${YELLOW}./stop.sh${NC}\n"

@@ -115,27 +115,46 @@ from docx import Document as DocxDocument
 import networkx as nx
 from google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
 
-ENV_FILE = os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(ENV_FILE, override=True)
-LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
-LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
-LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI')
-
+# Load centralized configuration
+try:
+    from config import config, Config
+except ImportError:
+    print("Warning: Centralized config module not found. Falling back to manual env loading.")
+    ENV_FILE = os.path.join(os.path.dirname(__file__), '.env')
+    load_dotenv(ENV_FILE, override=True)
 
 nltk.download('stopwords')
 nltk.download('punkt_tab')
 
 PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/prompts.json"
 
-
 app = Flask(__name__)
 CORS(app)
 
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
-REACT_APP_API_URL = os.getenv('REACT_APP_API_URL')
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP
+# Import config settings (now validated and centralized)
+try:
+    GOOGLE_CLIENT_ID = Config.GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_SECRET = Config.GOOGLE_CLIENT_SECRET
+    GOOGLE_REDIRECT_URI = Config.GOOGLE_REDIRECT_URI
+    REACT_APP_API_URL = Config.PUBLIC_URL
+    LINKEDIN_CLIENT_ID = Config.LINKEDIN_CLIENT_ID
+    LINKEDIN_CLIENT_SECRET = Config.LINKEDIN_CLIENT_SECRET
+    LINKEDIN_REDIRECT_URI = Config.LINKEDIN_REDIRECT_URI
+    ENVIRONMENT = Config.ENVIRONMENT
+    
+    # Print configuration on startup
+    Config.print_config()
+except NameError:
+    # Fallback to manual env loading if config import failed
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
+    REACT_APP_API_URL = os.getenv('REACT_APP_API_URL')
+    LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
+    LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
+    LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI')
+    ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # allow HTTP for development
 
 # Database config (env override + local fallback)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
