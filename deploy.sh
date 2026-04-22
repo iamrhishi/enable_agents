@@ -3,11 +3,13 @@
 ###############################################################################
 # Deployment Script
 #
-# One-command deployment for remote setup:
-# - Sets up database on remote
+# Setup and start services on remote (manual code pull):
+# - Sets up Python environment (create venv, install dependencies)
 # - Starts React frontend (if not running)
 # - Starts Python backend (if not running)
 # - Runs both in background (returns terminal access)
+#
+# NOTE: You must pull code manually before running this script
 #
 # Usage: ./deploy.sh <remote_user> <remote_ip>
 # Example: ./deploy.sh rhishi 34.70.101.143
@@ -39,18 +41,8 @@ echo -e "${YELLOW}========================================${NC}\n"
 echo -e "${BLUE}Target: $REMOTE_HOST${NC}"
 echo -e "${BLUE}Directory: $REMOTE_DIR\n${NC}"
 
-# Step 1: Pull latest code
-echo -e "${BLUE}[1/5] Pulling latest code...${NC}"
-ssh "$REMOTE_HOST" "cd $REMOTE_DIR && git pull origin main" > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Code pulled${NC}\n"
-else
-    echo -e "${RED}✗ Failed to pull code${NC}\n"
-    exit 1
-fi
-
-# Step 2: Setup database (create venv, install deps)
-echo -e "${BLUE}[2/5] Setting up Python environment...${NC}"
+# Step 1: Setup database (create venv, install deps)
+echo -e "${BLUE}[1/4] Setting up Python environment...${NC}"
 ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c 'set -e; \
 if [ ! -d venv ]; then python3 -m venv venv; fi; \
 source venv/bin/activate; \
@@ -65,8 +57,8 @@ else
     exit 1
 fi
 
-# Step 3: Configure .env files
-echo -e "${BLUE}[3/5] Checking configuration files...${NC}"
+# Step 2: Configure .env files
+echo -e "${BLUE}[2/4] Checking configuration files...${NC}"
 
 # Check and create tools/.env if missing
 ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c '\
@@ -88,8 +80,8 @@ fi'" > /dev/null 2>&1
 
 echo -e "${GREEN}✓ Configuration files ready${NC}\n"
 
-# Step 4: Start backend if not running
-echo -e "${BLUE}[4/5] Starting backend...${NC}"
+# Step 3: Start backend if not running
+echo -e "${BLUE}[3/4] Starting backend...${NC}"
 
 BACKEND_RUNNING=$(ssh "$REMOTE_HOST" "pgrep -f 'python.*app\.py' 2>/dev/null | wc -l")
 
@@ -115,8 +107,8 @@ fi
 
 echo
 
-# Step 5: Start React frontend if not running
-echo -e "${BLUE}[5/5] Starting frontend...${NC}"
+# Step 4: Start React frontend if not running
+echo -e "${BLUE}[4/4] Starting frontend...${NC}"
 
 NPM_RUNNING=$(ssh "$REMOTE_HOST" "pgrep -f 'npm.*start' 2>/dev/null | wc -l")
 
