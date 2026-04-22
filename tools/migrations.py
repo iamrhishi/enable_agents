@@ -217,61 +217,6 @@ def create_sample_user(username="demo_user", password="demo_password"):
         return None
 
 
-# ==================== MIGRATION CLI ====================
-
-if __name__ == '__main__':
-    import sys
-    
-    with app.app_context():
-        if len(sys.argv) > 1:
-            command = sys.argv[1].lower()
-            
-            if command == 'init':
-                print("Initializing database...")
-                init_db()
-                
-            elif command == 'drop':
-                print("Dropping all database tables...")
-                drop_db()
-                
-            elif command == 'reset':
-                print("Resetting database...")
-                reset_db()
-                
-            elif command == 'status':
-                print("Checking database status...")
-                status = get_db_status()
-                print("\n" + "="*70)
-                print("DATABASE STATUS")
-                print("="*70)
-                if status['status'] == 'connected':
-                    print(f"✅ Status: Connected")
-                    print(f"📍 Database: {status['database_uri']}")
-                    for table_name, table_info in status['tables'].items():
-                        print(f"\n📋 Table: {table_name}")
-                        print(f"   Rows: {table_info['row_count']}")
-                        print(f"   Columns: {len(table_info['columns'])}")
-                else:
-                    print(f"❌ Status: {status['status']}")
-                    print(f"Error: {status.get('error', 'Unknown error')}")
-                print()
-                
-            elif command == 'schema':
-                print("Printing database schema...")
-                print_schema()
-                
-            elif command == 'sample':
-                print("Creating sample user...")
-                create_sample_user()
-                
-            else:
-                print(f"Unknown command: {command}")
-                print_help()
-        else:
-            # Default action: show help
-            print_help()
-
-
 def print_help():
     """Print help message for migration commands."""
     help_text = """
@@ -378,3 +323,60 @@ TROUBLESHOOTING:
 ═══════════════════════════════════════════════════════════════════════════
     """
     print(help_text)
+
+
+# ==================== MIGRATION CLI ====================
+
+if __name__ == '__main__':
+    import sys
+    
+    with app.app_context():
+        if len(sys.argv) > 1:
+            command = sys.argv[1].lower()
+            
+            if command == 'init':
+                print("Initializing database...")
+                init_db()
+                
+            elif command == 'drop':
+                print("Dropping all database tables...")
+                drop_db()
+                
+            elif command == 'reset':
+                print("Resetting database...")
+                reset_db()
+                
+            elif command == 'status':
+                print("Checking database status...")
+                status = get_db_status()
+                print("\n" + "="*70)
+                print("DATABASE STATUS")
+                print("="*70)
+                if status['status'] == 'connected':
+                    print(f"✅ Status: Connected")
+                    print(f"📍 Database: {status['database_uri']}")
+                    for table_name, table_info in status['tables'].items():
+                        print(f"\n📋 Table: {table_name}")
+                        print(f"   Rows: {table_info['row_count']}")
+                        print(f"   Columns: {len(table_info['columns'])}")
+                else:
+                    print(f"❌ Status: {status['status']}")
+                    print(f"Error: {status.get('error', 'Unknown error')}")
+                print()
+                
+            elif command == 'schema':
+                print("Printing database schema...")
+                print_schema()
+                
+            elif command == 'sample':
+                print("Creating sample user...")
+                create_sample_user()
+                
+            else:
+                print(f"Unknown command: {command}")
+                print_help()
+        else:
+            # Default action: show help
+            print_help()
+
+
