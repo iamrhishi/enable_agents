@@ -9,7 +9,9 @@ venv/
 env/
 .venv
 .venv-win/
+.env
 tools/.env
+agent-app/.env
 tools/.venv
 tools/venv
 venv

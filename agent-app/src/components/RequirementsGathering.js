@@ -230,7 +230,7 @@ function RequirementsGathering() {
         setIsLoadingResearch(true);
 
         // Call the search-google-businesses API
-        const response = await fetch(API_CONFIG.SEARCH_GOOGLE_BUSINESSES, {
+        const searchResponse = await fetch(API_CONFIG.SEARCH_GOOGLE_BUSINESSES, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
