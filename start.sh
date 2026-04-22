@@ -49,21 +49,60 @@ echo -e "${YELLOW}========================================${NC}\n"
 # Kill any existing processes on ports 3000 and 5000
 echo -e "${YELLOW}Cleaning up existing processes on ports 3000 and 5000...${NC}"
 
-# Kill processes on port 3000
-PIDS_3000=$(lsof -ti:3000 2>/dev/null || true)
-if [ ! -z "$PIDS_3000" ]; then
-    echo "$PIDS_3000" | xargs kill -9 2>/dev/null || true
-    echo -e "${GREEN}✓ Killed process on port 3000${NC}"
-fi
+# Function to kill process on port
+kill_port() {
+    local PORT=$1
+    local NAME=$2
+    
+    # Try lsof first
+    if command -v lsof &> /dev/null; then
+        PIDS=$(lsof -ti:$PORT 2>/dev/null || true)
+        if [ ! -z "$PIDS" ]; then
+            echo "$PIDS" | xargs kill -9 2>/dev/null || true
+            echo -e "${GREEN}✓ Killed process on port $PORT (lsof)${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try fuser as fallback
+    if command -v fuser &> /dev/null; then
+        fuser -k $PORT/tcp 2>/dev/null || true
+        echo -e "${GREEN}✓ Killed process on port $PORT (fuser)${NC}"
+        return 0
+    fi
+    
+    # Try ss as fallback
+    if command -v ss &> /dev/null; then
+        PIDS=$(ss -tlnp 2>/dev/null | grep :$PORT | awk '{print $NF}' | grep -o '[0-9]*' | head -1)
+        if [ ! -z "$PIDS" ]; then
+            kill -9 $PIDS 2>/dev/null || true
+            echo -e "${GREEN}✓ Killed process on port $PORT (ss)${NC}"
+            return 0
+        fi
+    fi
+}
 
-# Kill processes on port 5000
-PIDS_5000=$(lsof -ti:5000 2>/dev/null || true)
-if [ ! -z "$PIDS_5000" ]; then
-    echo "$PIDS_5000" | xargs kill -9 2>/dev/null || true
-    echo -e "${GREEN}✓ Killed process on port 5000${NC}"
-fi
+kill_port 3000 "React"
+kill_port 5000 "Python"
 
-sleep 1  # Give ports time to be released
+# Also kill any remaining node/npm processes from agent-app
+echo -e "${YELLOW}Killing any leftover npm/node processes...${NC}"
+pkill -f "npm start" 2>/dev/null || true
+pkill -f "react-scripts" 2>/dev/null || true
+pkill -f "node.*agent-app" 2>/dev/null || true
+
+# Kill any leftover python app.py processes
+pkill -f "python.*app.py" 2>/dev/null || true
+
+# Wait for ports to be released
+echo -e "${YELLOW}Waiting for ports to be released...${NC}"
+for i in {1..10}; do
+    if ! (command -v lsof &> /dev/null && lsof -i:3000 &>/dev/null); then
+        break
+    fi
+    sleep 0.5
+done
+sleep 2
 echo ""
 
 # Check if virtual environment exists
