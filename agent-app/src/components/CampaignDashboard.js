@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import '../styles/RequirementsGathering.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 function CampaignDashboard() {
   const userId = localStorage.getItem("firstName") || "";
@@ -16,7 +17,7 @@ function CampaignDashboard() {
   const fetchCampaigns = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/campaigns/stats?username=${encodeURIComponent(userId)}`);
+      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
       const data = await res.json();
       if (data.success) {
         setCampaigns(data.campaigns);
@@ -30,7 +31,7 @@ function CampaignDashboard() {
 
   const viewCampaign = async (campaignId) => {
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/campaigns/${campaignId}/recipients`);
+      const res = await fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaignId));
       const data = await res.json();
       if (data.success) {
         setRecipients(data.recipients);

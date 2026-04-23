@@ -46,6 +46,65 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Starting Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
+# Kill any existing processes on ports 3000 and 5000
+echo -e "${YELLOW}Cleaning up existing processes on ports 3000 and 5000...${NC}"
+
+# Function to kill process on port
+kill_port() {
+    local PORT=$1
+    local NAME=$2
+    
+    # Try lsof first
+    if command -v lsof &> /dev/null; then
+        PIDS=$(lsof -ti:$PORT 2>/dev/null || true)
+        if [ ! -z "$PIDS" ]; then
+            echo "$PIDS" | xargs kill -9 2>/dev/null || true
+            echo -e "${GREEN}✓ Killed process on port $PORT (lsof)${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try fuser as fallback
+    if command -v fuser &> /dev/null; then
+        fuser -k $PORT/tcp 2>/dev/null || true
+        echo -e "${GREEN}✓ Killed process on port $PORT (fuser)${NC}"
+        return 0
+    fi
+    
+    # Try ss as fallback
+    if command -v ss &> /dev/null; then
+        PIDS=$(ss -tlnp 2>/dev/null | grep :$PORT | awk '{print $NF}' | grep -o '[0-9]*' | head -1)
+        if [ ! -z "$PIDS" ]; then
+            kill -9 $PIDS 2>/dev/null || true
+            echo -e "${GREEN}✓ Killed process on port $PORT (ss)${NC}"
+            return 0
+        fi
+    fi
+}
+
+kill_port 3000 "React"
+kill_port 5000 "Python"
+
+# Also kill any remaining node/npm processes from agent-app
+echo -e "${YELLOW}Killing any leftover npm/node processes...${NC}"
+pkill -f "npm start" 2>/dev/null || true
+pkill -f "react-scripts" 2>/dev/null || true
+pkill -f "node.*agent-app" 2>/dev/null || true
+
+# Kill any leftover python app.py processes
+pkill -f "python.*app.py" 2>/dev/null || true
+
+# Wait for ports to be released
+echo -e "${YELLOW}Waiting for ports to be released...${NC}"
+for i in {1..10}; do
+    if ! (command -v lsof &> /dev/null && lsof -i:3000 &>/dev/null); then
+        break
+    fi
+    sleep 0.5
+done
+sleep 2
+echo ""
+
 # Check if virtual environment exists
 if [ ! -d "$VENV_PATH" ]; then
     echo -e "${RED}✗ Virtual environment not found${NC}"
@@ -73,8 +132,9 @@ echo $REACT_PID >> "$PID_FILE"
 echo -e "${GREEN}✓ React app started (PID: $REACT_PID)${NC}"
 echo -e "${BLUE}  Log file: $LOG_DIR/react.log${NC}\n"
 
-# Wait a moment for React to start
-sleep 3
+# Wait for React to start compilation
+echo -e "${YELLOW}Waiting for React to compile...${NC}"
+sleep 8
 
 # Start Python App
 echo -e "${BLUE}Starting Python backend...${NC}"
@@ -85,11 +145,23 @@ echo $PYTHON_PID >> "$PID_FILE"
 echo -e "${GREEN}✓ Python app started (PID: $PYTHON_PID)${NC}"
 echo -e "${BLUE}  Log file: $LOG_DIR/python.log${NC}\n"
 
-# Wait a moment for Python to start
-sleep 2
+# Wait for Python to start
+echo -e "${YELLOW}Waiting for Python backend to initialize...${NC}"
+sleep 5
 
 # Verify both processes are running
-if kill -0 $REACT_PID 2>/dev/null && kill -0 $PYTHON_PID 2>/dev/null; then
+REACT_RUNNING=false
+PYTHON_RUNNING=false
+
+if kill -0 $REACT_PID 2>/dev/null; then
+    REACT_RUNNING=true
+fi
+
+if kill -0 $PYTHON_PID 2>/dev/null; then
+    PYTHON_RUNNING=true
+fi
+
+if [ "$REACT_RUNNING" = true ] && [ "$PYTHON_RUNNING" = true ]; then
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}✓ All services started successfully!${NC}"
     echo -e "${GREEN}========================================${NC}\n"
@@ -110,6 +182,18 @@ if kill -0 $REACT_PID 2>/dev/null && kill -0 $PYTHON_PID 2>/dev/null; then
     echo -e "  ./stop.sh\n"
 else
     echo -e "${RED}✗ Failed to start services${NC}\n"
+    
+    if [ "$REACT_RUNNING" = false ]; then
+        echo -e "${RED}React failed to start. Last log entries:${NC}"
+        tail -n 10 "$LOG_DIR/react.log" 2>/dev/null || echo "No log file found"
+    fi
+    
+    if [ "$PYTHON_RUNNING" = false ]; then
+        echo -e "${RED}Python backend failed to start. Last log entries:${NC}"
+        tail -n 10 "$LOG_DIR/python.log" 2>/dev/null || echo "No log file found"
+    fi
+    echo ""
+    
     kill $REACT_PID 2>/dev/null || true
     kill $PYTHON_PID 2>/dev/null || true
     exit 1

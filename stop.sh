@@ -34,28 +34,13 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}Enable Agents - Stopping Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
-# Check if PID file exists
-if [ ! -f "$PID_FILE" ]; then
-    echo -e "${RED}✗ No running services found (PID file not found)${NC}\n"
-    exit 0
-fi
-
-# Read PIDs from file
-PIDS=($(cat "$PID_FILE"))
-
-if [ ${#PIDS[@]} -eq 0 ]; then
-    echo -e "${RED}✗ No running services found (empty PID file)${NC}\n"
-    rm -f "$PID_FILE"
-    exit 0
-fi
-
-# Try to stop each process gracefully
-STOPPED=0
-FAILED=0
-
-for PID in "${PIDS[@]}"; do
+# Function to kill process gracefully
+kill_process() {
+    local PID=$1
+    local NAME=$2
+    
     if kill -0 "$PID" 2>/dev/null; then
-        echo -e "${BLUE}Stopping process (PID: $PID)...${NC}"
+        echo -e "${BLUE}Stopping $NAME (PID: $PID)...${NC}"
         
         # First, try graceful termination
         kill -TERM "$PID" 2>/dev/null || true
@@ -63,31 +48,61 @@ for PID in "${PIDS[@]}"; do
         # Wait up to 5 seconds for graceful shutdown
         for i in {1..50}; do
             if ! kill -0 "$PID" 2>/dev/null; then
-                echo -e "${GREEN}✓ Process stopped successfully${NC}"
-                ((STOPPED++))
-                break
+                echo -e "${GREEN}✓ $NAME stopped successfully${NC}"
+                return 0
             fi
             sleep 0.1
         done
         
         # If still running, force kill
         if kill -0 "$PID" 2>/dev/null; then
-            echo -e "${YELLOW}Force stopping process (PID: $PID)...${NC}"
+            echo -e "${YELLOW}Force stopping $NAME (PID: $PID)...${NC}"
             kill -9 "$PID" 2>/dev/null || true
-            echo -e "${GREEN}✓ Process force stopped${NC}"
-            ((STOPPED++))
+            echo -e "${GREEN}✓ $NAME force stopped${NC}"
+            return 0
         fi
-    else
-        echo -e "${YELLOW}Process (PID: $PID) not running${NC}"
-        ((STOPPED++))
     fi
-done
+    return 0
+}
 
-# Clean up
-rm -f "$PID_FILE"
+STOPPED=0
+
+# Try from PID file first
+if [ -f "$PID_FILE" ]; then
+    PIDS=($(cat "$PID_FILE"))
+    
+    if [ ${#PIDS[@]} -gt 0 ]; then
+        for PID in "${PIDS[@]}"; do
+            kill_process "$PID" "Process"
+            ((STOPPED++))
+        done
+    fi
+    rm -f "$PID_FILE"
+fi
+
+# Fallback: Kill by process name if any are still running
+echo -e "${BLUE}Searching for React and Python app processes...${NC}"
+
+# Kill React (npm start)
+REACT_PIDS=$(pgrep -f "npm start" | grep -v grep)
+if [ ! -z "$REACT_PIDS" ]; then
+    echo "$REACT_PIDS" | while read PID; do
+        kill_process "$PID" "React (npm start)"
+        ((STOPPED++))
+    done
+fi
+
+# Kill Python app.py
+PYTHON_PIDS=$(pgrep -f "python.*app.py")
+if [ ! -z "$PYTHON_PIDS" ]; then
+    echo "$PYTHON_PIDS" | while read PID; do
+        kill_process "$PID" "Python backend (app.py)"
+        ((STOPPED++))
+    done
+fi
 
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ All services stopped successfully!${NC}"
+echo -e "${GREEN}✓ Services stopped successfully!${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
 if [ -d "$LOG_DIR" ]; then
