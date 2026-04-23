@@ -3,7 +3,9 @@
  * Handles all API calls for Projects, Tasks, and Team Members
  */
 
-const API_BASE_URL = 'http://localhost:5000/api';
+import { API_CONFIG } from '../config/apiConfig';
+
+const API_BASE_URL = API_CONFIG.EXECUTIVE_ASSISTANT_BASE;
 
 // Default fetch options
 const defaultOptions = {

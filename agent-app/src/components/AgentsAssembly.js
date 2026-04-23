@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import '../styles/AgentsAssembly.css';
+import { API_CONFIG } from '../config/apiConfig';
 
 
 
@@ -288,7 +289,7 @@ function AgentsAssembly() {
     // Fetch businesses from backend with pagination
     const fetchBusinesses = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/search_businesses', {
+        const res = await axios.get(API_CONFIG.SEARCH_BUSINESSES, {
           params: {
             query: searchTerm,
             location: selectedIndustry,
@@ -463,7 +464,7 @@ const handleEnterpriseChat = async (userInput) => {
         { type: 'buffer', text: 'Thinking...' }
       ]);
 
-      const res = await axios.post('http://localhost:5000/enterprise_chat', {
+      const res = await axios.post(API_CONFIG.ENTERPRISE_CHAT, {
         chat_state: localChatState,
         last_answer: lastAnswer,
         last_question_key: lastQuestionKey
@@ -517,7 +518,7 @@ const handleEnterpriseChat = async (userInput) => {
         ]);
 
         try {
-          const recRes = await axios.post('http://localhost:5000/recommend_agents', data.chat_state);
+          const recRes = await axios.post(API_CONFIG.RECOMMEND_AGENTS, data.chat_state);
           const recData = recRes.data;
 
           // Remove buffering message
