@@ -7156,15 +7156,27 @@ def health_check():
     }), 200
 
 
-@app.route('/api/save-project', methods=['POST'])
+@app.route('/test-connection', methods=['GET'])
+def test_connection():
+    """Frontend compatibility health endpoint."""
+    return jsonify({
+        'status': 'connected',
+        'service': 'enable-agents-api',
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
+
+@app.route('/api/save-project', methods=['POST', 'OPTIONS'])
 @cross_origin()
 def save_project():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     try:
         data = request.json
         username = data.get('username')
         name = data.get('name')
-        query_used = data.get('query_used', '')
-        leads = data.get('leads', [])
+        query_used = data.get('query', '')
+        leads = data.get('businesses', [])
         
         if not username or not name:
             return jsonify({'success': False, 'error': 'Missing username or name'}), 400
@@ -7188,14 +7200,67 @@ def save_project():
                 social_links=json.dumps(lead_data.get('social_links', {})),
                 raw_data=json.dumps(lead_data)
             )
-            # If the lead already came with emails, mark has_extracted True maybe?
-            # Or always let extraction be separated
             db.session.add(lead)
             
         db.session.commit()
         return jsonify({'success': True, 'project_id': project.id, 'message': 'Leads saved successfully'})
     except Exception as e:
         db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/append-project', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def append_project():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    try:
+        data = request.json
+        username = data.get('username')
+        project_id = data.get('projectId')
+        leads = data.get('businesses', [])
+        
+        if not username or not project_id:
+            return jsonify({'success': False, 'error': 'Missing username or projectId'}), 400
+            
+        # verify
+        project = db.session.get(SavedProject, project_id)
+        if not project or project.username != username:
+            return jsonify({'success': False, 'error': 'Project not found.'}), 404
+        
+        # Check current existing names in project to append uniquely
+        existing_leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
+        existing_names = {lead.name for lead in existing_leads if lead.name}
+        
+        import json
+        added = 0
+        for lead_data in leads:
+            b_name = lead_data.get('name', '')
+            if b_name and b_name in existing_names:
+                continue
+                
+            lead = SavedLead(
+                project_id=project.id,
+                name=b_name,
+                website=lead_data.get('website', ''),
+                phone=lead_data.get('phone', ''),
+                address=lead_data.get('address', ''),
+                emails=json.dumps(lead_data.get('emails', [])),
+                linkedin_links=json.dumps(lead_data.get('linkedin_urls', [])),
+                social_links=json.dumps(lead_data.get('social_links', {})),
+                raw_data=json.dumps(lead_data)
+            )
+            db.session.add(lead)
+            existing_names.add(b_name)
+            added += 1
+            
+        db.session.commit()
+        return jsonify({'success': True, 'project_id': project.id, 'message': f'Appended {added} new leads.'})
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/saved-projects', methods=['GET'])
@@ -7206,10 +7271,10 @@ def get_saved_projects():
         if not username:
              return jsonify({'success': False, 'error': 'Missing username'}), 400
              
-        projects = SavedProject.query.filter_by(username=username).order_by(SavedProject.created_at.desc()).all()
+        projects = db.session.query(SavedProject).filter_by(username=username).order_by(SavedProject.created_at.desc()).all()
         result = []
         for p in projects:
-            lead_count = SavedLead.query.filter_by(project_id=p.id).count()
+            lead_count = db.session.query(SavedLead).filter_by(project_id=p.id).count()
             result.append({
                 'id': p.id,
                 'name': p.name,
@@ -7220,6 +7285,8 @@ def get_saved_projects():
             
         return jsonify({'success': True, 'projects': result})
     except Exception as e:
+         import traceback
+         traceback.print_exc()
          return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/saved-projects/<int:project_id>/leads', methods=['GET'])
@@ -7227,12 +7294,12 @@ def get_saved_projects():
 def get_project_leads(project_id):
     try:
         username = request.args.get('username')
-        project = SavedProject.query.get(project_id)
+        project = db.session.get(SavedProject, project_id)
         
         if not project or (username and project.username != username):
             return jsonify({'success': False, 'error': 'Project not found'}), 404
             
-        leads = SavedLead.query.filter_by(project_id=project_id).all()
+        leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
         import json
         result = []
         for l in leads:
@@ -7244,14 +7311,37 @@ def get_project_leads(project_id):
                 'address': l.address,
                 'emails': json.loads(l.emails) if l.emails else [],
                 'linkedin_urls': json.loads(l.linkedin_links) if l.linkedin_links else [],
-                'has_extracted': l.has_extracted,
-                'raw_data': json.loads(l.raw_data) if l.raw_data else {}
+                'social_links': json.loads(l.social_links) if l.social_links else {},
             })
             
         return jsonify({'success': True, 'project': {'id': project.id, 'name': project.name}, 'leads': result})
     except Exception as e:
+         import traceback
+         traceback.print_exc()
          return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/saved-projects/<int:project_id>', methods=['DELETE', 'OPTIONS'])
+@cross_origin()
+def delete_saved_project(project_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    try:
+        username = request.args.get('username')
+        if not username:
+             return jsonify({'success': False, 'error': 'Missing username'}), 400
+             
+        project = db.session.get(SavedProject, project_id)
+        if not project or project.username != username:
+            return jsonify({'success': False, 'error': 'Project not found or unauthorized'}), 404
+            
+        db.session.delete(project)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Project deleted successfully'})
+    except Exception as e:
+         db.session.rollback()
+         import traceback
+         traceback.print_exc()
+         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():
