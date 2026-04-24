@@ -79,6 +79,8 @@ export const API_CONFIG = {
   SEND_BULK_EMAILS: `${API_URL}/send-bulk-emails`,
   GET_CAMPAIGNS_STATS: `${API_URL}/api/campaigns/stats`,
   GET_CAMPAIGN_RECIPIENTS: `${API_URL}/api/campaigns/{campaignId}/recipients`,
+  GET_SAVED_PROJECTS: `${API_URL}/api/saved-projects`,
+  GET_SAVED_PROJECT_LEADS: `${API_URL}/api/saved-projects`,
   
   // Executive Assistant API
   EXECUTIVE_ASSISTANT_BASE: `${API_URL}/api`,

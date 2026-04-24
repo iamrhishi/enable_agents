@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -143,8 +143,6 @@ function RequirementsGathering() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [saveListName, setSaveListName] = useState('');
-  const [isAppending, setIsAppending] = useState(false);
-  const [selectedProjectIdToAppend, setSelectedProjectIdToAppend] = useState('');
   const [isSavingList, setIsSavingList] = useState(false);
   const [showSavedListsView, setShowSavedListsView] = useState(false);
   const [savedLists, setSavedLists] = useState([]);
@@ -160,14 +158,6 @@ function RequirementsGathering() {
 
   const getCurrentUsername = () => {
     return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
-  };
-
-  const requireCurrentUsername = () => {
-    const username = getCurrentUsername();
-    if (!username || username === 'anonymous') {
-      throw new Error('Please login again to continue.');
-    }
-    return username;
   };
 
   // Check if user just returned from Google OAuth authorization
@@ -576,62 +566,47 @@ function RequirementsGathering() {
   };
 
   const handleSaveList = async () => {
-    if (!isAppending && !saveListName.trim()) {
+    if (!saveListName.trim()) {
       alert("Please provide a name for the list.");
       return;
     }
-    if (isAppending && !selectedProjectIdToAppend) {
-      alert("Please select a list to append to.");
+    const rows = getCustomerResearchRows();
+    if (rows.length === 0) {
+      alert('No data available to save.');
       return;
     }
 
-      const currentData = customerResearchResults;
-      if (!currentData || !currentData.businesses || currentData.businesses.length === 0) {
-        alert('No data available to save.');
-        return;
-      }
-
-      const username = getCurrentUsername();
-      if (!username) {
-        return;
-      }
-
-      setIsSavingList(true);
-      try {
-        const rows = currentData.businesses;
-        const query = currentData.query || '';
-        
-        const payload = {
-              username: username,
-              name: saveListName,
-              query: query,
-              businesses: rows
-        };
-
-      if (isAppending) {
-          payload.projectId = selectedProjectIdToAppend;
-      }
-
-      const endpoint = isAppending ? API_CONFIG.APPEND_PROJECT : API_CONFIG.SAVE_PROJECT;
-
-      const response = await fetch(endpoint, {
+    setIsSavingList(true);
+    try {
+      const response = await fetch(API_CONFIG.SAVE_PROJECT, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(payload)
+         body: JSON.stringify({
+            username: getCurrentUsername(),
+            name: saveListName,
+            query_used: customerResearchResults?.query || '',  
+            leads: rows.map(r => ({
+                name: r.name,
+                website: r.website,
+                phone: r.phone,
+                address: r.address,
+                emails: r.emails ? r.emails.split(',').map(e => e.trim()).filter(e => e) : [],
+                linkedin_urls: r.linkedinUrls ? r.linkedinUrls : [],
+                social_links: r.primary ? {'primary': r.primary} : {}
+            }))
+         })
       });
       const data = await response.json();
       if (data.success) {
          alert('List saved successfully!');
          setShowSaveListModal(false);
          setSaveListName('');
-         setSelectedProjectIdToAppend('');
-         fetchSavedLists();
       } else {
          alert('Error saving list: ' + data.error);
       }
-    } catch(e) {
-      console.error('Error saving list:', e);
-      alert('Network error saving list');
+    } catch (e) {
+      console.error(e);
+      alert('An error occurred while saving the list: ' + e.message);
     }
     setIsSavingList(false);
   };
@@ -639,12 +614,8 @@ function RequirementsGathering() {
   const fetchSavedLists = async () => {
      setIsLoadingSavedLists(true);
      try {
-       const userIdentifier = requireCurrentUsername();
-       if (!userIdentifier) {
-         setSavedLists([]);
-         return;
-       }
-       const res = await fetch(`${API_CONFIG.API_URL}/api/saved-projects?username=${encodeURIComponent(userIdentifier)}`);
+       const userIdentifier = getCurrentUsername();
+       const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`);
        const data = await res.json();
        if (data.success) {
           setSavedLists(data.projects);
@@ -657,11 +628,8 @@ function RequirementsGathering() {
 
   const loadSavedListDetails = async (projectId) => {
      try {
-        const userIdentifier = requireCurrentUsername();
-        if (!userIdentifier) {
-          return;
-        }
-        const res = await fetch(`${API_CONFIG.API_URL}/api/saved-projects/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
+        const userIdentifier = getCurrentUsername();
+        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
         const data = await res.json();
         if (data.success) {
            // Hacky way to inject it into the existing generic display UI
@@ -683,40 +651,6 @@ function RequirementsGathering() {
      } catch(e) {
         console.error(e);
      }
-  };
-
-  const handleDeleteSavedList = async (projectId, projectName) => {
-    const userIdentifier = requireCurrentUsername();
-    if (!userIdentifier) {
-      return;
-    }
-
-    const confirmed = window.confirm(`Delete saved list "${projectName}"?`);
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `${API_CONFIG.API_URL}/api/saved-projects/${projectId}?username=${encodeURIComponent(userIdentifier)}`,
-        { method: 'DELETE' }
-      );
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        alert(`Failed to delete list: ${data.error || 'Unknown error'}`);
-        return;
-      }
-
-      setSavedLists((prev) => prev.filter((list) => list.id !== projectId));
-      if (activeSavedList && activeSavedList.id === projectId) {
-        setActiveSavedList(null);
-      }
-      alert('List deleted successfully.');
-    } catch (error) {
-      console.error('Error deleting saved list:', error);
-      alert('Network error deleting list.');
-    }
   };
 
   const handleExport = async (format) => {
@@ -1037,54 +971,36 @@ function RequirementsGathering() {
 
           <div className="workspace-content-box">
              {showSavedListsView ? (
-               <div className="saved-leads-page">
-                 <h2 className="saved-leads-title">Saved Leads Lists</h2>
-
+               <div className="saved-lists-container" style={{ padding: '20px' }}>
+                 {activeSavedList && (
+                    <button 
+                       onClick={() => { setActiveSavedList(null); fetchSavedLists(); }} 
+                       style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
+                    >
+                       ← Back to All Lists
+                    </button>
+                 )}
+                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
+                    {activeSavedList ? `Saved List: ${activeSavedList.name}` : `Saved Lists`}
+                 </h2>
                  {isLoadingSavedLists ? (
-                    <div className="saved-leads-empty"><span className="spinner"></span> Loading lists...</div>
+                    <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
                  ) : savedLists.length === 0 ? (
-                    <div className="saved-leads-empty">No saved lists found.</div>
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
                  ) : (
-                    <div className="saved-leads-table-wrap">
-                      <table className="saved-leads-table">
-                        <thead>
-                          <tr>
-                            <th>List Name</th>
-                            <th>Query</th>
-                            <th>Results</th>
-                            <th>Created</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {savedLists.map((list) => (
-                            <tr key={list.id}>
-                              <td>{list.name}</td>
-                              <td>{list.query_used || '-'}</td>
-                              <td>{list.lead_count || 0}</td>
-                              <td>{new Date(list.created_at).toLocaleDateString()}</td>
-                              <td>
-                                <div className="saved-leads-actions">
-                                  <button
-                                    type="button"
-                                    className="saved-leads-open-btn"
-                                    onClick={() => loadSavedListDetails(list.id)}
-                                  >
-                                    Open List
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="saved-leads-delete-btn"
-                                    onClick={() => handleDeleteSavedList(list.id, list.name)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                       {savedLists.map((list) => (
+                           <div key={list.id} onClick={() => loadSavedListDetails(list.id)} style={{ padding: '20px', background: '#fff', border: '1px solid #e1e4e8', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                              <h3 style={{ fontSize: '18px', color: '#1E3A5F', margin: '0 0 10px 0' }}>{list.name}</h3>
+                              <p style={{ color: '#666', margin: '0 0 8px 0', fontSize: '14px' }}>Query: {list.query_used || 'N/A'}</p>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+                                 <span style={{ color: '#888', fontSize: '12px' }}>{new Date(list.created_at).toLocaleDateString()}</span>
+                                 <span style={{ display: 'inline-block', background: '#F0F4F8', color: '#1E3A5F', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>
+                                     {list.lead_count} Contacts
+                                 </span>
+                              </div>
+                           </div>
+                       ))}
                     </div>
                  )}
                </div>
@@ -1115,110 +1031,305 @@ function RequirementsGathering() {
                 </div>
               ) : (
                 <>
-
-
-
-          {/* Show Customer Research Results */}
-          {customerResearchResults && (
-              <div className="minimized-customer-research-box">
-                <div className="research-summary-row minimized">
-                  <div className="summary-badges">
-                    <div className="summary-badge">
-                      <span className="badge-label">Search</span>
-                      <span className="badge-value">{customerResearchResults.query}</span>
-                    </div>
-                    <div className="summary-badge">
-                      <span className="badge-label">Location</span>
-                      <span className="badge-value">{customerResearchResults.location}</span>
-                    </div>
-                    <div className="summary-badge">
-                      <span className="badge-label">Industry</span>
-                      <span className="badge-value">{customerResearchResults.industry}</span>
-                    </div>
-                    <div className="summary-badge results-badge">
-                      <span className="badge-label">Results</span>
-                      <span className="badge-value">{customerResearchResults.totalResults}</span>
-                    </div>
-                  </div>
-                  
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
-                        <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
-                        <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
-                          {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
-                        </span>
+                  {/* Show Customer Research Results */}
+                  {customerResearchResults && (
+                      <div className="minimized-customer-research-box">
+                        <div className="research-summary-row minimized">
+                          <div className="summary-badges">
+                            <div className="summary-badge">
+                              <span className="badge-label">Search</span>
+                              <span className="badge-value">{customerResearchResults.query}</span>
+                            </div>
+                            <div className="summary-badge">
+                              <span className="badge-label">Location</span>
+                              <span className="badge-value">{customerResearchResults.location}</span>
+                            </div>
+                            <div className="summary-badge">
+                              <span className="badge-label">Industry</span>
+                              <span className="badge-value">{customerResearchResults.industry}</span>
+                            </div>
+                            <div className="summary-badge results-badge">
+                              <span className="badge-label">Results</span>
+                              <span className="badge-value">{customerResearchResults.totalResults}</span>
+                            </div>
+                          </div>
+                          
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
+                                <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
+                                <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                                  {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
+                                </span>
+                              </div>
+                              <button 
+                                className="get-emails-button compact"
+                                onClick={handleGetEmails}
+                                disabled={isLoadingEmails}
+                                style={{ margin: 0, padding: '8px 16px' }}
+                              >
+                                {isLoadingEmails ? (
+                                  <>
+                                    <span className="spinner" style={{ marginRight: '6px' }}></span>
+                                    Extracting...
+                                  </>
+                                ) : 'Extract Emails'}
+                              </button>
+                              <button 
+                                className="action-icon-button"
+                                onClick={handleCopyToClipboard}
+                                title="Copy to Clipboard"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/copy.png" alt="Copy" style={{ width: '20px', height: '20px' }} />
+                              </button>
+                              <button 
+                                className="action-icon-button"
+                                onClick={() => setShowExportModal(true)}
+                                title="Export Data"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
+                              </button>
+                              <button 
+                                className="action-icon-button"
+                                onClick={() => setShowSaveListModal(true)}
+                                title="Save to List"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/save.png" alt="Save" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/190/190411.png'}} />
+                              </button>
+                              <button 
+                                className="action-icon-button"
+                                onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
+                                title="Send Emails"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/mail.png" alt="Send Emails" style={{ width: '20px', height: '20px' }} />
+                              </button>
+                              <button 
+                                className="action-icon-button"
+                                onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
+                                title="Maximize"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/maximize.png" alt="Maximize" style={{ width: '20px', height: '20px' }} />
+                              </button>
+                          </div>
+                        </div>
+                        <div className="minimized-content-scroll">
+                          {customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
+                            <div className="table-wrapper minimized-table-wrapper">
+                              <table className="businesses-table">
+                                <thead>
+                                  <tr>
+                                    <th>Business Name</th>
+                                    <th>Address</th>
+                                    <th>Phone</th>
+                                    <th>Website</th>
+                                    <th>Email</th>
+                                    <th>LinkedIn</th>
+                                    <th>Send Email</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {customerResearchResults.businesses.map((business, index) => (
+                                    <tr key={index}>
+                                      <td>{business.name || 'N/A'}</td>
+                                      <td>{business.address || 'N/A'}</td>
+                                      <td>{business.phone || 'N/A'}</td>
+                                      <td>
+                                        {business.website ? (
+                                          <a href={business.website} target="_blank" rel="noopener noreferrer">
+                                            Visit
+                                          </a>
+                                        ) : (
+                                          'N/A'
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.email && business.email !== 'N/A' ? ( 
+                                          <span>{business.email}</span>
+                                        ) : (
+                                          <button
+                                            className="extract-email-button"
+                                            onClick={() => handleExtractEmailForBusiness(business, index)}
+                                            disabled={!!extractingEmailRows[index]}     
+                                          >
+                                            {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.linkedin ? (
+                                          business.linkedin !== 'N/A' ? (
+                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                              View Profile
+                                            </a>
+                                          ) : (
+                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                          )
+                                        ) : (
+                                          <button
+                                            className="extract-email-button"
+                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                            onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                            disabled={!!extractingLinkedInRows[index]}
+                                          >
+                                            {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.email && business.email !== 'N/A' ? (
+                                          <button
+                                            onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                            disabled={!!isGeneratingEmail[index]}
+                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                          >
+                                            {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
+                                          </button>
+                                        ) : (
+                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="no-results">No businesses found matching your search criteria.</div>
+                          )}
+                        </div>
                       </div>
-                      <button 
-                        className="get-emails-button compact"
-                        onClick={handleGetEmails}
-                        disabled={isLoadingEmails}
-                        style={{ margin: 0, padding: '8px 16px' }}
-                      >
-                        {isLoadingEmails ? (
-                          <>
-                            <span className="spinner" style={{ marginRight: '6px' }}></span>
-                            Extracting...
-                          </>
-                        ) : 'Extract Emails'}
-                      </button>
-                      <button 
-                        className="action-icon-button"
-                        onClick={handleCopyToClipboard}
-                        title="Copy to Clipboard"
-                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <img src="/assets/icons/copy.png" alt="Copy" style={{ width: '20px', height: '20px' }} />
-                      </button>
-                      <button 
-                        className="action-icon-button"
-                        onClick={() => setShowExportModal(true)}
-                        title="Export Data"
-                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
-                      </button>
-                      <button 
-                        className="action-icon-button"
-                        onClick={() => setShowSaveListModal(true)}
-                        title="Save to List"
-                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <img src="/assets/icons/save.png" alt="Save" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/190/190411.png'}} />
-                      </button>
-                      <button 
-                        className="action-icon-button"
-                        onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
-                        title="Send Emails"
-                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <img src="/assets/icons/mail.png" alt="Send Emails" style={{ width: '20px', height: '20px' }} />
-                      </button>
-                      <button 
-                        className="action-icon-button"
-                        onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
-                        title="Maximize"
-                        style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <img src="/assets/icons/maximize.png" alt="Maximize" style={{ width: '20px', height: '20px' }} />
-                      </button>
+                  )}
+
+                  {/* Show AI Requirements */}
+                  {aiRequirements.length > 0 && (
+                    <div className="requirements-list-section">
+                      <h3>Generated Requirements</h3>
+                      <ul>
+                        {aiRequirements.map((requirement, index) => (
+                          <li key={index}>{requirement}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiRequirements.length === 0 && !customerResearchResults && (
+                    <p className="empty-message">Generate requirements to see results here...</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          </div>
+
+          {/* Google Business Integration Modal */}
+          {showIntegrationModal && (
+            <div className="popup-overlay">
+              <div className="popup-content integration-modal">
+                <h3>{googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}</h3>
+                <div className="integration-form">
+                  <div className="form-group">
+                    <label>Client ID</label>
+                    <input
+                      type="text"
+                      name="clientId"
+                      value={googleBusinessForm.clientId}
+                      onChange={handleGoogleBusinessInputChange}
+                      placeholder="Enter Client ID"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Client Secret</label>
+                    <input
+                      type="text"
+                      name="clientSecret"
+                      value={googleBusinessForm.clientSecret}
+                      onChange={handleGoogleBusinessInputChange}
+                      placeholder="Enter Client Secret"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Redirect URI</label>
+                    <input
+                      type="text"
+                      name="redirectUri"
+                      value={googleBusinessForm.redirectUri}
+                      onChange={handleGoogleBusinessInputChange}
+                      placeholder="Enter Redirect URI"
+                    />
                   </div>
                 </div>
-                <div className="minimized-content-scroll">
-                  {customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
-                    <div className="table-wrapper minimized-table-wrapper">
-                      <table className="businesses-table">
-                        <thead>
-                          <tr>
-                            <th>Business Name</th>
-                            <th>Address</th>
-                            <th>Phone</th>
-                            <th>Website</th>
-                            <th>Email</th>
-                            <th>LinkedIn</th>
-                            <th>Send Email</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                <div className="modal-buttons">
+                  <button className="connect-submit-button" onClick={handleGoogleBusinessConnect}>
+                    Connect
+                  </button>
+                  <button className="close-popup-button" onClick={() => setShowIntegrationModal(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Popup for Export Options */}
+          {showPopup && (
+            <div className="popup-overlay">
+              <div className="popup-content">
+                <h3>Export Options</h3>
+                <div className="export-icons">
+                  <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
+                  <img src="/assets/icons/word.png" alt="Word" title="Word" />
+                  <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
+                  <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
+                  <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
+                  <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
+                </div>
+                <button className="close-popup-button" onClick={closePopup}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Customer Research Results Table */}
+
+          {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
+              <div className="popup-overlay">
+                <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
+                  <button 
+                    onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
+                    style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
+                    title="Minimize Table"
+                  >
+                    &times;
+                  </button>
+                  <div className="research-summary-row">
+                  <span><strong>Search:</strong> {customerResearchResults.query}</span>
+                  <span><strong>Location:</strong> {customerResearchResults.location}</span>
+                  <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
+                  <span><strong>Total Results:</strong> {customerResearchResults.totalResults}</span>
+                </div>
+
+                {isLoadingResearch ? (
+                  <div className="loading">Loading businesses...</div>
+                ) : customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
+                  <div className="table-wrapper">
+                    <table className="businesses-table">
+                      <thead>
+                        <tr>
+                          <th>Business Name</th>
+                          <th>Address</th>
+                          <th>Phone</th>
+                          <th>Website</th>
+                          <th>Email</th>
+                          <th>LinkedIn</th>
+                          <th>Send Email</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                           {customerResearchResults.businesses.map((business, index) => (
                             <tr key={index}>
                               <td>{business.name || 'N/A'}</td>
@@ -1240,7 +1351,7 @@ function RequirementsGathering() {
                                   <button
                                     className="extract-email-button"
                                     onClick={() => handleExtractEmailForBusiness(business, index)}
-                                    disabled={!!extractingEmailRows[index]}     
+                                    disabled={!!extractingEmailRows[index]}
                                   >
                                     {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
                                   </button>
@@ -1282,512 +1393,281 @@ function RequirementsGathering() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="no-results">No businesses found matching your search criteria.</div>
-                  )}
+                    </table>
+                  </div>
+                ) : (
+                  <div className="no-results">No businesses found matching your search criteria.</div>
+                )}
+
+                <div className="modal-buttons">
+                  <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
+                    Minimize
+                  </button>
                 </div>
               </div>
-          )}
-
-          {/* Show AI Requirements */}
-          {aiRequirements.length > 0 && (
-            <div className="requirements-list-section">
-              <h3>Generated Requirements</h3>
-              <ul>
-                {aiRequirements.map((requirement, index) => (
-                  <li key={index}>{requirement}</li>
-                ))}
-              </ul>
             </div>
           )}
 
-          {aiRequirements.length === 0 && !customerResearchResults && (
-            <p className="empty-message">Generate requirements to see results here...</p>
+
+          {showPromptsPopup && (
+            <div className="popup-overlay">
+              <div className="popup-content">
+                <h3>Previous Prompts</h3>
+                <ul>
+                  {previousPrompts.map((prompt, index) => (
+                    <li key={index}>
+                      <strong>Prompt ID:</strong> {prompt.id}
+                      <br />
+                      <strong>Overview:</strong> {prompt.overview}
+                      <br />
+                      <strong>Context:</strong> {prompt.context}
+                      <br />
+                      <strong>Countries:</strong> {prompt.countries}
+                      <br />
+                      <strong>Industries:</strong> {prompt.industries}
+                      <br />
+                      <strong>Business Functions:</strong> {prompt.businessFunctions}
+                      <br />
+                      <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}
+                      <br />
+                      <strong>Response Format:</strong> {prompt.responseFormat}
+                    </li>
+                  ))}
+                </ul>
+                <button className="close-popup-button" onClick={() => setShowPromptsPopup(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showExportModal && (
+            <div className="popup-overlay">
+              <div className="popup-content export-options-modal">
+                <h3>Export Market Research</h3>
+                <div className="export-options-grid">
+                  <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
+                  <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
+                  <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
+                  <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
+                  <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
+                </div>
+                <div className="modal-buttons">
+                  <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
 
-                </>
-              )}
-</div>
-            )}
-      </div>
+            {showEmailModal && (
+            <div className="popup-overlay">
+              <div className="popup-content email-modal-large">
+                <div className="email-modal-header">
+                  <h3>Draft Email Campaign</h3>
+                  <button 
+                    className="modal-close-btn"
+                    onClick={() => { 
+                      setShowEmailModal(false); 
+                      setSelectedLead(null);
+                      setEmailImages([]);
+                      setIsAddingNewCampaign(false);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
 
-      {/* Google Business Integration Modal */}
-      {showIntegrationModal && (
-        <div className="popup-overlay">
-          <div className="popup-content integration-modal">
-            <h3>{googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}</h3>
-            <div className="integration-form">
-              <div className="form-group">
-                <label>Client ID</label>
-                <input
-                  type="text"
-                  name="clientId"
-                  value={googleBusinessForm.clientId}
-                  onChange={handleGoogleBusinessInputChange}
-                  placeholder="Enter Client ID"
-                />
-              </div>
-              <div className="form-group">
-                <label>Client Secret</label>
-                <input
-                  type="text"
-                  name="clientSecret"
-                  value={googleBusinessForm.clientSecret}
-                  onChange={handleGoogleBusinessInputChange}
-                  placeholder="Enter Client Secret"
-                />
-              </div>
-              <div className="form-group">
-                <label>Redirect URI</label>
-                <input
-                  type="text"
-                  name="redirectUri"
-                  value={googleBusinessForm.redirectUri}
-                  onChange={handleGoogleBusinessInputChange}
-                  placeholder="Enter Redirect URI"
-                />
-              </div>
-            </div>
-            <div className="modal-buttons">
-              <button className="connect-submit-button" onClick={handleGoogleBusinessConnect}>
-                Connect
-              </button>
-              <button className="close-popup-button" onClick={() => setShowIntegrationModal(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Popup for Export Options */}
-      {showPopup && (
-        <div className="popup-overlay">
-          <div className="popup-content">
-            <h3>Export Options</h3>
-            <div className="export-icons">
-              <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
-              <img src="/assets/icons/word.png" alt="Word" title="Word" />
-              <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
-              <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
-              <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
-              <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
-            </div>
-            <button className="close-popup-button" onClick={closePopup}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Customer Research Results Table */}
-
-      {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-          <div className="popup-overlay">
-            <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
-              <button 
-                onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
-                style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
-                title="Minimize Table"
-              >
-                &times;
-              </button>
-              <div className="research-summary-row">
-              <span><strong>Search:</strong> {customerResearchResults.query}</span>
-              <span><strong>Location:</strong> {customerResearchResults.location}</span>
-              <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
-              <span><strong>Total Results:</strong> {customerResearchResults.totalResults}</span>
-            </div>
-
-            {isLoadingResearch ? (
-              <div className="loading">Loading businesses...</div>
-            ) : customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
-              <div className="table-wrapper">
-                <table className="businesses-table">
-                  <thead>
-                    <tr>
-                      <th>Business Name</th>
-                      <th>Address</th>
-                      <th>Phone</th>
-                      <th>Website</th>
-                      <th>Email</th>
-                      <th>LinkedIn</th>
-                      <th>Send Email</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                      {customerResearchResults.businesses.map((business, index) => (
-                        <tr key={index}>
-                          <td>{business.name || 'N/A'}</td>
-                          <td>{business.address || 'N/A'}</td>
-                          <td>{business.phone || 'N/A'}</td>
-                          <td>
-                            {business.website ? (
-                              <a href={business.website} target="_blank" rel="noopener noreferrer">
-                                Visit
-                              </a>
-                            ) : (
-                              'N/A'
-                            )}
-                          </td>
-                          <td>
-                            {business.email && business.email !== 'N/A' ? ( 
-                              <span>{business.email}</span>
-                            ) : (
-                              <button
-                                className="extract-email-button"
-                                onClick={() => handleExtractEmailForBusiness(business, index)}
-                                disabled={!!extractingEmailRows[index]}
-                              >
-                                {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                              </button>
-                            )}
-                          </td>
-                          <td>
-                            {business.linkedin ? (
-                              business.linkedin !== 'N/A' ? (
-                                <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
-                                  View Profile
-                                </a>
-                              ) : (
-                                <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
-                              )
-                            ) : (
-                              <button
-                                className="extract-email-button"
-                                style={{ background: '#0a66c2', color: 'white', border: 'none' }}
-                                onClick={() => handleExtractLinkedInForBusiness(business, index)}
-                                disabled={!!extractingLinkedInRows[index]}
-                              >
-                                {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
-                              </button>
-                            )}
-                          </td>
-                          <td>
-                            {business.email && business.email !== 'N/A' ? (
-                              <button
-                                onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                disabled={!!isGeneratingEmail[index]}
-                                style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                              >
-                                {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
-                              </button>
-                            ) : (
-                              <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="no-results">No businesses found matching your search criteria.</div>
-            )}
-
-            <div className="modal-buttons">
-              <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
-                Minimize
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {showPromptsPopup && (
-        <div className="popup-overlay">
-          <div className="popup-content">
-            <h3>Previous Prompts</h3>
-            <ul>
-              {previousPrompts.map((prompt, index) => (
-                <li key={index}>
-                  <strong>Prompt ID:</strong> {prompt.id}
-                  <br />
-                  <strong>Overview:</strong> {prompt.overview}
-                  <br />
-                  <strong>Context:</strong> {prompt.context}
-                  <br />
-                  <strong>Countries:</strong> {prompt.countries}
-                  <br />
-                  <strong>Industries:</strong> {prompt.industries}
-                  <br />
-                  <strong>Business Functions:</strong> {prompt.businessFunctions}
-                  <br />
-                  <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}
-                  <br />
-                  <strong>Response Format:</strong> {prompt.responseFormat}
-                </li>
-              ))}
-            </ul>
-            <button className="close-popup-button" onClick={() => setShowPromptsPopup(false)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showExportModal && (
-        <div className="popup-overlay">
-          <div className="popup-content export-options-modal">
-            <h3>Export Market Research</h3>
-            <div className="export-options-grid">
-              <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
-              <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
-              <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
-              <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
-              <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
-            </div>
-            <div className="modal-buttons">
-              <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      
-
-      
-
-        {showEmailModal && (
-        <div className="popup-overlay">
-          <div className="popup-content email-modal-large">
-            <div className="email-modal-header">
-              <h3>Draft Email Campaign</h3>
-              <button 
-                className="modal-close-btn"
-                onClick={() => { 
-                  setShowEmailModal(false); 
-                  setSelectedLead(null);
-                  setEmailImages([]);
-                  setIsAddingNewCampaign(false);
-                }}
-              >
-                x
-              </button>
-            </div>
-
-            <div className="email-modal-body">
-              {/* Campaign Name - Dropdown with Add New Option */}
-              {!selectedLead && (
-                <div className="input-group">
-                  <label>Campaign Name</label>
-                  {existingCampaigns.length > 0 && !isAddingNewCampaign ? (
-                    <div className="campaign-selector">
-                      <select 
-                        value={selectedCampaignId} 
-                        onChange={(e) => handleCampaignSelect(e.target.value)}
-                        className="campaign-dropdown"
-                      >
-                        <option value="">Select an existing campaign...</option>
-                        {existingCampaigns.map(campaign => (
-                          <option key={campaign.id} value={campaign.id}>
-                            {campaign.name}
-                          </option>
-                        ))}
-                        <option value="new">+ Add New Campaign</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div>
-                      <input 
-                        type="text" 
-                        value={campaignName} 
-                        onChange={(e) => setCampaignName(e.target.value)} 
-                        placeholder="e.g., Tech Startups Dec 2026"
-                        className="campaign-input"
-                      />
-                      {!isAddingNewCampaign && existingCampaigns.length > 0 && (
-                        <button 
-                          className="use-existing-btn"
-                          onClick={() => setIsAddingNewCampaign(false)}
-                        >
-                          Use Existing Campaign
-                        </button>
+                <div className="email-modal-body">
+                  {/* Campaign Name - Dropdown with Add New Option */}
+                  {!selectedLead && (
+                    <div className="input-group">
+                      <label>Campaign Name</label>
+                      {existingCampaigns.length > 0 && !isAddingNewCampaign ? (
+                        <div className="campaign-selector">
+                          <select 
+                            value={selectedCampaignId} 
+                            onChange={(e) => handleCampaignSelect(e.target.value)}
+                            className="campaign-dropdown"
+                          >
+                            <option value="">Select an existing campaign...</option>
+                            {existingCampaigns.map(campaign => (
+                              <option key={campaign.id} value={campaign.id}>
+                                {campaign.name}
+                              </option>
+                            ))}
+                            <option value="new">+ Add New Campaign</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div>
+                          <input 
+                            type="text" 
+                            value={campaignName} 
+                            onChange={(e) => setCampaignName(e.target.value)} 
+                            placeholder="e.g., Tech Startups Dec 2026"
+                            className="campaign-input"
+                          />
+                          {!isAddingNewCampaign && existingCampaigns.length > 0 && (
+                            <button 
+                              className="use-existing-btn"
+                              onClick={() => setIsAddingNewCampaign(false)}
+                            >
+                              Use Existing Campaign
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* AI Personalization Checkbox - Properly Aligned */}
-              {!selectedLead && (
-                <div className="checkbox-group">
-                  <input 
-                    type="checkbox" 
-                    checked={useAiBulk} 
-                    onChange={(e) => setUseAiBulk(e.target.checked)} 
-                    id="useAiBulkCheck"
-                    className="checkbox-input"
-                  />
-                  <label htmlFor="useAiBulkCheck" className="checkbox-label">
-                    Use AI Personalization for Bulk Emails
-                  </label>
-                </div>
-              )}
-
-              {/* Subject Field */}
-              <div className="input-group">
-                <label>Subject Line</label>
-                <input 
-                  type="text" 
-                  value={emailSubject} 
-                  onChange={(e) => setEmailSubject(e.target.value)} 
-                  placeholder="Email Subject"
-                  className="subject-input"
-                />
-              </div>
-
-              {/* Email Body with Image Support */}
-              <div className="input-group">
-                <div className="body-label-row">
-                  <label>Email Body</label>
-                  <span className="body-helper-text">You can use {"{"}Company{"}"} for dynamic content</span>
-                </div>
-                <textarea 
-                  value={emailBody} 
-                  onChange={(e) => setEmailBody(e.target.value)} 
-                  placeholder="Type your email body here..." 
-                  rows={10}
-                  className="body-textarea"
-                ></textarea>
-
-                {/* Image Upload Section */}
-                <div className="image-upload-section">
-                  <label className="image-label">Add Images to Email</label>
-                  <div className="image-upload-controls">
-                    <input 
-                      type="file" 
-                      multiple 
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="image-file-input"
-                      id="emailImageInput"
-                    />
-                    <label htmlFor="emailImageInput" className="image-upload-button">
-                      Choose Images
-                    </label>
-                  </div>
-
-                  {emailImages.length > 0 && (
-                    <div className="image-gallery">
-                      <p className="gallery-title">Selected Images ({emailImages.length}):</p>
-                      <div className="image-list">
-                        {emailImages.map((img, index) => (
-                          <div key={index} className="image-item">
-                            <div className="image-preview">
-                              <img src={img.data} alt={img.name} />
-                            </div>
-                            <div className="image-actions">
-                              <button 
-                                type="button"
-                                className="image-insert-btn"
-                                onClick={() => insertImageIntoBody(index)}
-                                title="Insert into body"
-                              >
-                                Insert
-                              </button>
-                              <button 
-                                type="button"
-                                className="image-remove-btn"
-                                onClick={() => removeEmailImage(index)}
-                                title="Remove image"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                  {/* AI Personalization Checkbox - Properly Aligned */}
+                  {!selectedLead && (
+                    <div className="checkbox-group">
+                      <input 
+                        type="checkbox" 
+                        checked={useAiBulk} 
+                        onChange={(e) => setUseAiBulk(e.target.checked)} 
+                        id="useAiBulkCheck"
+                        className="checkbox-input"
+                      />
+                      <label htmlFor="useAiBulkCheck" className="checkbox-label">
+                        Use AI Personalization for Bulk Emails
+                      </label>
                     </div>
                   )}
+
+                  {/* Subject Field */}
+                  <div className="input-group">
+                    <label>Subject Line</label>
+                    <input 
+                      type="text" 
+                      value={emailSubject} 
+                      onChange={(e) => setEmailSubject(e.target.value)} 
+                      placeholder="Email Subject"
+                      className="subject-input"
+                    />
+                  </div>
+
+                  {/* Email Body with Image Support */}
+                  <div className="input-group">
+                    <div className="body-label-row">
+                      <label>Email Body</label>
+                      <span className="body-helper-text">You can use {"{"}Company{"}"} for dynamic content</span>
+                    </div>
+                    <textarea 
+                      value={emailBody} 
+                      onChange={(e) => setEmailBody(e.target.value)} 
+                      placeholder="Type your email body here..." 
+                      rows={10}
+                      className="body-textarea"
+                    ></textarea>
+
+                    {/* Image Upload Section */}
+                    <div className="image-upload-section">
+                      <label className="image-label">Add Images to Email</label>
+                      <div className="image-upload-controls">
+                        <input 
+                          type="file" 
+                          multiple 
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="image-file-input"
+                          id="emailImageInput"
+                        />
+                        <label htmlFor="emailImageInput" className="image-upload-button">
+                          Choose Images
+                        </label>
+                      </div>
+
+                      {emailImages.length > 0 && (
+                        <div className="image-gallery">
+                          <p className="gallery-title">Selected Images ({emailImages.length}):</p>
+                          <div className="image-list">
+                            {emailImages.map((img, index) => (
+                              <div key={index} className="image-item">
+                                <div className="image-preview">
+                                  <img src={img.data} alt={img.name} />
+                                </div>
+                                <div className="image-actions">
+                                  <button 
+                                    type="button"
+                                    className="image-insert-btn"
+                                    onClick={() => insertImageIntoBody(index)}
+                                    title="Insert into body"
+                                  >
+                                    Insert
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    className="image-remove-btn"
+                                    onClick={() => removeEmailImage(index)}
+                                    title="Remove image"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer with Improved Buttons */}
+                <div className="email-modal-footer">
+                  <button 
+                    className="email-cancel-button" 
+                    onClick={() => { 
+                      setShowEmailModal(false); 
+                      setSelectedLead(null);
+                      setEmailImages([]);
+                      setIsAddingNewCampaign(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    className="email-send-button" 
+                    onClick={handleSendEmails} 
+                    disabled={isSendingEmails}
+                  >
+                    {isSendingEmails ? 'Sending...' : 'Send Email'}
+                  </button>
                 </div>
               </div>
             </div>
+          )}
 
-            {/* Footer with Improved Buttons */}
-            <div className="email-modal-footer">
-              <button 
-                className="email-cancel-button" 
-                onClick={() => { 
-                  setShowEmailModal(false); 
-                  setSelectedLead(null);
-                  setEmailImages([]);
-                  setIsAddingNewCampaign(false);
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                className="email-send-button" 
-                onClick={handleSendEmails} 
-                disabled={isSendingEmails}
-              >
-                {isSendingEmails ? 'Sending...' : 'Send Email'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Saved List Modal */}
-      {showSaveListModal && (
-        <div className="popup-overlay" style={{ zIndex: 3000 }}>
-          <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
-              <button onClick={() => setShowSaveListModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                    <input type="radio" checked={!isAppending} onChange={() => setIsAppending(false)} />
-                    Create New List
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                    <input type="radio" checked={isAppending} onChange={() => { setIsAppending(true); fetchSavedLists(); }} />
-                    Append to Existing
-                </label>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {!isAppending ? (
-                  <>
+          {/* Saved List Modal */}
+          {showSaveListModal && (
+            <div className="popup-overlay" style={{ zIndex: 3000 }}>
+              <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
+                  <button onClick={() => setShowSaveListModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
                   <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
-                  </>
-              ) : (
-                  <>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select Existing List</label>
-                  <select value={selectedProjectIdToAppend} onChange={e => setSelectedProjectIdToAppend(e.target.value)} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}>
-                      <option value="">-- Select a List --</option>
-                      {savedLists.map((list) => (
-                          <option key={list.id} value={list.id}>{list.name}</option>
-                      ))}
-                  </select>
-                  </>
-              )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                  <button onClick={() => setShowSaveListModal(false)} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
+                  <button onClick={handleSaveList} disabled={isSavingList} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
+                    {isSavingList ? 'Saving...' : 'Save List'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-              <button onClick={() => setShowSaveListModal(false)} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-              <button onClick={handleSaveList} disabled={isSavingList} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                {isSavingList ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
 
-          </div>
-          
-        </div>
+        </div>   
       </div>
+    </div>
   );
 }
 

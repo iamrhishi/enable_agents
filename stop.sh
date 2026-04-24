@@ -1,19 +1,71 @@
 #!/bin/bash
 
 ###############################################################################
-# Stop Script
-# 
-# This script stops both the React frontend and Python backend services
-# that were started with the start.sh script.
-#
+# Stop Script - Stops React frontend (port 3000) and Python backend (port 5000)
 # Usage: ./stop.sh
-# 
-# The script:
-# 1. Reads the saved PID information
-# 2. Gracefully terminates both services
-# 3. Verifies they have stopped
-# 4. Cleans up PID file
 ###############################################################################
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PID_FILE="$SCRIPT_DIR/.pids"
+
+echo -e "${YELLOW}========================================${NC}"
+echo -e "${YELLOW}  Enable Agents - Stopping Services${NC}"
+echo -e "${YELLOW}========================================${NC}\n"
+
+# --- Kill process on a specific port ---
+kill_port() {
+    local PORT=$1
+    local PIDS
+    PIDS=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    if [ -n "$PIDS" ]; then
+        echo -e "${BLUE}Killing process(es) on port $PORT: $PIDS${NC}"
+        echo "$PIDS" | xargs kill -9 2>/dev/null || true
+        sleep 0.5
+        REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+        if [ -z "$REMAINING" ]; then
+            echo -e "${GREEN}✓ Port $PORT freed${NC}"
+        else
+            echo -e "${RED}✗ Port $PORT still in use after kill attempt${NC}"
+        fi
+    else
+        echo -e "${GREEN}✓ Port $PORT already free${NC}"
+    fi
+}
+
+# --- Kill by PIDs from PID file ---
+if [ -f "$PID_FILE" ]; then
+    while IFS= read -r PID; do
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+            echo -e "${BLUE}Stopping PID $PID...${NC}"
+            kill -TERM "$PID" 2>/dev/null || true
+            sleep 0.5
+            kill -9 "$PID" 2>/dev/null || true
+        fi
+    done < "$PID_FILE"
+    rm -f "$PID_FILE"
+fi
+
+# --- Kill by port (catches any processes not in PID file) ---
+echo -e "${BLUE}\nChecking ports...${NC}"
+kill_port 3000
+kill_port 5000
+
+# --- Kill by process name as final sweep ---
+pkill -f "react-scripts start" 2>/dev/null || true
+pkill -f "npm start" 2>/dev/null || true
+pkill -f "python3\?.*app\.py" 2>/dev/null || true
+
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}✓ All services stopped${NC}"
+echo -e "${GREEN}========================================${NC}\n"
+
 
 # Colors for output
 RED='\033[0;31m'

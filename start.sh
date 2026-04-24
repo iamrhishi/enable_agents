@@ -1,200 +1,159 @@
 #!/bin/bash
 
 ###############################################################################
-# Start Script
-# 
-# This script starts both the React frontend and Python backend in the 
-# background. Both services will run continuously until stopped.
-#
+# Start Script - Starts React frontend (port 3000) and Python backend (port 5000)
 # Usage: ./start.sh
-# 
-# The script:
-# 1. Creates log files for both services
-# 2. Activates the Python virtual environment
-# 3. Starts the React app (npm start) in background
-# 4. Starts the Python app (python app.py) in background
-# 5. Saves PID information for the stop script to use
 ###############################################################################
 
-set -e  # Exit on error
-
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR"
-
-# Paths
 VENV_PATH="$PROJECT_ROOT/venv"
 AGENT_APP_DIR="$PROJECT_ROOT/agent-app"
 TOOLS_DIR="$PROJECT_ROOT/tools"
 LOG_DIR="$PROJECT_ROOT/.logs"
 PID_FILE="$PROJECT_ROOT/.pids"
 
-# Create logs directory if it doesn't exist
 mkdir -p "$LOG_DIR"
-
-# Initialize PID file (empty)
 > "$PID_FILE"
 
 echo -e "${YELLOW}========================================${NC}"
-echo -e "${YELLOW}Enable Agents - Starting Services${NC}"
+echo -e "${YELLOW}  Enable Agents - Starting Services${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
-# Kill any existing processes on ports 3000 and 5000
-echo -e "${YELLOW}Cleaning up existing processes on ports 3000 and 5000...${NC}"
+# =============================================================================
+# PRE-FLIGHT: Check that setup_db.sh tasks have been completed
+# =============================================================================
+echo -e "${BLUE}--- Pre-flight checks ---${NC}"
+SETUP_OK=true
 
-# Function to kill process on port
-kill_port() {
-    local PORT=$1
-    local NAME=$2
-    
-    # Try lsof first
-    if command -v lsof &> /dev/null; then
-        PIDS=$(lsof -ti:$PORT 2>/dev/null || true)
-        if [ ! -z "$PIDS" ]; then
-            echo "$PIDS" | xargs kill -9 2>/dev/null || true
-            echo -e "${GREEN}✓ Killed process on port $PORT (lsof)${NC}"
-            return 0
-        fi
+# 1. Virtual environment
+if [ ! -d "$VENV_PATH" ]; then
+    echo -e "${RED}  ✗ Virtual environment not found at $VENV_PATH${NC}"
+    SETUP_OK=false
+else
+    echo -e "${GREEN}  ✓ Virtual environment exists${NC}"
+fi
+
+# 2. Python dependencies (check flask as key package)
+if [ -d "$VENV_PATH" ]; then
+    if ! "$VENV_PATH/bin/pip" show flask > /dev/null 2>&1; then
+        echo -e "${RED}  ✗ Python dependencies not installed (flask not found)${NC}"
+        SETUP_OK=false
+    else
+        echo -e "${GREEN}  ✓ Python dependencies installed${NC}"
     fi
-    
-    # Try fuser as fallback
-    if command -v fuser &> /dev/null; then
-        fuser -k $PORT/tcp 2>/dev/null || true
-        echo -e "${GREEN}✓ Killed process on port $PORT (fuser)${NC}"
-        return 0
-    fi
-    
-    # Try ss as fallback
-    if command -v ss &> /dev/null; then
-        PIDS=$(ss -tlnp 2>/dev/null | grep :$PORT | awk '{print $NF}' | grep -o '[0-9]*' | head -1)
-        if [ ! -z "$PIDS" ]; then
-            kill -9 $PIDS 2>/dev/null || true
-            echo -e "${GREEN}✓ Killed process on port $PORT (ss)${NC}"
-            return 0
-        fi
-    fi
-}
+fi
 
-kill_port 3000 "React"
-kill_port 5000 "Python"
+# 3. Database initialised
+DB_FILE="$TOOLS_DIR/instance/enable_agents.db"
+if [ ! -f "$DB_FILE" ]; then
+    echo -e "${RED}  ✗ Database not found at $DB_FILE${NC}"
+    SETUP_OK=false
+else
+    echo -e "${GREEN}  ✓ Database exists${NC}"
+fi
 
-# Also kill any remaining node/npm processes from agent-app
-echo -e "${YELLOW}Killing any leftover npm/node processes...${NC}"
-pkill -f "npm start" 2>/dev/null || true
-pkill -f "react-scripts" 2>/dev/null || true
-pkill -f "node.*agent-app" 2>/dev/null || true
+# 4. React node_modules (non-fatal — will be installed automatically)
+if [ ! -d "$AGENT_APP_DIR/node_modules" ]; then
+    echo -e "${YELLOW}  ⚠ React node_modules not found — will install below${NC}"
+else
+    echo -e "${GREEN}  ✓ React node_modules installed${NC}"
+fi
 
-# Kill any leftover python app.py processes
-pkill -f "python.*app.py" 2>/dev/null || true
-
-# Wait for ports to be released
-echo -e "${YELLOW}Waiting for ports to be released...${NC}"
-for i in {1..10}; do
-    if ! (command -v lsof &> /dev/null && lsof -i:3000 &>/dev/null); then
-        break
-    fi
-    sleep 0.5
-done
-sleep 2
 echo ""
 
-# Check if virtual environment exists
-if [ ! -d "$VENV_PATH" ]; then
-    echo -e "${RED}✗ Virtual environment not found${NC}"
-    echo -e "${YELLOW}Please run ./setup_db.sh first${NC}\n"
+if [ "$SETUP_OK" = false ]; then
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}  Setup incomplete. Please run:${NC}"
+    echo -e "${RED}    ./setup_db.sh${NC}"
+    echo -e "${RED}  then try ./start.sh again.${NC}"
+    echo -e "${RED}========================================${NC}\n"
     exit 1
 fi
 
-# Activate virtual environment
+# --- Kill any process on a given port ---
+kill_port() {
+    local PORT=$1
+    local PIDS
+    PIDS=$(lsof -ti:"$PORT" 2>/dev/null || true)
+    if [ -n "$PIDS" ]; then
+        echo -e "${YELLOW}Port $PORT in use — killing existing process(es): $PIDS${NC}"
+        echo "$PIDS" | xargs kill -9 2>/dev/null || true
+        sleep 1
+        # Verify it's gone
+        REMAINING=$(lsof -ti:"$PORT" 2>/dev/null || true)
+        if [ -n "$REMAINING" ]; then
+            echo -e "${RED}✗ Could not free port $PORT. Aborting.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✓ Port $PORT is now free${NC}"
+    else
+        echo -e "${GREEN}✓ Port $PORT is already free${NC}"
+    fi
+}
+
+echo -e "${BLUE}Checking ports...${NC}"
+kill_port 3000
+kill_port 5000
+echo ""
+
 source "$VENV_PATH/bin/activate"
 
-# Check if React app dependencies are installed
+# --- Install React deps if needed ---
 if [ ! -d "$AGENT_APP_DIR/node_modules" ]; then
     echo -e "${YELLOW}Installing React dependencies...${NC}"
-    cd "$AGENT_APP_DIR"
-    npm install > "$LOG_DIR/npm-install.log" 2>&1
+    cd "$AGENT_APP_DIR" && npm install > "$LOG_DIR/npm-install.log" 2>&1
     echo -e "${GREEN}✓ React dependencies installed${NC}\n"
 fi
 
-# Start React App
+# --- Start React ---
 echo -e "${BLUE}Starting React frontend...${NC}"
 cd "$AGENT_APP_DIR"
-npm start > "$LOG_DIR/react.log" 2>&1 &
+BROWSER=none npm start > "$LOG_DIR/react.log" 2>&1 &
 REACT_PID=$!
-echo $REACT_PID >> "$PID_FILE"
-echo -e "${GREEN}✓ React app started (PID: $REACT_PID)${NC}"
-echo -e "${BLUE}  Log file: $LOG_DIR/react.log${NC}\n"
+echo "$REACT_PID" >> "$PID_FILE"
+echo -e "${GREEN}✓ React started (PID: $REACT_PID)${NC}"
+echo -e "${BLUE}  Log: $LOG_DIR/react.log${NC}\n"
 
-# Wait for React to start compilation
-echo -e "${YELLOW}Waiting for React to compile...${NC}"
-sleep 8
-
-# Start Python App
+# --- Start Python ---
 echo -e "${BLUE}Starting Python backend...${NC}"
 cd "$TOOLS_DIR"
 python3 app.py > "$LOG_DIR/python.log" 2>&1 &
 PYTHON_PID=$!
-echo $PYTHON_PID >> "$PID_FILE"
-echo -e "${GREEN}✓ Python app started (PID: $PYTHON_PID)${NC}"
-echo -e "${BLUE}  Log file: $LOG_DIR/python.log${NC}\n"
+echo "$PYTHON_PID" >> "$PID_FILE"
+echo -e "${GREEN}✓ Python started (PID: $PYTHON_PID)${NC}"
+echo -e "${BLUE}  Log: $LOG_DIR/python.log${NC}\n"
 
-# Wait for Python to start
-echo -e "${YELLOW}Waiting for Python backend to initialize...${NC}"
-sleep 5
+# --- Wait and verify ---
+echo -e "${YELLOW}Waiting for services to initialize...${NC}"
+sleep 6
 
-# Verify both processes are running
-REACT_RUNNING=false
-PYTHON_RUNNING=false
+REACT_OK=false
+PYTHON_OK=false
+kill -0 "$REACT_PID" 2>/dev/null && REACT_OK=true
+kill -0 "$PYTHON_PID" 2>/dev/null && PYTHON_OK=true
 
-if kill -0 $REACT_PID 2>/dev/null; then
-    REACT_RUNNING=true
-fi
-
-if kill -0 $PYTHON_PID 2>/dev/null; then
-    PYTHON_RUNNING=true
-fi
-
-if [ "$REACT_RUNNING" = true ] && [ "$PYTHON_RUNNING" = true ]; then
+if [ "$REACT_OK" = true ] && [ "$PYTHON_OK" = true ]; then
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}✓ All services started successfully!${NC}"
+    echo -e "${GREEN}✓ All services running!${NC}"
     echo -e "${GREEN}========================================${NC}\n"
-    
-    echo -e "${BLUE}Frontend:${NC}"
-    echo -e "  URL: ${YELLOW}http://localhost:3000${NC}"
-    echo -e "  Log: ${YELLOW}$LOG_DIR/react.log${NC}\n"
-    
-    echo -e "${BLUE}Backend:${NC}"
-    echo -e "  URL: ${YELLOW}http://localhost:5000${NC}"
-    echo -e "  Log: ${YELLOW}$LOG_DIR/python.log${NC}\n"
-    
-    echo -e "${YELLOW}To view logs:${NC}"
-    echo -e "  tail -f $LOG_DIR/react.log"
-    echo -e "  tail -f $LOG_DIR/python.log\n"
-    
-    echo -e "${YELLOW}To stop services:${NC}"
-    echo -e "  ./stop.sh\n"
+    echo -e "  Frontend : ${YELLOW}http://localhost:3000${NC}"
+    echo -e "  Backend  : ${YELLOW}http://localhost:5000${NC}"
+    echo -e "  Logs     : ${YELLOW}$LOG_DIR/${NC}\n"
+    echo -e "${YELLOW}To stop: ./stop.sh${NC}\n"
 else
-    echo -e "${RED}✗ Failed to start services${NC}\n"
-    
-    if [ "$REACT_RUNNING" = false ]; then
-        echo -e "${RED}React failed to start. Last log entries:${NC}"
-        tail -n 10 "$LOG_DIR/react.log" 2>/dev/null || echo "No log file found"
-    fi
-    
-    if [ "$PYTHON_RUNNING" = false ]; then
-        echo -e "${RED}Python backend failed to start. Last log entries:${NC}"
-        tail -n 10 "$LOG_DIR/python.log" 2>/dev/null || echo "No log file found"
-    fi
-    echo ""
-    
-    kill $REACT_PID 2>/dev/null || true
-    kill $PYTHON_PID 2>/dev/null || true
+    echo -e "${RED}✗ One or more services failed to start.${NC}\n"
+    [ "$REACT_OK" = false ] && echo -e "${RED}React log:${NC}" && tail -n 20 "$LOG_DIR/react.log" 2>/dev/null
+    [ "$PYTHON_OK" = false ] && echo -e "${RED}Python log:${NC}" && tail -n 20 "$LOG_DIR/python.log" 2>/dev/null
+    kill "$REACT_PID" 2>/dev/null || true
+    kill "$PYTHON_PID" 2>/dev/null || true
     exit 1
 fi
+
