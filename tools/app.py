@@ -33,6 +33,7 @@ from email.message import EmailMessage
 import base64
 from flask_cors import CORS  # Import Flask-CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
@@ -294,6 +295,7 @@ class EmailCampaign(db.Model):
     name = db.Column(db.String(255), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     username = db.Column(db.String(120), index=True)
+    sender_email = db.Column(db.String(255), nullable=True, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class EmailCampaignRecipient(db.Model):
@@ -304,6 +306,8 @@ class EmailCampaignRecipient(db.Model):
     receiver_name = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50), default='Sent')
     reply_status = db.Column(db.String(50), default='No Reply')
+    message_id = db.Column(db.String(255), nullable=True) # For tracking Gmail threads
+    thread_id = db.Column(db.String(255), nullable=True)
     sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     replied_at = db.Column(db.DateTime, nullable=True)
 
@@ -340,6 +344,121 @@ class SavedLead(db.Model):
 def _ensure_email_usage_tables():
     """Create usage tracking tables if they don't exist yet."""
     db.create_all()
+
+
+def _ensure_campaign_reply_tracking_columns():
+    """Ensure campaign/reply tracking columns exist."""
+    try:
+        inspector = inspect(db.engine)
+        recipient_columns = {col['name'] for col in inspector.get_columns('email_campaign_recipients')}
+        campaign_columns = {col['name'] for col in inspector.get_columns('email_campaigns')}
+        statements = []
+
+        if 'message_id' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN message_id VARCHAR(255)")
+        if 'thread_id' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN thread_id VARCHAR(255)")
+        if 'sender_email' not in campaign_columns:
+            statements.append("ALTER TABLE email_campaigns ADD COLUMN sender_email VARCHAR(255)")
+
+        for stmt in statements:
+            db.session.execute(text(stmt))
+
+        if statements:
+            db.session.commit()
+            print(f"[DB MIGRATION] Applied tracking schema updates: {', '.join(statements)}")
+    except Exception as migration_error:
+        db.session.rollback()
+        print(f"[DB MIGRATION] Could not ensure reply-tracking columns: {migration_error}")
+
+
+def _resolve_google_token_for_campaign(campaign, fallback_email=None, fallback_username=None):
+    """Resolve the best Google token for a campaign using available identifiers."""
+    candidates = []
+
+    if fallback_email:
+        candidates.append(fallback_email)
+    if campaign.sender_email:
+        candidates.append(campaign.sender_email)
+    if campaign.username and '@' in campaign.username:
+        candidates.append(campaign.username)
+    if fallback_username and '@' in fallback_username:
+        candidates.append(fallback_username)
+
+    # Try mapping app username/first name to user email as a fallback.
+    if campaign.username:
+        user_by_username = User.query.filter_by(username=campaign.username).first()
+        if user_by_username and user_by_username.email:
+            candidates.append(user_by_username.email)
+
+        user_by_first_name = User.query.filter_by(first_name=campaign.username).first()
+        if user_by_first_name and user_by_first_name.email:
+            candidates.append(user_by_first_name.email)
+
+    # Deduplicate while preserving order.
+    seen = set()
+    ordered_candidates = []
+    for c in candidates:
+        key = (c or '').strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            ordered_candidates.append(key)
+
+    for candidate in ordered_candidates:
+        token_record = GoogleOAuthToken.query.filter_by(username=candidate).first()
+        if token_record and token_record.token:
+            return token_record
+
+    return None
+
+
+def _sync_replies_for_campaign(campaign, fallback_email=None, fallback_username=None):
+    """Best-effort Gmail reply sync for one campaign. Returns number of updates."""
+    token_record = _resolve_google_token_for_campaign(campaign, fallback_email, fallback_username)
+    if not token_record:
+        return 0
+
+    from google.oauth2.credentials import Credentials
+    import googleapiclient.discovery
+
+    creds = Credentials(
+        token=token_record.token,
+        refresh_token=token_record.refresh_token,
+        token_uri=token_record.token_uri,
+        client_id=token_record.client_id,
+        client_secret=token_record.client_secret,
+        scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
+    )
+    service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
+
+    recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
+    updated_count = 0
+
+    for recipient in recipients:
+        if recipient.reply_status == 'Replied' or not recipient.thread_id:
+            continue
+
+        try:
+            thread = service.users().threads().get(userId='me', id=recipient.thread_id).execute()
+            messages = thread.get('messages', [])
+
+            for msg in messages:
+                headers = msg.get('payload', {}).get('headers', [])
+                from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+
+                if recipient.receiver_email and recipient.receiver_email.lower() in from_header.lower():
+                    recipient.reply_status = 'Replied'
+                    internal_date = int(msg.get('internalDate', 0)) / 1000.0
+                    recipient.replied_at = datetime.fromtimestamp(internal_date) if internal_date > 0 else datetime.utcnow()
+                    updated_count += 1
+                    break
+        except Exception as thread_err:
+            print(f"[REPLY SYNC] Error checking thread {recipient.thread_id}: {thread_err}")
+
+    if updated_count > 0:
+        db.session.commit()
+
+    return updated_count
 
 
 def _normalize_username(value):
@@ -6547,8 +6666,9 @@ def send_bulk_emails():
         if not valid_emails:
             return jsonify({'success': False, 'error': 'No valid emails found to send to'}), 400
 
-        # Initialize DB Tables if needed
+        # Initialize DB tables and apply lightweight runtime migrations if needed.
         _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
         
         # Create Campaign Record
         import uuid
@@ -6557,7 +6677,8 @@ def send_bulk_emails():
             id=campaign_id,
             name=campaign_name,
             subject=subject,
-            username=username
+            username=username,
+            sender_email=user_email
         )
         db.session.add(campaign)
         db.session.commit()
@@ -6625,11 +6746,15 @@ def send_bulk_emails():
             msg['Subject'] = current_subject
             msg['To'] = recipient
             
+            thread_id = None
+            msg_id = None
             if service:
                 msg['From'] = user_email
                 encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
                 create_message = {'raw': encoded_message}
-                service.users().messages().send(userId="me", body=create_message).execute()
+                sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
+                thread_id = sent_msg.get('threadId')
+                msg_id = sent_msg.get('id')
             else:
                 msg['From'] = email_user
                 server.send_message(msg)
@@ -6642,7 +6767,9 @@ def send_bulk_emails():
                 receiver_email=recipient,
                 receiver_name=business_name,
                 status='SENT',
-                reply_status='No Reply'
+                reply_status='No Reply',
+                message_id=msg_id,
+                thread_id=thread_id
             )
             db.session.add(recipient_record)
 
@@ -6716,13 +6843,25 @@ def handle_email_reply():
 def get_campaign_stats():
     """Returns analytics for campaigns filtered by user."""
     try:
+        _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
+
         username = request.args.get('username') or request.args.get('userId') or request.args.get('email')
         username = _normalize_username(username) if username else None
+        user_email = request.args.get('email')
         
         if username:
             campaigns = EmailCampaign.query.filter_by(username=username).order_by(EmailCampaign.created_at.desc()).all()
         else:
             campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
+
+        # Auto-sync replies in background for all visible campaigns.
+        for campaign in campaigns:
+            try:
+                _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=username)
+            except Exception as sync_err:
+                print(f"[AUTO SYNC] Skipping campaign {campaign.id}: {sync_err}")
+
         results = []
         for c in campaigns:
             recipients = EmailCampaignRecipient.query.filter_by(campaign_id=c.id).all()
@@ -6749,6 +6888,16 @@ def get_campaign_stats():
 def get_campaign_recipients(campaign_id):
     """Returns recipients for a specific campaign."""
     try:
+        _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
+
+        campaign = EmailCampaign.query.get(campaign_id)
+        if campaign:
+            try:
+                _sync_replies_for_campaign(campaign)
+            except Exception as sync_err:
+                print(f"[AUTO SYNC] Recipient view sync skipped for {campaign_id}: {sync_err}")
+
         recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
         results = [{
             'email': r.receiver_email,
@@ -6760,6 +6909,27 @@ def get_campaign_recipients(campaign_id):
         } for r in recipients]
         return jsonify({'success': True, 'recipients': results}), 200
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/campaigns/<campaign_id>/check-replies', methods=['POST'])
+@cross_origin()
+def check_campaign_replies(campaign_id):
+    """Checks Gmail API for any replies to the campaign's sent emails."""
+    try:
+        _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
+        campaign = EmailCampaign.query.get_or_404(campaign_id)
+
+        payload = request.get_json(silent=True) or {}
+        sender_email = payload.get('userEmail')
+
+        updated_count = _sync_replies_for_campaign(campaign, fallback_email=sender_email)
+
+        return jsonify({'success': True, 'updated': updated_count}), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/enrich-businesses-with-emails', methods=['POST'])
