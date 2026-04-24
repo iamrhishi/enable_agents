@@ -351,7 +351,7 @@ class GoogleBusinessSearcher:
             paginated_businesses = all_businesses[start_idx:end_idx]
             
             # Calculate pagination metadata
-            total_pages = (len(all_businesses) + page_size - 1) // page_size
+            total_pages = (len(all_businesses) + page_size - 1) //page_size
             has_next = page < total_pages
             has_prev = page > 1
             

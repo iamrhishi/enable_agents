@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/Login.css';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { API_CONFIG } from '../config/apiConfig';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -52,11 +53,10 @@ function Login() {
     setError('');
     
     try {
-      const apiUrl = process.env.REACT_APP_API_URL;
-      console.log('[Login] API URL:', apiUrl);
+      console.log('[Login] API URL:', API_CONFIG.API_URL);
       console.log('[Login] Attempting login for:', email);
       
-      const response = await fetch(`${apiUrl}/login`, {
+      const response = await fetch(API_CONFIG.LOGIN, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -92,11 +92,10 @@ function Login() {
     setError('');
     
     try {
-      const apiUrl = process.env.REACT_APP_API_URL;
-      console.log('[Google Login] API URL:', apiUrl);
-      console.log('[Google Login] Full endpoint:', `${apiUrl}/auth/google/start`);
+      console.log('[Google Login] API URL:', API_CONFIG.API_URL);
+      console.log('[Google Login] Full endpoint:', API_CONFIG.GOOGLE_AUTH_START);
       
-      const response = await fetch(`${apiUrl}/auth/google/start`, {
+      const response = await fetch(API_CONFIG.GOOGLE_AUTH_START, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -123,7 +122,7 @@ function Login() {
     } catch (error) {
       console.error('[Google Login] Error:', error.message);
       console.error('[Google Login] Full error:', error);
-      const errorMsg = `Backend connection failed: ${error.message}. Make sure the backend is running on ${process.env.REACT_APP_API_URL}`;
+      const errorMsg = `Backend connection failed: ${error.message}. Make sure the backend is running on ${API_CONFIG.API_URL}`;
       setError(errorMsg);
       alert(errorMsg);
     } finally {

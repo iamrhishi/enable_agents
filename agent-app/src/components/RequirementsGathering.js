@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -143,6 +143,8 @@ function RequirementsGathering() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [saveListName, setSaveListName] = useState('');
+  const [isAppending, setIsAppending] = useState(false);
+  const [selectedProjectIdToAppend, setSelectedProjectIdToAppend] = useState('');
   const [isSavingList, setIsSavingList] = useState(false);
   const [showSavedListsView, setShowSavedListsView] = useState(false);
   const [savedLists, setSavedLists] = useState([]);
@@ -158,6 +160,14 @@ function RequirementsGathering() {
 
   const getCurrentUsername = () => {
     return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
+  };
+
+  const requireCurrentUsername = () => {
+    const username = getCurrentUsername();
+    if (!username || username === 'anonymous') {
+      throw new Error('Please login again to continue.');
+    }
+    return username;
   };
 
   // Check if user just returned from Google OAuth authorization
@@ -566,47 +576,62 @@ function RequirementsGathering() {
   };
 
   const handleSaveList = async () => {
-    if (!saveListName.trim()) {
+    if (!isAppending && !saveListName.trim()) {
       alert("Please provide a name for the list.");
       return;
     }
-    const rows = getCustomerResearchRows();
-    if (rows.length === 0) {
-      alert('No data available to save.');
+    if (isAppending && !selectedProjectIdToAppend) {
+      alert("Please select a list to append to.");
       return;
     }
 
-    setIsSavingList(true);
-    try {
-      const response = await fetch('http://127.0.0.1:5000/api/save-project', {
+      const currentData = customerResearchResults;
+      if (!currentData || !currentData.businesses || currentData.businesses.length === 0) {
+        alert('No data available to save.');
+        return;
+      }
+
+      const username = getCurrentUsername();
+      if (!username) {
+        return;
+      }
+
+      setIsSavingList(true);
+      try {
+        const rows = currentData.businesses;
+        const query = currentData.query || '';
+        
+        const payload = {
+              username: username,
+              name: saveListName,
+              query: query,
+              businesses: rows
+        };
+
+      if (isAppending) {
+          payload.projectId = selectedProjectIdToAppend;
+      }
+
+      const endpoint = isAppending ? API_CONFIG.APPEND_PROJECT : API_CONFIG.SAVE_PROJECT;
+
+      const response = await fetch(endpoint, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-            username: userEmail || userId || 'default_user',
-            name: saveListName,
-            query_used: query,
-            leads: rows.map(r => ({
-                name: r.name,
-                website: r.website,
-                phone: r.phone,
-                address: r.address,
-                emails: r.emails ? r.emails.split(',').map(e => e.trim()).filter(e => e) : [],
-                linkedin_urls: r.linkedinUrls ? r.linkedinUrls : [],
-                social_links: r.primary ? {'primary': r.primary} : {}
-            }))
-         })
+         body: JSON.stringify(payload)
       });
       const data = await response.json();
       if (data.success) {
          alert('List saved successfully!');
          setShowSaveListModal(false);
          setSaveListName('');
+         setSelectedProjectIdToAppend('');
+         fetchSavedLists();
       } else {
          alert('Error saving list: ' + data.error);
       }
-    } catch (e) {
-      console.error(e);
-      alert('An error occurred while saving the list: ' + e.message);
+    } catch(e) {
+      console.error('Error saving list:', e);
+      alert('Network error saving list');
     }
     setIsSavingList(false);
   };
@@ -614,8 +639,12 @@ function RequirementsGathering() {
   const fetchSavedLists = async () => {
      setIsLoadingSavedLists(true);
      try {
-       const userIdentifier = userEmail || userId || 'default_user';
-       const res = await fetch(`http://127.0.0.1:5000/api/saved-projects?username=${encodeURIComponent(userIdentifier)}`);
+       const userIdentifier = requireCurrentUsername();
+       if (!userIdentifier) {
+         setSavedLists([]);
+         return;
+       }
+       const res = await fetch(`${API_CONFIG.API_URL}/api/saved-projects?username=${encodeURIComponent(userIdentifier)}`);
        const data = await res.json();
        if (data.success) {
           setSavedLists(data.projects);
@@ -628,8 +657,11 @@ function RequirementsGathering() {
 
   const loadSavedListDetails = async (projectId) => {
      try {
-        const userIdentifier = userEmail || userId || 'default_user';
-        const res = await fetch(`http://127.0.0.1:5000/api/saved-projects/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
+        const userIdentifier = requireCurrentUsername();
+        if (!userIdentifier) {
+          return;
+        }
+        const res = await fetch(`${API_CONFIG.API_URL}/api/saved-projects/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
         const data = await res.json();
         if (data.success) {
            // Hacky way to inject it into the existing generic display UI
@@ -651,6 +683,40 @@ function RequirementsGathering() {
      } catch(e) {
         console.error(e);
      }
+  };
+
+  const handleDeleteSavedList = async (projectId, projectName) => {
+    const userIdentifier = requireCurrentUsername();
+    if (!userIdentifier) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete saved list "${projectName}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API_CONFIG.API_URL}/api/saved-projects/${projectId}?username=${encodeURIComponent(userIdentifier)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        alert(`Failed to delete list: ${data.error || 'Unknown error'}`);
+        return;
+      }
+
+      setSavedLists((prev) => prev.filter((list) => list.id !== projectId));
+      if (activeSavedList && activeSavedList.id === projectId) {
+        setActiveSavedList(null);
+      }
+      alert('List deleted successfully.');
+    } catch (error) {
+      console.error('Error deleting saved list:', error);
+      alert('Network error deleting list.');
+    }
   };
 
   const handleExport = async (format) => {
@@ -971,36 +1037,54 @@ function RequirementsGathering() {
 
           <div className="workspace-content-box">
              {showSavedListsView ? (
-               <div className="saved-lists-container" style={{ padding: '20px' }}>
-                 {activeSavedList && (
-                    <button 
-                       onClick={() => { setActiveSavedList(null); fetchSavedLists(); }} 
-                       style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
-                    >
-                       ← Back to All Lists
-                    </button>
-                 )}
-                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
-                    {activeSavedList ? `Saved List: ${activeSavedList.name}` : `Saved Lists`}
-                 </h2>
+               <div className="saved-leads-page">
+                 <h2 className="saved-leads-title">Saved Leads Lists</h2>
+
                  {isLoadingSavedLists ? (
-                    <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
+                    <div className="saved-leads-empty"><span className="spinner"></span> Loading lists...</div>
                  ) : savedLists.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                    <div className="saved-leads-empty">No saved lists found.</div>
                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                       {savedLists.map((list) => (
-                           <div key={list.id} onClick={() => loadSavedListDetails(list.id)} style={{ padding: '20px', background: '#fff', border: '1px solid #e1e4e8', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                              <h3 style={{ fontSize: '18px', color: '#1E3A5F', margin: '0 0 10px 0' }}>{list.name}</h3>
-                              <p style={{ color: '#666', margin: '0 0 8px 0', fontSize: '14px' }}>Query: {list.query_used || 'N/A'}</p>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
-                                 <span style={{ color: '#888', fontSize: '12px' }}>{new Date(list.created_at).toLocaleDateString()}</span>
-                                 <span style={{ display: 'inline-block', background: '#F0F4F8', color: '#1E3A5F', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>
-                                     {list.lead_count} Contacts
-                                 </span>
-                              </div>
-                           </div>
-                       ))}
+                    <div className="saved-leads-table-wrap">
+                      <table className="saved-leads-table">
+                        <thead>
+                          <tr>
+                            <th>List Name</th>
+                            <th>Query</th>
+                            <th>Results</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {savedLists.map((list) => (
+                            <tr key={list.id}>
+                              <td>{list.name}</td>
+                              <td>{list.query_used || '-'}</td>
+                              <td>{list.lead_count || 0}</td>
+                              <td>{new Date(list.created_at).toLocaleDateString()}</td>
+                              <td>
+                                <div className="saved-leads-actions">
+                                  <button
+                                    type="button"
+                                    className="saved-leads-open-btn"
+                                    onClick={() => loadSavedListDetails(list.id)}
+                                  >
+                                    Open List
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="saved-leads-delete-btn"
+                                    onClick={() => handleDeleteSavedList(list.id, list.name)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                  )}
                </div>
@@ -1227,6 +1311,7 @@ function RequirementsGathering() {
                 </>
               )}
 </div>
+            )}
       </div>
 
       {/* Google Business Integration Modal */}
@@ -1484,7 +1569,7 @@ function RequirementsGathering() {
                   setIsAddingNewCampaign(false);
                 }}
               >
-                ×
+                x
               </button>
             </div>
 
@@ -1659,14 +1744,40 @@ function RequirementsGathering() {
               <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
               <button onClick={() => setShowSaveListModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
             </div>
+            
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                    <input type="radio" checked={!isAppending} onChange={() => setIsAppending(false)} />
+                    Create New List
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                    <input type="radio" checked={isAppending} onChange={() => { setIsAppending(true); fetchSavedLists(); }} />
+                    Append to Existing
+                </label>
+            </div>
+            
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
-              <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
+              {!isAppending ? (
+                  <>
+                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
+                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
+                  </>
+              ) : (
+                  <>
+                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select Existing List</label>
+                  <select value={selectedProjectIdToAppend} onChange={e => setSelectedProjectIdToAppend(e.target.value)} style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}>
+                      <option value="">-- Select a List --</option>
+                      {savedLists.map((list) => (
+                          <option key={list.id} value={list.id}>{list.name}</option>
+                      ))}
+                  </select>
+                  </>
+              )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
               <button onClick={() => setShowSaveListModal(false)} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
               <button onClick={handleSaveList} disabled={isSavingList} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                {isSavingList ? 'Saving...' : 'Save List'}
+                {isSavingList ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

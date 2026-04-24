@@ -1,4 +1,4 @@
-/**
+﻿/**
  * API Configuration
  * Centralizes all API URLs for the application
  * Uses environment variables for remote/local deployment switching
@@ -82,6 +82,8 @@ export const API_CONFIG = {
   
   // Executive Assistant API
   EXECUTIVE_ASSISTANT_BASE: `${API_URL}/api`,
+  APPEND_PROJECT: `${API_URL}/api/append-project`,
+  SAVE_PROJECT: `${API_URL}/api/save-project`,
 };
 
 export default API_CONFIG;
