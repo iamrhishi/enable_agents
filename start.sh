@@ -113,22 +113,54 @@ if [ ! -d "$AGENT_APP_DIR/node_modules" ]; then
     echo -e "${GREEN}✓ React dependencies installed${NC}\n"
 fi
 
-# --- Clean old build directory (fixes permission errors on rebuild) ---
-if [ -d "$AGENT_APP_DIR/build" ]; then
-    echo -e "${YELLOW}Cleaning old build directory...${NC}"
-    chmod -R u+w "$AGENT_APP_DIR/build" 2>/dev/null || true
-    rm -rf "$AGENT_APP_DIR/build"
-    echo -e "${GREEN}✓ Old build removed${NC}\n"
+# --- Load environment ---
+ENV_FILE="$TOOLS_DIR/.env"
+ENVIRONMENT="development"
+if [ -f "$ENV_FILE" ]; then
+    ENVIRONMENT=$(grep '^ENVIRONMENT=' "$ENV_FILE" | cut -d= -f2 | tr -d '[:space:]')
 fi
 
-# --- Start React ---
-echo -e "${BLUE}Starting React frontend...${NC}"
-cd "$AGENT_APP_DIR"
-BROWSER=none HOST=0.0.0.0 npm start > "$LOG_DIR/react.log" 2>&1 &
-REACT_PID=$!
-echo "$REACT_PID" >> "$PID_FILE"
-echo -e "${GREEN}✓ React started (PID: $REACT_PID)${NC}"
-echo -e "${BLUE}  Log: $LOG_DIR/react.log${NC}\n"
+if [ "$ENVIRONMENT" = "production" ]; then
+    # --- Production: build React and serve via nginx ---
+
+    # Clean old build directory (fixes permission errors on rebuild)
+    if [ -d "$AGENT_APP_DIR/build" ]; then
+        echo -e "${YELLOW}Cleaning old build directory...${NC}"
+        chmod -R u+w "$AGENT_APP_DIR/build" 2>/dev/null || true
+        rm -rf "$AGENT_APP_DIR/build"
+        echo -e "${GREEN}✓ Old build removed${NC}\n"
+    fi
+
+    echo -e "${BLUE}Building React for production...${NC}"
+    cd "$AGENT_APP_DIR"
+    npm run build > "$LOG_DIR/react-build.log" 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ React build failed. See $LOG_DIR/react-build.log${NC}"
+        tail -20 "$LOG_DIR/react-build.log"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ React built successfully${NC}\n"
+
+    # Deploy nginx config (remove ALL old configs first to avoid conflicts)
+    echo -e "${BLUE}Configuring nginx...${NC}"
+    NGINX_CONF="/etc/nginx/sites-enabled/enable_agents"
+    sudo rm -f /etc/nginx/sites-enabled/*
+    sudo cp "$AGENT_APP_DIR/nginx.conf" "$NGINX_CONF"
+    sudo sed -i "s|REACT_BUILD_PATH|$AGENT_APP_DIR/build|g" "$NGINX_CONF"
+    sudo nginx -t 2>/dev/null && (sudo nginx -s reload 2>/dev/null || sudo nginx)
+    echo -e "${GREEN}✓ Nginx configured and started (port 80)${NC}\n"
+
+    REACT_PID=0
+else
+    # --- Development: start React dev server ---
+    echo -e "${BLUE}Starting React frontend (dev)...${NC}"
+    cd "$AGENT_APP_DIR"
+    BROWSER=none HOST=0.0.0.0 npm start > "$LOG_DIR/react.log" 2>&1 &
+    REACT_PID=$!
+    echo "$REACT_PID" >> "$PID_FILE"
+    echo -e "${GREEN}✓ React started (PID: $REACT_PID)${NC}"
+    echo -e "${BLUE}  Log: $LOG_DIR/react.log${NC}\n"
+fi
 
 # --- Start Python ---
 echo -e "${BLUE}Starting Python backend...${NC}"
@@ -143,25 +175,48 @@ echo -e "${BLUE}  Log: $LOG_DIR/python.log${NC}\n"
 echo -e "${YELLOW}Waiting for services to initialize...${NC}"
 sleep 6
 
-REACT_OK=false
 PYTHON_OK=false
-kill -0 "$REACT_PID" 2>/dev/null && REACT_OK=true
 kill -0 "$PYTHON_PID" 2>/dev/null && PYTHON_OK=true
 
-if [ "$REACT_OK" = true ] && [ "$PYTHON_OK" = true ]; then
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}✓ All services running!${NC}"
-    echo -e "${GREEN}========================================${NC}\n"
-    echo -e "  Frontend : ${YELLOW}http://localhost:3000${NC}"
-    echo -e "  Backend  : ${YELLOW}http://localhost:5000${NC}"
-    echo -e "  Logs     : ${YELLOW}$LOG_DIR/${NC}\n"
-    echo -e "${YELLOW}To stop: ./stop.sh${NC}\n"
+if [ "$ENVIRONMENT" = "production" ]; then
+    # In production, check nginx and python
+    NGINX_OK=false
+    curl -s --max-time 3 http://127.0.0.1 > /dev/null 2>&1 && NGINX_OK=true
+
+    if [ "$NGINX_OK" = true ] && [ "$PYTHON_OK" = true ]; then
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}✓ All services running!${NC}"
+        echo -e "${GREEN}========================================${NC}\n"
+        echo -e "  Frontend : ${YELLOW}http://agents.enableyou.co${NC} (nginx port 80)"
+        echo -e "  Backend  : ${YELLOW}http://agents.enableyou.co:5000${NC}"
+        echo -e "  Logs     : ${YELLOW}$LOG_DIR/${NC}\n"
+        echo -e "${YELLOW}To stop: ./stop.sh${NC}\n"
+    else
+        echo -e "${RED}✗ One or more services failed to start.${NC}\n"
+        [ "$NGINX_OK" = false ] && echo -e "${RED}Nginx not responding on port 80${NC}"
+        [ "$PYTHON_OK" = false ] && echo -e "${RED}Python log:${NC}" && tail -n 20 "$LOG_DIR/python.log" 2>/dev/null
+        kill "$PYTHON_PID" 2>/dev/null || true
+        exit 1
+    fi
 else
-    echo -e "${RED}✗ One or more services failed to start.${NC}\n"
-    [ "$REACT_OK" = false ] && echo -e "${RED}React log:${NC}" && tail -n 20 "$LOG_DIR/react.log" 2>/dev/null
-    [ "$PYTHON_OK" = false ] && echo -e "${RED}Python log:${NC}" && tail -n 20 "$LOG_DIR/python.log" 2>/dev/null
-    kill "$REACT_PID" 2>/dev/null || true
-    kill "$PYTHON_PID" 2>/dev/null || true
-    exit 1
+    REACT_OK=false
+    kill -0 "$REACT_PID" 2>/dev/null && REACT_OK=true
+
+    if [ "$REACT_OK" = true ] && [ "$PYTHON_OK" = true ]; then
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}✓ All services running!${NC}"
+        echo -e "${GREEN}========================================${NC}\n"
+        echo -e "  Frontend : ${YELLOW}http://localhost:3000${NC}"
+        echo -e "  Backend  : ${YELLOW}http://localhost:5000${NC}"
+        echo -e "  Logs     : ${YELLOW}$LOG_DIR/${NC}\n"
+        echo -e "${YELLOW}To stop: ./stop.sh${NC}\n"
+    else
+        echo -e "${RED}✗ One or more services failed to start.${NC}\n"
+        [ "$REACT_OK" = false ] && echo -e "${RED}React log:${NC}" && tail -n 20 "$LOG_DIR/react.log" 2>/dev/null
+        [ "$PYTHON_OK" = false ] && echo -e "${RED}Python log:${NC}" && tail -n 20 "$LOG_DIR/python.log" 2>/dev/null
+        kill "$REACT_PID" 2>/dev/null || true
+        kill "$PYTHON_PID" 2>/dev/null || true
+        exit 1
+    fi
 fi
 
