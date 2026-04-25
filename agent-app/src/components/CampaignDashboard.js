@@ -12,7 +12,16 @@ function CampaignDashboard() {
 
   useEffect(() => {
     fetchCampaigns();
+    const intervalId = setInterval(fetchCampaigns, 30000);
+    return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!selectedCampaign) return;
+    viewCampaign(selectedCampaign);
+    const intervalId = setInterval(() => viewCampaign(selectedCampaign), 30000);
+    return () => clearInterval(intervalId);
+  }, [selectedCampaign]);
 
   const fetchCampaigns = async () => {
     setIsLoading(true);
@@ -57,7 +66,8 @@ function CampaignDashboard() {
             <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
               {!selectedCampaign ? (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1, minHeight: 0 }}>
-                  <h2 style={{ color: '#1E3A5F', borderBottom: '2px solid #F1EAE4', paddingBottom: '5px', marginBottom: '10px', flexShrink: 0 }}>Campaign Performance</h2>        
+                  <h2 style={{ color: '#1E3A5F', borderBottom: '2px solid #F1EAE4', paddingBottom: '5px', marginBottom: '4px', flexShrink: 0 }}>Campaign Performance</h2>
+                  <p style={{ margin: '0 0 10px 0', color: '#4b5563', fontSize: '12px' }}>Reply data auto-refreshes every 30 seconds.</p>
                   {isLoading ? <p>Loading...</p> : (
                     <div className="table-wrapper">
                       <table className="research-table" style={{ width: '100%' }}>  
