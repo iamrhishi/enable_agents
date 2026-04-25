@@ -113,10 +113,18 @@ if [ ! -d "$AGENT_APP_DIR/node_modules" ]; then
     echo -e "${GREEN}✓ React dependencies installed${NC}\n"
 fi
 
+# --- Clean old build directory (fixes permission errors on rebuild) ---
+if [ -d "$AGENT_APP_DIR/build" ]; then
+    echo -e "${YELLOW}Cleaning old build directory...${NC}"
+    chmod -R u+w "$AGENT_APP_DIR/build" 2>/dev/null || true
+    rm -rf "$AGENT_APP_DIR/build"
+    echo -e "${GREEN}✓ Old build removed${NC}\n"
+fi
+
 # --- Start React ---
 echo -e "${BLUE}Starting React frontend...${NC}"
 cd "$AGENT_APP_DIR"
-BROWSER=none npm start > "$LOG_DIR/react.log" 2>&1 &
+BROWSER=none HOST=0.0.0.0 npm start > "$LOG_DIR/react.log" 2>&1 &
 REACT_PID=$!
 echo "$REACT_PID" >> "$PID_FILE"
 echo -e "${GREEN}✓ React started (PID: $REACT_PID)${NC}"
