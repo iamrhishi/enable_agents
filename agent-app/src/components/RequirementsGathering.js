@@ -143,11 +143,15 @@ function RequirementsGathering() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSaveListModal, setShowSaveListModal] = useState(false);
   const [saveListName, setSaveListName] = useState('');
+  const [saveListMode, setSaveListMode] = useState('create');
+  const [selectedAppendProjectId, setSelectedAppendProjectId] = useState('');
   const [isSavingList, setIsSavingList] = useState(false);
   const [showSavedListsView, setShowSavedListsView] = useState(false);
   const [savedLists, setSavedLists] = useState([]);
   const [isLoadingSavedLists, setIsLoadingSavedLists] = useState(false);
   const [activeSavedList, setActiveSavedList] = useState(null);
+  const [activeSavedListLeads, setActiveSavedListLeads] = useState([]);
+  const [deletingListId, setDeletingListId] = useState(null);
 
   const [extractionUsage, setExtractionUsage] = useState(null);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
@@ -528,7 +532,9 @@ function RequirementsGathering() {
       address: business.address || 'N/A',
       phone: business.phone || 'N/A',
       website: business.website || 'N/A',
-      email: business.email || 'N/A'
+      email: business.email || 'N/A',
+      linkedin: business.linkedin || (business.linkedin_urls && business.linkedin_urls[0]) || 'N/A',
+      summary: business.summary || business.description || 'N/A'
     }));
   };
 
@@ -553,62 +559,136 @@ function RequirementsGathering() {
   };
 
   const buildCsvContent = (rows) => {
-    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email'];
+    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Email', 'LinkedIn', 'Summary'];
     const csvRows = rows.map((row) => [
       row.businessName,
       row.address,
       row.phone,
       row.website,
-      row.email
+      row.email,
+      row.linkedin,
+      row.summary
     ].map(escapeCsvValue).join(','));
 
     return [headers.join(','), ...csvRows].join('\n');
   };
 
   const handleSaveList = async () => {
-    if (!saveListName.trim()) {
-      alert("Please provide a name for the list.");
-      return;
-    }
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
       alert('No data available to save.');
       return;
     }
 
+    const payloadLeads = (customerResearchResults?.businesses || []).map((business) => ({
+      name: business.name || 'N/A',
+      website: business.website || '',
+      phone: business.phone || 'N/A',
+      address: business.address || 'N/A',
+      email: business.email || 'N/A',
+      linkedin: business.linkedin || 'N/A',
+      linkedin_urls: business.linkedin ? [business.linkedin] : [],
+      social_links: business.social_links || {},
+      summary: business.summary || business.description || 'N/A',
+      raw_data: business
+    }));
+
     setIsSavingList(true);
     try {
-      const response = await fetch(API_CONFIG.SAVE_PROJECT, {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
+      const isAppendMode = saveListMode === 'append';
+      if (isAppendMode) {
+        if (!selectedAppendProjectId) {
+          alert('Please select a list to append to.');
+          setIsSavingList(false);
+          return;
+        }
+
+        const response = await fetch(API_CONFIG.APPEND_PROJECT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: getCurrentUsername(),
+            projectId: selectedAppendProjectId,
+            businesses: payloadLeads
+          })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          alert(data.message || 'Leads appended successfully!');
+          setShowSaveListModal(false);
+          setSaveListName('');
+          setSaveListMode('create');
+          setSelectedAppendProjectId('');
+          await fetchSavedLists();
+          if (activeSavedList && Number(activeSavedList.id) === Number(selectedAppendProjectId)) {
+            await loadSavedListDetails(selectedAppendProjectId);
+          }
+        } else {
+          alert('Error appending list: ' + (data.error || 'Unknown error'));
+        }
+      } else {
+        if (!saveListName.trim()) {
+          alert("Please provide a name for the list.");
+          return;
+        }
+
+        const response = await fetch(API_CONFIG.SAVE_PROJECT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             username: getCurrentUsername(),
             name: saveListName,
-            query_used: customerResearchResults?.query || '',  
-            leads: rows.map(r => ({
-                name: r.name,
-                website: r.website,
-                phone: r.phone,
-                address: r.address,
-                emails: r.emails ? r.emails.split(',').map(e => e.trim()).filter(e => e) : [],
-                linkedin_urls: r.linkedinUrls ? r.linkedinUrls : [],
-                social_links: r.primary ? {'primary': r.primary} : {}
-            }))
-         })
-      });
-      const data = await response.json();
-      if (data.success) {
-         alert('List saved successfully!');
-         setShowSaveListModal(false);
-         setSaveListName('');
-      } else {
-         alert('Error saving list: ' + data.error);
+            query: customerResearchResults?.query || '',
+            query_used: customerResearchResults?.query || '',
+            businesses: payloadLeads
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          alert('List saved successfully!');
+          setShowSaveListModal(false);
+          setSaveListName('');
+          setSaveListMode('create');
+          setSelectedAppendProjectId('');
+        } else {
+          alert('Error saving list: ' + data.error);
+        }
       }
     } catch (e) {
       console.error(e);
       alert('An error occurred while saving the list: ' + e.message);
     }
     setIsSavingList(false);
+  };
+
+  const handleDeleteSavedList = async (projectId) => {
+    const confirmed = window.confirm('Delete this saved list permanently?');
+    if (!confirmed) return;
+
+    setDeletingListId(projectId);
+    try {
+      const response = await fetch(`${API_CONFIG.DELETE_SAVED_PROJECT}/${projectId}?username=${encodeURIComponent(getCurrentUsername())}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        alert(data.message || 'Saved list deleted successfully.');
+        if (activeSavedList && Number(activeSavedList.id) === Number(projectId)) {
+          setActiveSavedList(null);
+          setActiveSavedListLeads([]);
+        }
+        await fetchSavedLists();
+      } else {
+        alert('Error deleting list: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error deleting saved list:', error);
+      alert('An error occurred while deleting the list: ' + error.message);
+    } finally {
+      setDeletingListId(null);
+    }
   };
 
   const fetchSavedLists = async () => {
@@ -626,27 +706,33 @@ function RequirementsGathering() {
      setIsLoadingSavedLists(false);
   };
 
+  useEffect(() => {
+    if (showSaveListModal && savedLists.length === 0) {
+      fetchSavedLists();
+    }
+  }, [showSaveListModal]);
+
   const loadSavedListDetails = async (projectId) => {
      try {
         const userIdentifier = getCurrentUsername();
         const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
         const data = await res.json();
         if (data.success) {
-           // Hacky way to inject it into the existing generic display UI
-           setCustomerResearchResults({
-               businesses: data.leads.map(l => ({
-                   name: l.name,
-                   website: l.website,
-                   phone_number: l.phone,
-                   address: l.address,
-                   emails: l.emails,
-                   linkedin_urls: l.linkedin_urls,
-                   social_links: l.social_links,
-                   has_extracted: l.has_extracted
-               }))
-           });
-           setActiveSavedList(data.project);
-           setShowSavedListsView(false); // Back to Leads UI
+           setActiveSavedListLeads(data.leads.map(l => ({
+            name: l.name,
+            website: l.website,
+            phone: l.phone,
+            address: l.address,
+            email: Array.isArray(l.emails) ? (l.emails[0] || 'N/A') : (l.emails || 'N/A'),
+            emails: l.emails,
+            linkedin: Array.isArray(l.linkedin_urls) ? (l.linkedin_urls[0] || '') : (l.linkedin_urls || ''),
+            linkedin_urls: l.linkedin_urls,
+            social_links: l.social_links,
+            summary: l.summary || l.description || 'N/A',
+            has_extracted: l.has_extracted
+           })));
+            setActiveSavedList(data.project);
+            setShowSavedListsView(true);
         }
      } catch(e) {
         console.error(e);
@@ -686,13 +772,15 @@ function RequirementsGathering() {
 
         autoTable(doc, {
           startY: 50,
-          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email']],
+          head: [['Business Name', 'Address', 'Phone', 'Website', 'Email', 'LinkedIn', 'Summary']],
           body: rows.map((row) => [
             row.businessName,
             row.address,
             row.phone,
             row.website,
-            row.email
+            row.email,
+            row.linkedin,
+            row.summary
           ]),
           styles: { fontSize: 8, cellPadding: 4 },
           headStyles: { fillColor: [30, 58, 95] }
@@ -964,8 +1052,8 @@ function RequirementsGathering() {
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => setShowSavedListsView(false)}>Leads</button>
-            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>Saved Lists</button>
+            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>Leads</button>
+            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>Saved Leads</button>
             <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
           </div>
 
@@ -974,33 +1062,94 @@ function RequirementsGathering() {
                <div className="saved-lists-container" style={{ padding: '20px' }}>
                  {activeSavedList && (
                     <button 
-                       onClick={() => { setActiveSavedList(null); fetchSavedLists(); }} 
+                      onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }} 
                        style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
                     >
                        ← Back to All Lists
                     </button>
                  )}
-                 <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
-                    {activeSavedList ? `Saved List: ${activeSavedList.name}` : `Saved Lists`}
-                 </h2>
+                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1E3A5F' }}>
+                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : 'Saved Leads Lists'}
+                    </h2>
+                 </div>
                  {isLoadingSavedLists ? (
                     <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
-                 ) : savedLists.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                 ) : !activeSavedList ? (
+                    savedLists.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left' }}>List Name</th>
+                              <th style={{ textAlign: 'left' }}>Query</th>
+                              <th style={{ textAlign: 'center' }}>Results</th>
+                              <th style={{ textAlign: 'center' }}>Created</th>
+                              <th style={{ textAlign: 'center' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {savedLists.map((list) => (
+                              <tr key={list.id}>
+                                <td>{list.name}</td>
+                                <td>{list.query_used || 'N/A'}</td>
+                                <td style={{ textAlign: 'center' }}>{list.lead_count}</td>
+                                <td style={{ textAlign: 'center' }}>{list.created_at ? new Date(list.created_at).toLocaleDateString() : 'N/A'}</td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                    <button
+                                      onClick={() => loadSavedListDetails(list.id)}
+                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#284A7A', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                                    >
+                                      Open List
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteSavedList(list.id)}
+                                      disabled={deletingListId === list.id}
+                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#b42318', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: deletingListId === list.id ? 0.7 : 1 }}
+                                    >
+                                      {deletingListId === list.id ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                       {savedLists.map((list) => (
-                           <div key={list.id} onClick={() => loadSavedListDetails(list.id)} style={{ padding: '20px', background: '#fff', border: '1px solid #e1e4e8', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                              <h3 style={{ fontSize: '18px', color: '#1E3A5F', margin: '0 0 10px 0' }}>{list.name}</h3>
-                              <p style={{ color: '#666', margin: '0 0 8px 0', fontSize: '14px' }}>Query: {list.query_used || 'N/A'}</p>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
-                                 <span style={{ color: '#888', fontSize: '12px' }}>{new Date(list.created_at).toLocaleDateString()}</span>
-                                 <span style={{ display: 'inline-block', background: '#F0F4F8', color: '#1E3A5F', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>
-                                     {list.lead_count} Contacts
-                                 </span>
-                              </div>
-                           </div>
-                       ))}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr>
+                            <th>Business Name</th>
+                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>Website</th>
+                            <th>Email</th>
+                            <th>LinkedIn</th>
+                            <th>Send Email</th>
+                            <th>Summary</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeSavedListLeads?.map((business, index) => (
+                            <tr key={index}>
+                              <td>{business.name || 'N/A'}</td>
+                              <td>{business.address || 'N/A'}</td>
+                              <td>{business.phone || 'N/A'}</td>
+                              <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
+                              <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
+                              <td style={{ maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.4' }} title={business.summary || business.description || 'N/A'}>{business.summary || business.description || 'N/A'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                  )}
                </div>
@@ -1092,7 +1241,11 @@ function RequirementsGathering() {
                               </button>
                               <button 
                                 className="action-icon-button"
-                                onClick={() => setShowSaveListModal(true)}
+                                onClick={() => {
+                                  setSaveListMode('create');
+                                  setSelectedAppendProjectId('');
+                                  setShowSaveListModal(true);
+                                }}
                                 title="Save to List"
                                 style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
@@ -1129,6 +1282,7 @@ function RequirementsGathering() {
                                     <th>Email</th>
                                     <th>LinkedIn</th>
                                     <th>Send Email</th>
+                                    <th>Summary</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1191,6 +1345,9 @@ function RequirementsGathering() {
                                         ) : (
                                           <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
                                         )}
+                                      </td>
+                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.summary || business.description || 'N/A'}>
+                                        {business.summary || business.description || 'N/A'}
                                       </td>
                                     </tr>
                                   ))}
@@ -1327,6 +1484,7 @@ function RequirementsGathering() {
                           <th>Email</th>
                           <th>LinkedIn</th>
                           <th>Send Email</th>
+                          <th>Summary</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1389,6 +1547,9 @@ function RequirementsGathering() {
                                 ) : (
                                   <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
                                 )}
+                              </td>
+                              <td style={{ maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.4' }} title={business.summary || business.description || 'N/A'}>
+                                {business.summary || business.description || 'N/A'}
                               </td>
                             </tr>
                           ))}
@@ -1649,16 +1810,48 @@ function RequirementsGathering() {
               <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
-                  <button onClick={() => setShowSaveListModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Action</label>
+                  <select
+                    value={saveListMode}
+                    onChange={(e) => setSaveListMode(e.target.value)}
+                    style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
+                  >
+                    <option value="create">Create new list</option>
+                    <option value="append">Append to existing list</option>
+                  </select>
+                </div>
+                {saveListMode === 'append' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select List to Append</label>
+                    <select
+                      value={selectedAppendProjectId}
+                      onChange={(e) => setSelectedAppendProjectId(e.target.value)}
+                      style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
+                    >
+                      <option value="">Choose a saved list...</option>
+                      {savedLists.map((list) => (
+                        <option key={list.id} value={list.id}>
+                          {list.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                      Duplicate leads are removed automatically when appending.
+                    </div>
+                  </div>
+                ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
                   <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
                 </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  <button onClick={() => setShowSaveListModal(false)} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleSaveList} disabled={isSavingList} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                    {isSavingList ? 'Saving...' : 'Save List'}
+                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
+                  <button onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
+                    {isSavingList ? 'Saving...' : (saveListMode === 'append' ? 'Append Leads' : 'Save List')}
                   </button>
                 </div>
               </div>

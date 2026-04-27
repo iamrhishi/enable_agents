@@ -7345,8 +7345,8 @@ def save_project():
         data = request.json
         username = data.get('username')
         name = data.get('name')
-        query_used = data.get('query', '')
-        leads = data.get('businesses', [])
+        query_used = data.get('query') or data.get('query_used', '')
+        leads = data.get('businesses') or data.get('leads') or []
         
         if not username or not name:
             return jsonify({'success': False, 'error': 'Missing username or name'}), 400
@@ -7357,7 +7357,6 @@ def save_project():
         db.session.flush() # get project id
         
         # Add leads
-        import json
         for lead_data in leads:
             lead = SavedLead(
                 project_id=project.id,
@@ -7380,6 +7379,34 @@ def save_project():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+def _normalize_dedupe_value(value):
+    if not value:
+        return ''
+    normalized = str(value).strip().lower()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return re.sub(r'[^a-z0-9 ]+', '', normalized)
+
+
+def _lead_dedupe_key(lead_data):
+    if not lead_data:
+        return ''
+
+    website = str(lead_data.get('website', '') or '').strip().lower()
+    parsed_website = urlparse(website if website.startswith(('http://', 'https://')) else f'https://{website}') if website else None
+    website_key = ''
+    if parsed_website and parsed_website.netloc:
+        website_key = parsed_website.netloc.lower().lstrip('www.')
+
+    phone_key = re.sub(r'\D+', '', str(lead_data.get('phone', '') or ''))
+    name_key = _normalize_dedupe_value(lead_data.get('name', ''))
+    address_key = _normalize_dedupe_value(lead_data.get('address', ''))
+
+    key_parts = [part for part in [name_key, website_key, phone_key] if part]
+    if not key_parts:
+        key_parts = [address_key] if address_key else []
+    return '|'.join(key_parts)
+
 @app.route('/api/append-project', methods=['POST', 'OPTIONS'])
 @cross_origin()
 def append_project():
@@ -7389,7 +7416,7 @@ def append_project():
         data = request.json
         username = data.get('username')
         project_id = data.get('projectId')
-        leads = data.get('businesses', [])
+        leads = data.get('businesses') or data.get('leads') or []
         
         if not username or not project_id:
             return jsonify({'success': False, 'error': 'Missing username or projectId'}), 400
@@ -7399,20 +7426,35 @@ def append_project():
         if not project or project.username != username:
             return jsonify({'success': False, 'error': 'Project not found.'}), 404
         
-        # Check current existing names in project to append uniquely
+        # Check current existing leads in project to append uniquely
         existing_leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
-        existing_names = {lead.name for lead in existing_leads if lead.name}
+        existing_keys = set()
+        for lead in existing_leads:
+            lead_payload = {}
+            if lead.raw_data:
+                try:
+                    lead_payload = json.loads(lead.raw_data)
+                except Exception:
+                    lead_payload = {}
+            lead_payload = {
+                'name': lead_payload.get('name') or lead.name or '',
+                'website': lead_payload.get('website') or lead.website or '',
+                'phone': lead_payload.get('phone') or lead.phone or '',
+                'address': lead_payload.get('address') or lead.address or '',
+            }
+            dedupe_key = _lead_dedupe_key(lead_payload)
+            if dedupe_key:
+                existing_keys.add(dedupe_key)
         
-        import json
         added = 0
         for lead_data in leads:
-            b_name = lead_data.get('name', '')
-            if b_name and b_name in existing_names:
+            dedupe_key = _lead_dedupe_key(lead_data)
+            if dedupe_key and dedupe_key in existing_keys:
                 continue
                 
             lead = SavedLead(
                 project_id=project.id,
-                name=b_name,
+                name=lead_data.get('name', ''),
                 website=lead_data.get('website', ''),
                 phone=lead_data.get('phone', ''),
                 address=lead_data.get('address', ''),
@@ -7422,7 +7464,8 @@ def append_project():
                 raw_data=json.dumps(lead_data)
             )
             db.session.add(lead)
-            existing_names.add(b_name)
+            if dedupe_key:
+                existing_keys.add(dedupe_key)
             added += 1
             
         db.session.commit()
@@ -7470,18 +7513,31 @@ def get_project_leads(project_id):
             return jsonify({'success': False, 'error': 'Project not found'}), 404
             
         leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
-        import json
         result = []
         for l in leads:
+            raw_data = {}
+            if l.raw_data:
+                try:
+                    raw_data = json.loads(l.raw_data)
+                except Exception:
+                    raw_data = {}
+
+            emails = json.loads(l.emails) if l.emails else []
+            linkedin_links = json.loads(l.linkedin_links) if l.linkedin_links else []
+            social_links = json.loads(l.social_links) if l.social_links else {}
             result.append({
                 'id': l.id,
                 'name': l.name,
                 'website': l.website,
                 'phone': l.phone,
                 'address': l.address,
-                'emails': json.loads(l.emails) if l.emails else [],
-                'linkedin_urls': json.loads(l.linkedin_links) if l.linkedin_links else [],
-                'social_links': json.loads(l.social_links) if l.social_links else {},
+                'emails': emails,
+                'email': raw_data.get('email') or (emails[0] if emails else 'N/A'),
+                'linkedin': raw_data.get('linkedin') or (linkedin_links[0] if linkedin_links else ''),
+                'linkedin_urls': linkedin_links,
+                'social_links': social_links,
+                'summary': raw_data.get('summary') or raw_data.get('description') or '',
+                'description': raw_data.get('description') or '',
             })
             
         return jsonify({'success': True, 'project': {'id': project.id, 'name': project.name}, 'leads': result})
