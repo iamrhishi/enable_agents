@@ -126,7 +126,8 @@ LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:500
 nltk.download('stopwords')
 nltk.download('punkt_tab')
 
-PROMPTS_FILE = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/prompts.json"
+DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+PROMPTS_FILE = os.path.join(DATA_DIR, 'prompts.json')
 
 
 app = Flask(__name__)
@@ -1241,7 +1242,7 @@ def get_file_hash(file_path):
     return hasher.hexdigest()
 
 def save_embeddings(file_hash, index, phrase_embeddings, page_chunks):
-    embeddings_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/embeddings"
+    embeddings_folder = os.path.join(DATA_DIR, 'embeddings')
     os.makedirs(embeddings_folder, exist_ok=True)
     with open(os.path.join(embeddings_folder, f"{file_hash}_index.pkl"), "wb") as f:
         pickle.dump(index, f)
@@ -1251,7 +1252,7 @@ def save_embeddings(file_hash, index, phrase_embeddings, page_chunks):
         pickle.dump(page_chunks, f)
 
 def load_embeddings(file_hash):
-    embeddings_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/embeddings"
+    embeddings_folder = os.path.join(DATA_DIR, 'embeddings')
     with open(os.path.join(embeddings_folder, f"{file_hash}_index.pkl"), "rb") as f:
         index = pickle.load(f)
     with open(os.path.join(embeddings_folder, f"{file_hash}_phrase_embeddings.pkl"), "rb") as f:
@@ -3400,7 +3401,7 @@ def upload_file():
         return jsonify({"error": "No file selected for uploading"}), 400
 
     # Define the base upload directory
-    base_upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data"
+    base_upload_folder = os.path.join(DATA_DIR, 'uploaded_data')
 
     # If folder_name is provided, create/use subfolder
     if folder_name:
@@ -3635,7 +3636,7 @@ def rag_test():
         if not query or not file_name:
             return jsonify({"error": "Missing query or file_name parameter"}), 400
 
-        base_upload_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data"
+        base_upload_folder = os.path.join(DATA_DIR, 'uploaded_data')
         if data_store:
             file_path = os.path.join(base_upload_folder, data_store, file_name)
         else:
@@ -3828,7 +3829,7 @@ def chat_api():
     data = request.get_json()
     query = data.get('query')
 
-    embeddings_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/embeddings"
+    embeddings_folder = os.path.join(DATA_DIR, 'embeddings')
     embedding_files = glob.glob(os.path.join(embeddings_folder, "*_index.pkl"))
     file_hashes = [os.path.basename(f).split('_')[0] for f in embedding_files]
 
@@ -4170,8 +4171,7 @@ def simple_search():
             elif command_type == 'show_favorites':
                 # Load user favorites (doesn't need json_data)
                 favorites_file = os.path.join(
-                    '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 
-                    'user_data', user_id, 'favorites.json'
+                    DATA_DIR, 'user_data', user_id, 'favorites.json'
                 )
                 
                 if os.path.exists(favorites_file):
@@ -4251,7 +4251,7 @@ def save_user_favorite():
             return jsonify({"success": False, "error": "No profile data provided"}), 400
         
         # Create user_data directory if it doesn't exist
-        user_data_dir = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data')
+        user_data_dir = os.path.join(DATA_DIR, 'user_data')
         os.makedirs(user_data_dir, exist_ok=True)
         
         # Create user-specific subdirectory
@@ -4308,7 +4308,7 @@ def get_user_favorites():
         user_id = data.get('user_id', 'default_user')
         
         # Path to user's favorites file
-        favorites_file = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data', user_id, 'favorites.json')
+        favorites_file = os.path.join(DATA_DIR, 'user_data', user_id, 'favorites.json')
         
         if not os.path.exists(favorites_file):
             return jsonify({"success": True, "favorites": [], "count": 0})
@@ -4339,7 +4339,7 @@ def remove_user_favorite():
             return jsonify({"success": False, "error": "No favorite_id provided"}), 400
         
         # Path to user's favorites file
-        favorites_file = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data', 'user_data', user_id, 'favorites.json')
+        favorites_file = os.path.join(DATA_DIR, 'user_data', user_id, 'favorites.json')
         
         if not os.path.exists(favorites_file):
             return jsonify({"success": False, "error": "No favorites file found"}), 404
@@ -4378,7 +4378,7 @@ def save_requirements():
         return jsonify({"error": "No requirements to save"}), 400
 
     # Define the folder path
-    folder_path = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/requirements_versions"
+    folder_path = os.path.join(DATA_DIR, 'requirements_versions')
     os.makedirs(folder_path, exist_ok=True)  # Create the folder if it doesn't exist
 
     # Create a unique file name with the export option and timestamp
@@ -4557,7 +4557,7 @@ def convert_file():
     
     try:
         # Create temporary upload folder for conversion
-        temp_folder = "/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/temp_conversion"
+        temp_folder = os.path.join(DATA_DIR, 'temp_conversion')
         os.makedirs(temp_folder, exist_ok=True)
         
         # Save uploaded file
@@ -4697,7 +4697,7 @@ def check_existing_file():
         # Create file path - Updated to use the correct data folder structure
         json_file_name = file_name.replace('.csv', '.json').replace('.xlsx', '.json').replace('.xls', '.json')
         # Use the same structure as upload function
-        file_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', 'alumni_data', json_file_name)
+        file_path = os.path.join(DATA_DIR, 'uploaded_data', 'alumni_data', json_file_name)
         
         if os.path.exists(file_path):
             existing_size = os.path.getsize(file_path)
@@ -4731,7 +4731,7 @@ def save_json_file():
         folder_name = data.get('folder_name', 'alumni_data')
         
         # Create directory using the correct data folder structure
-        folder_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', folder_name)
+        folder_path = os.path.join(DATA_DIR, 'uploaded_data', folder_name)
         os.makedirs(folder_path, exist_ok=True)
         
         # Save JSON file
@@ -4757,7 +4757,7 @@ def load_json_file():
         folder_name = data.get('folder_name', 'alumni_data')
         
         # Use the correct data folder structure
-        file_path = os.path.join('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/uploaded_data', folder_name, file_name)
+        file_path = os.path.join(DATA_DIR, 'uploaded_data', folder_name, file_name)
         
         if not os.path.exists(file_path):
             return jsonify({'success': False, 'error': 'File not found'}), 404
@@ -4886,9 +4886,7 @@ def save_tools_landscape_for_user(user_id, tools_data):
     Adds a timestamp for when the data was last updated.
     """
     try:
-        user_folder = os.path.join(
-            '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/user_data/tools_landscape/'
-        )
+        user_folder = os.path.join(DATA_DIR, 'user_data', 'tools_landscape')
         os.makedirs(user_folder, exist_ok=True)
         file_path = os.path.join(user_folder, 'tools_landscape.json')
 
@@ -4916,7 +4914,7 @@ def get_tools_landscape():
     a list of tools with tool_name, description, and category.
     """
     try:
-        file_path = '/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/user_data/tools_landscape/tools_landscape.json'
+        file_path = os.path.join(DATA_DIR, 'user_data', 'tools_landscape', 'tools_landscape.json')
         if not os.path.exists(file_path):
             return jsonify({'success': False, 'error': 'tools_landscape.json not found'}), 404
 
@@ -4973,7 +4971,7 @@ def recommend_agents():
         business_need = data.get('business_need', '')
 
         # Load available modules (from agents_modules.json)
-        with open('/Users/rhishikeshthakur/Enable/Software Development/enable_agents/data/agents_modules.json', 'r', encoding='utf-8') as f:
+        with open(os.path.join(DATA_DIR, 'agents_modules.json'), 'r', encoding='utf-8') as f:
             modules = json.load(f)
 
         # Prepare context for OpenAI
