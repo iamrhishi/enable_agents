@@ -1,0 +1,30 @@
+{
+  "id": "content_marketing",
+  "name": "Content Marketing Agent",
+  "description": "Creates, manages, and generates SEO-optimised content using a knowledge graph + RAG pipeline.",
+  "enabled": true,
+  "routes_prefix": "/api/content-marketing",
+  "required_env": [
+    "OPENAI_API_KEY"
+  ],
+  "provides": {
+    "content_brief": {
+      "project_id": "string",
+      "industry": "string",
+      "generated_content": "string",
+      "keywords": "array"
+    }
+  },
+  "consumes": [
+    "company_profile",
+    "user_profile"
+  ],
+  "input_schema": {
+    "project_name": "string",
+    "industry": "string",
+    "sector": "string",
+    "function": "string",
+    "role": "string"
+  },
+  "version": "1.0.0"
+}

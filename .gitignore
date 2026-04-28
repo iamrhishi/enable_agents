@@ -1,45 +1,62 @@
-# Python
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pyo
+.Python
 
-# Virtual Environments
+# ── Virtual environments ──────────────────────────────────────────────────────
 venv/
 env/
-.venv
+.venv/
 .venv-win/
+backend/venv/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
 .env
-tools/.env
-agent-app/.env
-tools/.venv
-tools/venv
-venv
+.env.local
+.env.docker
+backend/.env
+frontend/.env
 
- .env
-agent-app/.env
-
-
-# Node.js / Dependencies
+# ── Node.js ───────────────────────────────────────────────────────────────────
 node_modules/
-agent-app/node_modules/
-agent-app/build/
+frontend/node_modules/
+frontend/build/
 
-# Data files (consolidated - no duplicates)
+# ── Data & generated files ────────────────────────────────────────────────────
 data/
 *.pkl
 *.faiss
-*.json
+# Scope json exclusions tightly — broad *.json would hide agent manifests
+**/data/*.json
+**/uploads/*.json
 
-# Temporary files
-temp_files/
-uploads/
-.venv-win/
+# ── Celery runtime ────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
 
-
+# ── Flask / SQLAlchemy ────────────────────────────────────────────────────────
 instance/
-
-tools/instance/
-
+backend/instance/
 *.db
+*.sqlite3
 
+# ── Uploads & temp ───────────────────────────────────────────────────────────
+uploads/
+temp_files/
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── OS & editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
