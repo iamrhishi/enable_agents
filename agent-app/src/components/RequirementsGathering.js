@@ -78,12 +78,12 @@ function RequirementsGathering() {
 
   const fetchExistingCampaigns = async () => {
     try {
-      const response = await fetch(API_CONFIG.GET_CAMPAIGNS, {
+      const resp = await fetch(`${API_CONFIG.GET_CAMPAIGNS}?username=${encodeURIComponent(getCurrentUsername())}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
-      if (response.ok) {
-        const data = await response.json();
+      if (resp.ok) {
+        const data = await resp.json();
         if (data.campaigns) {
           setExistingCampaigns(data.campaigns);
         }
@@ -146,6 +146,9 @@ function RequirementsGathering() {
   const [saveListMode, setSaveListMode] = useState('create');
   const [selectedAppendProjectId, setSelectedAppendProjectId] = useState('');
   const [isSavingList, setIsSavingList] = useState(false);
+  const [showScoreModal, setShowScoreModal] = useState(false);
+  const [scoreQueryText, setScoreQueryText] = useState('');
+  const [isScoring, setIsScoring] = useState(false);
   const [showSavedListsView, setShowSavedListsView] = useState(false);
   const [savedLists, setSavedLists] = useState([]);
   const [isLoadingSavedLists, setIsLoadingSavedLists] = useState(false);
@@ -662,6 +665,95 @@ function RequirementsGathering() {
     setIsSavingList(false);
   };
 
+  const handleScoreLeads = async () => {
+    const text = (scoreQueryText || '').trim();
+    if (!text) {
+      alert('Please provide a short description of what you want to match for.');
+      return;
+    }
+
+    const isSavedListContext = showSavedListsView && activeSavedListLeads && activeSavedListLeads.length > 0;
+
+    // Gather businesses from current view (saved list or live research)
+    const sourceBusinesses = showSavedListsView && activeSavedListLeads && activeSavedListLeads.length ? activeSavedListLeads : (customerResearchResults?.businesses || []);
+    if (!sourceBusinesses || sourceBusinesses.length === 0) {
+      alert('No leads available to score.');
+      return;
+    }
+
+    setIsScoring(true);
+    try {
+      const payload = sourceBusinesses.map(b => ({
+        name: b.name || '',
+        website: b.website || '',
+        phone: b.phone || '',
+        address: b.address || '',
+        summary: b.summary || b.description || '',
+        raw_data: b.raw_data || b
+      }));
+
+      const response = await fetch(API_CONFIG.SCORE_LEADS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: getCurrentUsername(), requirement: text, businesses: payload })
+      });
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error('[ScoreLeads] failed to parse JSON response', parseErr);
+        alert('Scoring failed: invalid JSON response from server');
+        setIsScoring(false);
+        return;
+      }
+      
+      if (data.success && Array.isArray(data.results)) {
+        // Map results back into UI, attach scores/summaries, then sort descending by match_score
+        const results = data.results;
+        const resultsByIndex = new Map(results.map((item) => [Number(item.index), item]));
+
+        // Pair results with the current sourceBusinesses using the stable backend index
+        const paired = sourceBusinesses.map((b, i) => {
+          const scored = resultsByIndex.get(i) || {};
+          return {
+            ...(b || {}),
+            match_score: scored.match_score ?? null,
+            short_summary: scored.short_summary ?? b.short_summary
+          };
+        });
+
+        // Sort descending: highest match_score first (null/undefined treated as -1)
+        const sorted = paired.slice().sort((a, b) => ( (b.match_score != null ? b.match_score : -1) - (a.match_score != null ? a.match_score : -1) ));
+
+        // Apply to saved-list context or research view accordingly
+        if (isSavedListContext) {
+          setActiveSavedListLeads(sorted);
+        }
+
+        if (customerResearchResults) {
+          const newCR = { ...customerResearchResults, businesses: sorted };
+          setCustomerResearchResults(newCR);
+          try { sessionStorage.setItem('customerResearchResults', JSON.stringify(newCR)); } catch (e) { /* ignore */ }
+        }
+
+        if (!isSavedListContext) {
+          setShowCustomerResearchTable(true);
+          setMinimizedCustomerResearch(false);
+        }
+
+        alert('Scoring complete — updated ' + results.length + ' leads (sorted by score)');
+        setShowScoreModal(false);
+        setScoreQueryText('');
+      } else {
+        alert('Scoring failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('An error occurred while scoring leads: ' + e.message);
+    }
+    setIsScoring(false);
+  };
+
   const handleDeleteSavedList = async (projectId) => {
     const confirmed = window.confirm('Delete this saved list permanently?');
     if (!confirmed) return;
@@ -1132,7 +1224,8 @@ function RequirementsGathering() {
                             <th>Email</th>
                             <th>LinkedIn</th>
                             <th>Send Email</th>
-                            <th>Summary</th>
+                              <th style={{ width: '120px' }}>Match</th>
+                              <th>Summary</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1145,7 +1238,14 @@ function RequirementsGathering() {
                               <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
                               <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
                               <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
-                              <td style={{ maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.4' }} title={business.summary || business.description || 'N/A'}>{business.summary || business.description || 'N/A'}</td>
+                              <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                {business.match_score != null ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
+                                  </div>
+                                ) : <span style={{ color: '#999' }}>-</span>}
+                              </td>
+                              <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1253,6 +1353,14 @@ function RequirementsGathering() {
                               </button>
                               <button 
                                 className="action-icon-button"
+                                onClick={() => { setScoreQueryText(''); setShowScoreModal(true); }}
+                                title="Score Leads"
+                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <img src="/assets/icons/score.png" alt="Score" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/2910/2910798.png'}} />
+                              </button>
+                              <button 
+                                className="action-icon-button"
                                 onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
                                 title="Send Emails"
                                 style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -1275,15 +1383,16 @@ function RequirementsGathering() {
                               <table className="businesses-table">
                                 <thead>
                                   <tr>
-                                    <th>Business Name</th>
-                                    <th>Address</th>
-                                    <th>Phone</th>
-                                    <th>Website</th>
-                                    <th>Email</th>
-                                    <th>LinkedIn</th>
-                                    <th>Send Email</th>
-                                    <th>Summary</th>
-                                  </tr>
+                                      <th>Business Name</th>
+                                      <th>Address</th>
+                                      <th>Phone</th>
+                                      <th>Website</th>
+                                      <th>Email</th>
+                                      <th>LinkedIn</th>
+                                      <th>Send Email</th>
+                                      <th style={{ width: '120px' }}>Match</th>
+                                      <th>Summary</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
                                   {customerResearchResults.businesses.map((business, index) => (
@@ -1346,8 +1455,15 @@ function RequirementsGathering() {
                                           <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
                                         )}
                                       </td>
-                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.summary || business.description || 'N/A'}>
-                                        {business.summary || business.description || 'N/A'}
+                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                        {business.match_score != null ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
+                                          </div>
+                                        ) : <span style={{ color: '#999' }}>-</span>}
+                                      </td>
+                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.short_summary || business.summary || business.description || 'N/A'}>
+                                        {business.short_summary || business.summary || business.description || 'N/A'}
                                       </td>
                                     </tr>
                                   ))}
@@ -1484,76 +1600,82 @@ function RequirementsGathering() {
                           <th>Email</th>
                           <th>LinkedIn</th>
                           <th>Send Email</th>
+                          <th>Match</th>
                           <th>Summary</th>
                         </tr>
                       </thead>
-                      <tbody>
-                          {customerResearchResults.businesses.map((business, index) => (
-                            <tr key={index}>
-                              <td>{business.name || 'N/A'}</td>
-                              <td>{business.address || 'N/A'}</td>
-                              <td>{business.phone || 'N/A'}</td>
-                              <td>
-                                {business.website ? (
-                                  <a href={business.website} target="_blank" rel="noopener noreferrer">
-                                    Visit
-                                  </a>
-                                ) : (
-                                  'N/A'
-                                )}
-                              </td>
-                              <td>
-                                {business.email && business.email !== 'N/A' ? ( 
-                                  <span>{business.email}</span>
-                                ) : (
-                                  <button
-                                    className="extract-email-button"
-                                    onClick={() => handleExtractEmailForBusiness(business, index)}
-                                    disabled={!!extractingEmailRows[index]}
-                                  >
-                                    {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                                  </button>
-                                )}
-                              </td>
-                              <td>
-                                {business.linkedin ? (
-                                  business.linkedin !== 'N/A' ? (
-                                    <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
-                                      View Profile
-                                    </a>
-                                  ) : (
-                                    <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
-                                  )
-                                ) : (
-                                  <button
-                                    className="extract-email-button"
-                                    style={{ background: '#0a66c2', color: 'white', border: 'none' }}
-                                    onClick={() => handleExtractLinkedInForBusiness(business, index)}
-                                    disabled={!!extractingLinkedInRows[index]}
-                                  >
-                                    {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
-                                  </button>
-                                )}
-                              </td>
-                              <td>
-                                {business.email && business.email !== 'N/A' ? (
-                                  <button
-                                    onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                    disabled={!!isGeneratingEmail[index]}
-                                    style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                  >
-                                    {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
-                                  </button>
-                                ) : (
-                                  <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
-                                )}
-                              </td>
-                              <td style={{ maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.4' }} title={business.summary || business.description || 'N/A'}>
-                                {business.summary || business.description || 'N/A'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
+                                <tbody>
+                                  {customerResearchResults.businesses.map((business, index) => (
+                                    <tr key={index}>
+                                      <td>{business.name || 'N/A'}</td>
+                                      <td>{business.address || 'N/A'}</td>
+                                      <td>{business.phone || 'N/A'}</td>
+                                      <td>
+                                        {business.website ? (
+                                          <a href={business.website} target="_blank" rel="noopener noreferrer">
+                                            Visit
+                                          </a>
+                                        ) : (
+                                          'N/A'
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.email && business.email !== 'N/A' ? ( 
+                                          <span>{business.email}</span>
+                                        ) : (
+                                          <button
+                                            className="extract-email-button"
+                                            onClick={() => handleExtractEmailForBusiness(business, index)}
+                                            disabled={!!extractingEmailRows[index]}     
+                                          >
+                                            {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.linkedin ? (
+                                          business.linkedin !== 'N/A' ? (
+                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                              View Profile
+                                            </a>
+                                          ) : (
+                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                          )
+                                        ) : (
+                                          <button
+                                            className="extract-email-button"
+                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                            onClick={() => handleExtractLinkedInForBusiness(business, index)}
+                                            disabled={!!extractingLinkedInRows[index]}
+                                          >
+                                            {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {business.email && business.email !== 'N/A' ? (
+                                          <button
+                                            onClick={() => handleGeneratePersonalizedEmail(business, index)}
+                                            disabled={!!isGeneratingEmail[index]}
+                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                                          >
+                                            {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
+                                          </button>
+                                        ) : (
+                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                        )}
+                                      </td>
+                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                        {business.match_score != null ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
+                                          </div>
+                                        ) : <span style={{ color: '#999' }}>-</span>}
+                                      </td>
+                                      <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
                     </table>
                   </div>
                 ) : (
@@ -1853,6 +1975,27 @@ function RequirementsGathering() {
                   <button onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
                     {isSavingList ? 'Saving...' : (saveListMode === 'append' ? 'Append Leads' : 'Save List')}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Score Leads Modal */}
+          {showScoreModal && (
+            <div className="popup-overlay" style={{ zIndex: 3100 }}>
+              <div className="popup-content" style={{ width: '520px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Score Leads</h2>
+                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
+                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g. We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
+                  <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank leads. Results will add a Match score and a two-line summary for each company.</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
+                  <button onClick={handleScoreLeads} disabled={isScoring} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>{isScoring ? 'Scoring...' : 'Score Leads'}</button>
                 </div>
               </div>
             </div>

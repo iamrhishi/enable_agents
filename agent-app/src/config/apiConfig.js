@@ -88,6 +88,7 @@ export const API_CONFIG = {
   EXECUTIVE_ASSISTANT_BASE: `${API_URL}/api`,
   APPEND_PROJECT: `${API_URL}/api/append-project`,
   SAVE_PROJECT: `${API_URL}/api/save-project`,
+  SCORE_LEADS: `${API_URL}/api/score-leads`,
 };
 
 export default API_CONFIG;

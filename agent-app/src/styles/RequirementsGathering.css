@@ -924,6 +924,7 @@ button {
 
 .businesses-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: 'IBM Plex Sans', sans-serif;
   font-size: 13px;
@@ -971,9 +972,23 @@ button {
 .businesses-table th:nth-child(7),
 .businesses-table td:nth-child(7),
 .businesses-table th:nth-child(8),
-.businesses-table td:nth-child(8) {
+.businesses-table td:nth-child(8),
+.businesses-table th:nth-child(9),
+.businesses-table td:nth-child(9) {
   width: 12%;
   min-width: 100px;
+}
+
+.businesses-table th:nth-child(8),
+.businesses-table td:nth-child(8) {
+  width: 9%;
+  min-width: 84px;
+}
+
+.businesses-table th:nth-child(9),
+.businesses-table td:nth-child(9) {
+  width: 22%;
+  min-width: 180px;
 }
 
 .businesses-table td {
