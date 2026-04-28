@@ -1,0 +1,24 @@
+{
+  "id": "email_outreach",
+  "name": "Email Outreach Agent",
+  "description": "Composes, sends, and tracks personalised bulk email campaigns. Integrates with Gmail via Google OAuth and tracks open/bounce rates.",
+  "enabled": true,
+  "routes_prefix": "/api/email",
+  "required_env": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "OPENAI_API_KEY"],
+  "provides": {
+    "campaign_result": {
+      "campaign_id": "string",
+      "sent_count": "integer",
+      "failed_count": "integer",
+      "status": "string"
+    }
+  },
+  "consumes": ["company_profile", "user_profile", "prospect_list"],
+  "input_schema": {
+    "campaign_name": "string",
+    "subject": "string",
+    "recipients": "array",
+    "body_template": "string"
+  },
+  "version": "1.0.0"
+}

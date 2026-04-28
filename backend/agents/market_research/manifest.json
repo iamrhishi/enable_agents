@@ -1,0 +1,27 @@
+{
+  "id": "market_research",
+  "name": "Market Research Agent",
+  "description": "Analyses competitors, validates markets, and produces structured reports using web scraping, RAG and OpenAI. Exports results to Google Sheets.",
+  "enabled": true,
+  "routes_prefix": "/api/market-research",
+  "required_env": ["OPENAI_API_KEY"],
+  "provides": {
+    "company_profile": {
+      "company_name": "string",
+      "industry": "string",
+      "competitors": "array",
+      "market_size": "string",
+      "research_summary": "string"
+    },
+    "prospect_list": {
+      "businesses": "array"
+    }
+  },
+  "consumes": ["user_profile"],
+  "input_schema": {
+    "industry": "string",
+    "company_name": "string",
+    "research_goals": "array"
+  },
+  "version": "1.0.0"
+}
