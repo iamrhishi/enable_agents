@@ -41,13 +41,25 @@ backend/
 frontend/
   src/agents/      Agent UI components
   src/core/        Shared UI (Header, Login, Register)
-scripts/           run.sh · start.sh · stop.sh
+scripts/
+  run.sh           Main entry point (dev / prod / test / local)
+  start.sh         Start services (non-Docker)
+  stop.sh          Stop services (non-Docker)
+  deploy.sh        Remote deployment over SSH
+  setup_https.sh   SSL certificate + nginx setup
 docs/              context.md (source of truth) · todo.md
 tests/
   integration/     Per-agent and per-blueprint integration tests
   sanity/          Structural sanity checks
 docker-compose.yml Single file — dev and prod profiles
 ```
+
+## Branching
+
+| Branch | Purpose |
+|---|---|
+| `develop` | Main integration branch — branch off here for new features |
+| `harsh-code` | Stable reference branch |
 
 ## Documentation
 

@@ -23,11 +23,15 @@
 - [ ] Fully migrate remaining raw sqlite3 tables in `app.py` to SQLAlchemy models in `backend/agents/`
 - [ ] Split `app.py` routes into blueprints (auth, files, scraping, email, google, linkedin)
 - [ ] Add `/api/v1/` prefix to all legacy routes
-- [ ] Wire agent Blueprint registration to avoid duplicate routes (registry vs legacy app.py routes)
+- [ ] Wire `register_agents()` in `app.py` — currently defined in `agents/registry.py` but never called; wiring it requires removing the duplicate monolith routes first
+- [ ] Remove duplicate `search_google_businesses` route registered twice in `app.py` (~line 6261)
+- [ ] Content Marketing: pick one persistence layer — currently both raw sqlite3 (app.py) and SQLAlchemy (agents/content_marketing/models.py) exist for the same feature; consolidate and delete the other
 - [ ] Create a `backend/agents/email_outreach/` agent (manifest + routes + models + tasks)
 - [ ] Create a `backend/agents/market_research/` agent
 - [ ] Add `PATCH /api/v1/agents/<id>` persistent toggle (write back to manifest.json or DB)
 - [ ] Add frontend admin UI for enabling/disabling agents
+- [ ] Frontend: standardise on one HTTP client — currently most components use `fetch` but `AgentsAssembly.js` uses `axios`; pick one and create a shared `apiClient` wrapper
+- [ ] `DataInsights.js`: extract shared `runRagOnFile(file, prompt)` helper — `handleGetInsights` and `handleBulkGetInsights` duplicate the upload→RAG flow
 
 ## P2 — Medium priority
 
