@@ -47,8 +47,8 @@ ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c 'set -e; \
 if [ ! -d venv ]; then python3 -m venv venv; fi; \
 source venv/bin/activate; \
 pip install -q --upgrade pip; \
-pip install -q --no-cache-dir -r tools/requirements.txt; \
-if [ -f tools/migrations.py ]; then python tools/migrations.py; fi'" > /dev/null 2>&1
+pip install -q --no-cache-dir -r backend/requirements.txt; \
+if [ -f backend/migrations.py ]; then python backend/migrations.py; fi'" > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Python environment ready${NC}\n"
@@ -62,20 +62,20 @@ echo -e "${BLUE}[2/4] Checking configuration files...${NC}"
 
 # Check and create tools/.env if missing
 ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c '\
-if [ ! -f tools/.env ]; then
-  echo \"ENVIRONMENT=production\" > tools/.env
-  echo \"PUBLIC_URL=http://agents.enableyou.co:5000\" >> tools/.env
-  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" >> tools/.env
-  echo \"OAUTHLIB_INSECURE_TRANSPORT=1\" >> tools/.env
+if [ ! -f backend/.env ]; then
+  echo \"ENVIRONMENT=production\" > backend/.env
+  echo \"PUBLIC_URL=http://agents.enableyou.co:5000\" >> backend/.env
+  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" >> backend/.env
+  echo \"OAUTHLIB_INSECURE_TRANSPORT=1\" >> backend/.env
 fi
-if ! grep -q \"^REACT_APP_API_URL=\" tools/.env; then
-  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" >> tools/.env
+if ! grep -q \"^REACT_APP_API_URL=\" backend/.env; then
+  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" >> backend/.env
 fi'" > /dev/null 2>&1
 
-# Check and create agent-app/.env if missing
+# Check and create frontend/.env if missing
 ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c '\
-if [ ! -f agent-app/.env ]; then
-  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" > agent-app/.env
+if [ ! -f frontend/.env ]; then
+  echo \"REACT_APP_API_URL=http://agents.enableyou.co:5000\" > frontend/.env
 fi'" > /dev/null 2>&1
 
 echo -e "${GREEN}✓ Configuration files ready${NC}\n"
@@ -92,7 +92,7 @@ else
     ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash -c '\
 mkdir -p .logs
 source venv/bin/activate
-cd tools
+cd backend
 nohup python app.py > ../.logs/python.log 2>&1 &
 sleep 2'" > /dev/null 2>&1
     
@@ -116,7 +116,7 @@ if [ "$NPM_RUNNING" -gt 0 ]; then
     echo -e "${GREEN}✓ Frontend already running${NC}"
 else
     echo -e "${BLUE}   Starting React dev server...${NC}"
-    ssh "$REMOTE_HOST" "cd $REMOTE_DIR/agent-app && bash -c '\
+    ssh "$REMOTE_HOST" "cd $REMOTE_DIR/frontend && bash -c '\
 if [ ! -d node_modules ]; then npm install -q; fi
 nohup npm start > ../.logs/react.log 2>&1 &
 sleep 3'" > /dev/null 2>&1
