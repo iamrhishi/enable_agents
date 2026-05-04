@@ -1,12 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
 import '../styles/SalesHelperAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { useAgentChat } from '../hooks/useAgentChat';
+import MessageContent from '../components/MessageContent';
 
 function SalesHelperAgent() {
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    messages, inputMessage, setInputMessage,
+    isLoading, setIsLoading, messagesEndRef,
+    addMessage, checkExistingFile, saveJSONToFile,
+  } = useAgentChat(
+    "Welcome to the Sales Helper Agent! I can help you analyze prospects, track leads, and optimize your sales pipeline!",
+    'sales_data'
+  );
+
   const [csvData, setCsvData] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -16,115 +24,24 @@ function SalesHelperAgent() {
   const [savedProjectSelection, setSavedProjectSelection] = useState('');
   const [isLoadingSavedProjects, setIsLoadingSavedProjects] = useState(false);
   const [isLoadingSavedProjectLeads, setIsLoadingSavedProjectLeads] = useState(false);
-  const messagesEndRef = useRef(null);
   const csvFileRef = useRef(null);
   const cvFileRef = useRef(null);
   const [existingFiles, setExistingFiles] = useState(new Map());
-  
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      text: "Welcome to the Sales Helper Agent! I can help you analyze prospects, track leads, and optimize your sales pipeline!",
-      sender: 'agent',
-      timestamp: new Date().toLocaleTimeString(),
-      format: 'markdown'
-    }
-  ]);
-
-  // Add these state variables at the top with other state
-  const [currentUserId, setCurrentUserId] = useState('user_001'); // Replace with actual user ID
+  const [currentUserId] = useState('user_001');
   const [userFavorites, setUserFavorites] = useState([]);
 
-  const getCurrentUsername = () => {
-    return localStorage.getItem('userEmail') || localStorage.getItem('username') || localStorage.getItem('firstName') || currentUserId || 'anonymous';
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const getCurrentUsername = () =>
+    localStorage.getItem('userEmail') ||
+    localStorage.getItem('username') ||
+    localStorage.getItem('firstName') ||
+    currentUserId ||
+    'anonymous';
 
   useEffect(() => {
     fetchSavedProjects();
   }, []);
 
-  // Updated addMessage function with format parameter
-  const addMessage = (text, sender, data = null, format = 'markdown') => {
-    const newMessage = {
-      id: Date.now(),
-      text,
-      sender,
-      timestamp: new Date().toLocaleTimeString(),
-      data,
-      format // 'html' or 'markdown'
-    };
-    setMessages(prev => [...prev, newMessage]);
-  };
-
-  // Custom message content renderer
-  const MessageContent = ({ message }) => {
-    if (message.format === 'html') {
-      return (
-        <div 
-          className="message-text"
-          dangerouslySetInnerHTML={{ __html: message.text }}
-        />
-      );
-    } else {
-      return (
-        <div className="message-text">
-          <ReactMarkdown>{message.text}</ReactMarkdown>
-        </div>
-      );
-    }
-  };
-
-  // Helper function to check existing files and compare sizes
-  const checkExistingFile = async (fileName, newFileSize) => {
-    try {
-      const response = await fetch(`${API_CONFIG.API_URL}/check_existing_file`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_name: fileName,
-          new_file_size: newFileSize
-        })
-      });
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Error checking existing file:', error);
-      return { exists: false, should_skip: false };
-    }
-  };
-
   // Function to save JSON data to file
-  const saveJSONToFile = async (jsonData, originalFileName) => {
-    try {
-      const jsonFileName = originalFileName.replace(/\.(csv|xlsx|xls)$/i, '.json');
-      
-      const response = await fetch(`${API_CONFIG.API_URL}/save_json_file`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: jsonData,
-          file_name: jsonFileName,
-          folder_name: 'sales_data'
-        })
-      });
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Error saving JSON file:', error);
-      return { success: false, error: 'Failed to save JSON file' };
-    }
-  };
-
   // Enhanced handleSearch function for sales data
   const handleSearch = async (query) => {
     try {
