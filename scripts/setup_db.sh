@@ -17,20 +17,12 @@
 
 set -e  # Exit on error
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-echo -e "${YELLOW}========================================${NC}"
-echo -e "${YELLOW}Enable Agents - Database Setup${NC}"
-echo -e "${YELLOW}========================================${NC}\n"
-
-# Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
+print_banner "Enable Agents - Database Setup"
 
 # Paths
 VENV_PATH="$PROJECT_ROOT/venv"
@@ -92,36 +84,10 @@ echo
 
 # Validate configuration
 echo -e "${BLUE}[5/5] Validating configuration files...${NC}"
-
-if [ ! -f "$TOOLS_DIR/.env" ]; then
-    echo -e "${RED}✗ Missing: $TOOLS_DIR/.env${NC}"
-    echo -e "${RED}   Create root .env from .env.example, then run ./scripts/run.sh local${NC}\n"
-    exit 1
-fi
-
-if [ ! -f "$APP_DIR/.env" ]; then
-    echo -e "${RED}✗ Missing: $APP_DIR/.env${NC}"
-    echo -e "${RED}   Run ./scripts/run.sh local to sync frontend/backend env files${NC}\n"
-    exit 1
-fi
-
-# Check required variables
-if ! grep -q "^PUBLIC_URL=" "$TOOLS_DIR/.env"; then
-    echo -e "${RED}✗ PUBLIC_URL not set in $TOOLS_DIR/.env${NC}"
-    exit 1
-fi
-
-if ! grep -q "^REACT_APP_API_URL=" "$APP_DIR/.env"; then
-    echo -e "${RED}✗ REACT_APP_API_URL not set in $APP_DIR/.env${NC}"
-    exit 1
-fi
-
+validate_local_env "$TOOLS_DIR" "$APP_DIR" || exit 1
 echo -e "${GREEN}✓ Configuration files validated${NC}\n"
 
-# Success
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ Setup completed successfully!${NC}"
-echo -e "${GREEN}========================================${NC}\n"
+print_success "Setup completed successfully!"
 
 # Get environment info
 ENVIRONMENT=$(grep "^ENVIRONMENT=" "$TOOLS_DIR/.env" | cut -d'=' -f2 || echo "development")

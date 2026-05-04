@@ -70,7 +70,7 @@ check_env_local() {
   fi
   cp "$PROJECT_ROOT/.env" "$BACKEND_DIR/.env"
   cat > "$FRONTEND_DIR/.env" <<EOF
-REACT_APP_API_URL=http://localhost:8000
+REACT_APP_API_URL=http://localhost:5000
 EOF
 }
 

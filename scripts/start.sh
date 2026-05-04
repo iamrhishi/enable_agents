@@ -19,18 +19,12 @@
 # 3. Verifies services are responsive
 ###############################################################################
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 set -e  # Exit on any error
 
-# Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
 
 # Paths
 VENV_PATH="$PROJECT_ROOT/venv"
@@ -39,36 +33,11 @@ APP_DIR="$PROJECT_ROOT/frontend"
 LOG_DIR="$PROJECT_ROOT/.logs"
 PID_FILE="$PROJECT_ROOT/.pids"
 
-echo -e "${YELLOW}========================================${NC}"
-echo -e "${YELLOW}Enable Agents - Starting Services${NC}"
-echo -e "${YELLOW}========================================${NC}\n"
+print_banner "Enable Agents - Starting Services"
 
 # Validate configuration files exist
 echo -e "${BLUE}[1/7] Validating configuration...${NC}"
-
-if [ ! -f "$TOOLS_DIR/.env" ]; then
-    echo -e "${RED}✗ Missing: $TOOLS_DIR/.env${NC}"
-    echo -e "${RED}Create root .env from .env.example, then run ./scripts/run.sh local${NC}\n"
-    exit 1
-fi
-
-if [ ! -f "$APP_DIR/.env" ]; then
-    echo -e "${RED}✗ Missing: $APP_DIR/.env${NC}"
-    echo -e "${RED}Run ./scripts/run.sh local to sync frontend/backend env files${NC}\n"
-    exit 1
-fi
-
-# Check that PUBLIC_URL is set in backend .env
-if ! grep -q "^PUBLIC_URL=" "$TOOLS_DIR/.env"; then
-    echo -e "${RED}✗ PUBLIC_URL not set in $TOOLS_DIR/.env${NC}"
-    exit 1
-fi
-
-# Check that REACT_APP_API_URL is set in frontend .env
-if ! grep -q "^REACT_APP_API_URL=" "$APP_DIR/.env"; then
-    echo -e "${RED}✗ REACT_APP_API_URL not set in $APP_DIR/.env${NC}"
-    exit 1
-fi
+validate_local_env "$TOOLS_DIR" "$APP_DIR" || exit 1
 
 # Get environment
 ENVIRONMENT=$(grep "^ENVIRONMENT=" "$TOOLS_DIR/.env" | cut -d'=' -f2 || echo "development")
@@ -245,10 +214,7 @@ else
     done
 fi
 
-# Final status
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ All services started successfully!${NC}"
-echo -e "${GREEN}========================================${NC}\n"
+print_success "All services started successfully!"
 
 echo -e "${BLUE}CONFIGURATION:${NC}"
 echo -e "  Environment:     ${YELLOW}$ENVIRONMENT${NC}"
