@@ -1,16 +1,16 @@
-﻿from flask import Flask,request, jsonify, redirect
+﻿from flask import Flask, request, jsonify, redirect
 import requests
 import sqlite3
 import shutil
 import psutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 from time import time
 import json
 import os
 import bs4
-import fitz 
+import fitz
 import faiss
 from typing import Dict, List
 from typing_extensions import TypedDict
@@ -24,22 +24,19 @@ import pandas as pd
 import pickle
 import hashlib
 import http.client
-import json
 import glob
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 import googleapiclient.discovery
 from email.message import EmailMessage
 import base64
-from flask_cors import CORS  # Import Flask-CORS
+from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
-from werkzeug.security import generate_password_hash
-from werkzeug.security import check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
-from flask_cors import cross_origin
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 # LangChain imports with fallbacks for version compatibility
 try:
@@ -100,7 +97,6 @@ except (ImportError, Exception):
         ChatPromptTemplate = None
         print("Warning: ChatPromptTemplate not available")
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -110,7 +106,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 import time
-from datetime import datetime, timedelta
 import re
 from docx import Document as DocxDocument
 import networkx as nx

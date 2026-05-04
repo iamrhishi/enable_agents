@@ -1,27 +1,13 @@
 """
-Core SQLAlchemy models — User and OAuth token.
+Core SQLAlchemy models.
 
-These are the foundational models used by the auth blueprint and
-referenced by multiple agents.
+Only models that are unique to the agent registry / context system live here.
+The primary application models (User, GoogleOAuthToken, EmailCampaign, etc.)
+are defined in app.py alongside the routes that own them, using the same db
+instance created there.
 """
 from datetime import datetime
 from core.database import db
-
-
-class User(db.Model):
-    __tablename__ = "users"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    username = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password = db.Column(db.String(512), nullable=False)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    first_name = db.Column(db.String(255))
-    last_name = db.Column(db.String(255))
-    company = db.Column(db.String(255))
-    linkedin = db.Column(db.String(512))
-    short_intro = db.Column(db.Text)
-    company_intro = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class AgentContext(db.Model):
@@ -39,10 +25,10 @@ class AgentContext(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.String(255), nullable=False, index=True)
-    session_id = db.Column(db.String(36), index=True)          # optional — group related keys
-    agent_id = db.Column(db.String(100), nullable=False)        # which agent wrote this
-    key = db.Column(db.String(255), nullable=False)             # e.g. "company_profile"
-    value = db.Column(db.Text, nullable=False)                  # JSON-serialised value
+    session_id = db.Column(db.String(36), index=True)
+    agent_id = db.Column(db.String(100), nullable=False)
+    key = db.Column(db.String(255), nullable=False)
+    value = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -50,15 +36,3 @@ class AgentContext(db.Model):
         db.UniqueConstraint("user_id", "agent_id", "key", name="uq_agent_context"),
         db.Index("ix_agent_context_user_key", "user_id", "key"),
     )
-
-
-class GoogleOAuthToken(db.Model):
-    __tablename__ = "google_oauth_tokens"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_email = db.Column(db.String(255), nullable=False, index=True)
-    access_token = db.Column(db.Text)
-    refresh_token = db.Column(db.Text)
-    token_expiry = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
