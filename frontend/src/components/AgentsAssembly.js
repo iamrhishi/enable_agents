@@ -76,6 +76,7 @@ function AgentsAssembly() {
   const [registryAgents, setRegistryAgents] = useState([]);
 
   const navigate = useNavigate();
+  const chatHistoryRef = useRef(null);
 
   // Load enabled agents from the backend registry on mount
   useEffect(() => {
@@ -83,6 +84,26 @@ function AgentsAssembly() {
       if (agents.length > 0) setRegistryAgents(agents);
     });
   }, []);
+
+  // Auto-scroll chat history to bottom when new messages arrive
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      // Use setTimeout to ensure DOM has updated before scrolling
+      setTimeout(() => {
+        chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      }, 0);
+    }
+  }, [chatHistory, isBuffering]);
+
+  // Auto-scroll chat history to bottom when new messages arrive
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      // Use setTimeout to ensure DOM has updated before scrolling
+      setTimeout(() => {
+        chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      }, 0);
+    }
+  }, [chatHistory, isBuffering]);
 
   const businessModules = [
     {
@@ -539,14 +560,27 @@ const handleEnterpriseChat = async (userInput) => {
             recData.recommendations &&
             Array.isArray(recData.recommendations.recommended_tools)
           ) {
-            toolNames = recData.recommendations.recommended_tools.map(tool => tool.name);
+            toolNames = recData.recommendations.recommended_tools
+              .map((tool) => tool.name || tool.tool_name)
+              .filter(Boolean);
           }
 
           setRecommendedModules(toolNames);
           setDetailedReportData(recData);
+
+          if (!toolNames.length) {
+            setChatHistory((prev) => [
+              ...prev,
+              { type: 'system', text: 'We could not identify recommended modules from the response. Please try refining your answers.' }
+            ]);
+          }
         } catch (recErr) {
           setRecommendedModules([]);
           setDetailedReportData(null);
+          setChatHistory((prev) => [
+            ...prev.filter(msg => msg.type !== 'buffer'),
+            { type: 'system', text: 'Recommendation service is currently unavailable. Please try again shortly.' }
+          ]);
         }
 
         setIsBuffering(false);
@@ -660,12 +694,13 @@ const handleEnterpriseChat = async (userInput) => {
         {showChatbot && (
         <div className="chatbot-section">
           <div className="chatbot-container enhanced-chatbot unified-chat">
-            <div style={{ background: 'linear-gradient(135deg, #1E3A5F 0%, #2c5282 100%)', padding: '14px 28px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1E3A5F 0%, #2c5282 100%)', padding: '16px 28px', borderBottom: '2px solid rgba(194, 65, 12, 0.2)', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
               <div>
-                <h3 style={{ color: '#ffffff', fontSize: '0.95rem', fontWeight: '600', margin: 0 }}>Business Intelligence Assistant</h3>
+                <h3 style={{ color: '#ffffff', fontSize: '1rem', fontWeight: '600', margin: 0, letterSpacing: '0.01em' }}>Business Intelligence Assistant</h3>
+                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.82rem', fontWeight: '400', margin: '4px 0 0 0', letterSpacing: '0.02em' }}>Answer a few questions to get tailored recommendations</p>
               </div>
             </div>
-            <div className="chat-history" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '8px' }}>
+            <div ref={chatHistoryRef} className="chat-history" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '12px', scrollBehavior: 'smooth' }}>
               {chatHistory.length === 0 && (
                 <>
                   <div className="chat-row system">
@@ -763,7 +798,7 @@ const handleEnterpriseChat = async (userInput) => {
                 </div>
               )}
             </div>
-            <div className="chatbot-input-card enhanced-input unified-input" style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 12px' }}>
+            <div className="chatbot-input-card enhanced-input unified-input" style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px' }}>
               <input
                 id="chat-file-input"
                 type="file"
@@ -779,7 +814,7 @@ const handleEnterpriseChat = async (userInput) => {
                 title="Attach file"
                 tabIndex={0}
                 role="button"
-                style={{ cursor: 'pointer', width: '14px', height: '14px', flexShrink: 0 }}
+                style={{ cursor: 'pointer', width: '18px', height: '18px', flexShrink: 0, opacity: 0.6, transition: 'opacity 0.2s' }}
               />
               <input
                 type="text"
@@ -801,7 +836,7 @@ const handleEnterpriseChat = async (userInput) => {
                 disabled={completed || isBuffering}
                 autoFocus
                 aria-label="Type your message"
-                style={{ flex: '1 1 auto', minWidth: 0, minHeight: '28px', padding: '7px 11px', fontSize: '0.81rem', maxWidth: 'calc(100% - 60px)' }}
+                style={{ flex: '1 1 auto', minWidth: 0, minHeight: '32px', padding: '10px 14px', fontSize: '0.88rem', maxWidth: 'calc(100% - 90px)' }}
               />
               <button
                 onClick={() => {
@@ -812,28 +847,31 @@ const handleEnterpriseChat = async (userInput) => {
                 }}
                 disabled={completed || isBuffering || !inputValue.trim()}
                 className="chat-send-btn"
-                title="Send message"
+                title="Send message (Enter key)"
                 aria-label="Send message"
                 style={{
-                  width: '32px',
-                  height: '32px',
-                  minWidth: '32px',
+                  width: '40px',
+                  height: '40px',
+                  minWidth: '40px',
                   flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   background: (inputValue.trim() && !completed && !isBuffering) ? 'linear-gradient(135deg, #C2410C 0%, #B45309 100%)' : '#e5e7eb',
-                  color: '#ffffff',
+                  color: (inputValue.trim() && !completed && !isBuffering) ? '#ffffff' : '#999',
                   border: 'none',
-                  borderRadius: '6px',
+                  borderRadius: '8px',
                   cursor: (inputValue.trim() && !completed && !isBuffering) ? 'pointer' : 'not-allowed',
-                  fontSize: '0.75rem',
+                  fontSize: '1.1rem',
+                  lineHeight: '1',
                   transition: 'all 0.2s ease',
                   fontWeight: '600',
-                  boxShadow: (inputValue.trim() && !completed && !isBuffering) ? '0 2px 8px rgba(194, 65, 12, 0.12)' : 'none'
+                  boxShadow: (inputValue.trim() && !completed && !isBuffering) ? '0 4px 12px rgba(194, 65, 12, 0.2)' : 'none',
+                  transform: (inputValue.trim() && !completed && !isBuffering) ? 'translateY(0)' : 'translateY(0)',
+                  padding: '0'
                 }}
               >
-                →
+                ↑
               </button>
             </div>
           </div>

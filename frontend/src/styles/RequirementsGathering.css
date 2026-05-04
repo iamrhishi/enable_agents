@@ -794,6 +794,35 @@ button {
   transform: scale(1.1);
 }
 
+/* Unified toolbar icon button styling */
+.action-icon-button {
+  margin: 0;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.8;
+}
+
+.action-icon-button:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.action-icon-button:active {
+  transform: scale(0.95);
+}
+
+.action-icon-button img {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
 .integration-modal {
   min-width: 400px;
 }
@@ -896,6 +925,36 @@ button {
   max-height: 80vh;
   max-width: 90vw;
   overflow-y: auto;
+}
+
+.saved-list-leads-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(80vh - 120px);
+  overflow: auto;
+  border-top: 1px solid #E0D8CE;
+  border-bottom: 1px solid #E0D8CE;
+  background: #FFFFFF;
+  border-radius: 8px;
+}
+
+.saved-list-leads-scroll .businesses-table {
+  min-width: 1200px;
+}
+
+.saved-lists-table-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(80vh - 190px);
+  overflow: auto;
+  border-top: 1px solid #E0D8CE;
+  border-bottom: 1px solid #E0D8CE;
+  background: #FFFFFF;
+  border-radius: 8px;
+}
+
+.saved-lists-table-scroll .businesses-table {
+  min-width: 1000px;
 }
 
 .research-summary {

@@ -398,35 +398,82 @@ function RequirementsGathering() {
   const handleExtractLinkedInForBusiness = async (business, index) => {
     if (!business) return;
     setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
+    console.log(`[LINKEDIN_EXTRACTION] Starting extraction for ${business.name}`);
 
     try {
-      // Mock logic or call to a simple backend
-      // Normally we'd call an API here that returns the linkedIn URL
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error('[LINKEDIN_EXTRACTION] Request timeout after 30s');
+        controller.abort();
+      }, 30000); // 30 second timeout
+
+      console.log(`[LINKEDIN_EXTRACTION] Calling ${API_CONFIG.ENRICH_BUSINESSES_WITH_LINKEDIN}`);
+
       const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_LINKEDIN, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businesses: [business], username: getCurrentUsername() }),
+        signal: controller.signal
       });
 
-      if (!response.ok) throw new Error('Failed to fetch LinkedIn data');
+      clearTimeout(timeoutId);
+      console.log(`[LINKEDIN_EXTRACTION] Response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.error || `HTTP ${response.status}`;
+        console.error(`[LINKEDIN_EXTRACTION] API Error: ${errorMsg}`);
+        throw new Error(`Failed to extract LinkedIn: ${errorMsg}`);
+      }
 
       const data = await response.json();
+      console.log('[LINKEDIN_EXTRACTION] Response received:', data);
+
       if (data.success && data.data && data.data.businesses && data.data.businesses.length > 0) {
         const enrichedBusiness = data.data.businesses[0];
-        setCustomerResearchResults(prev => {
-          if (!prev) return prev;
-          const updatedBusinesses = [...prev.businesses];
-          updatedBusinesses[index] = { ...updatedBusinesses[index], linkedin: enrichedBusiness.linkedin };
-          return { ...prev, businesses: updatedBusinesses };
-        });
+        console.log(`[LINKEDIN_EXTRACTION] Extracted LinkedIn: ${enrichedBusiness.linkedin}`);
+        
+        // Update either saved list or customer research results
+        if (activeSavedList && activeSavedListLeads.length > 0) {
+          setActiveSavedListLeads(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], linkedin: enrichedBusiness.linkedin };
+            return updated;
+          });
+          console.log('[LINKEDIN_EXTRACTION] Updated saved list leads');
+        } else {
+          setCustomerResearchResults(prev => {
+            if (!prev) {
+              console.warn('[LINKEDIN_EXTRACTION] No customer research results to update');
+              return prev;
+            }
+            const updatedBusinesses = [...prev.businesses];
+            updatedBusinesses[index] = { ...updatedBusinesses[index], linkedin: enrichedBusiness.linkedin };
+            console.log('[LINKEDIN_EXTRACTION] Updated customer research results');
+            return { ...prev, businesses: updatedBusinesses };
+          });
+        }
       } else {
-        alert(data.error || 'No LinkedIn profile found.');
+        const errorMsg = data.error || 'No LinkedIn profile found.';
+        console.warn(`[LINKEDIN_EXTRACTION] ${errorMsg}`);
+        alert(errorMsg);
       }
     } catch (error) {
-      console.error('LinkedIn extraction error:', error);
-      alert('Error extracting LinkedIn. Check console.');
+      console.error('[LINKEDIN_EXTRACTION] Error extracting LinkedIn:', error);
+      console.error('[LINKEDIN_EXTRACTION] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      
+      if (error.name === 'AbortError') {
+        alert('LinkedIn extraction timed out. Please try again.');
+      } else {
+        alert('Error extracting LinkedIn. Check console.');
+      }
     } finally {
       setExtractingLinkedInRows((prev) => ({ ...prev, [index]: false }));
+      console.log(`[LINKEDIN_EXTRACTION] Finished extraction for ${business.name}`);
     }
   };
 
@@ -437,8 +484,17 @@ function RequirementsGathering() {
     }
 
     setExtractingEmailRows((prev) => ({ ...prev, [index]: true }));
+    console.log(`[EMAIL_EXTRACTION] Starting extraction for ${business.name}`);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error('[EMAIL_EXTRACTION] Request timeout after 30s');
+        controller.abort();
+      }, 30000); // 30 second timeout
+
+      console.log(`[EMAIL_EXTRACTION] Calling ${API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS}`);
+      
       const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS, {
         method: 'POST',
         headers: {
@@ -448,44 +504,83 @@ function RequirementsGathering() {
           businesses: [business],
           username: getCurrentUsername()
         }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
+      console.log(`[EMAIL_EXTRACTION] Response status: ${response.status}`);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to extract email for this business');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.error || `HTTP ${response.status}`;
+        console.error(`[EMAIL_EXTRACTION] API Error: ${errorMsg}`);
+        throw new Error(`Failed to extract email: ${errorMsg}`);
       }
 
       const enrichedData = await response.json();
+      console.log('[EMAIL_EXTRACTION] Response received:', enrichedData);
+      
       if (enrichedData.usageSummary) {
         setExtractionUsage(enrichedData.usageSummary);
       }
+      
       const enrichedBusiness = enrichedData?.businesses?.[0];
 
       if (!enrichedBusiness) {
+        console.error('[EMAIL_EXTRACTION] No enriched business data in response');
         throw new Error('No enriched business data returned');
       }
 
-      setCustomerResearchResults((prev) => {
-        if (!prev || !prev.businesses) {
-          return prev;
-        }
+      console.log(`[EMAIL_EXTRACTION] Extracted email: ${enrichedBusiness.email}`);
 
-        const updatedBusinesses = [...prev.businesses];
-        updatedBusinesses[index] = {
-          ...updatedBusinesses[index],
-          email: enrichedBusiness.email || 'N/A'
-        };
+      // Update either customer research results or activated list
+      if (activeSavedList && activeSavedListLeads.length > 0) {
+        setActiveSavedListLeads((prev) => {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            email: enrichedBusiness.email || 'N/A'
+          };
+          return updated;
+        });
+        console.log('[EMAIL_EXTRACTION] Updated saved list leads');
+      } else {
+        setCustomerResearchResults((prev) => {
+          if (!prev || !prev.businesses) {
+            console.warn('[EMAIL_EXTRACTION] No customer research results to update');
+            return prev;
+          }
 
-        return {
-          ...prev,
-          businesses: updatedBusinesses
-        };
-      });
+          const updatedBusinesses = [...prev.businesses];
+          updatedBusinesses[index] = {
+            ...updatedBusinesses[index],
+            email: enrichedBusiness.email || 'N/A'
+          };
+
+          console.log('[EMAIL_EXTRACTION] Updated customer research results');
+          return {
+            ...prev,
+            businesses: updatedBusinesses
+          };
+        });
+      }
     } catch (error) {
-      console.error('Error extracting email for business:', error);
-      alert(`Error: ${error.message}`);
+      console.error('[EMAIL_EXTRACTION] Error extracting email for business:', error);
+      console.error('[EMAIL_EXTRACTION] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      
+      if (error.name === 'AbortError') {
+        alert('Email extraction timed out. Please try again.');
+      } else {
+        alert(`Error: ${error.message}`);
+      }
     } finally {
       setExtractingEmailRows((prev) => ({ ...prev, [index]: false }));
+      console.log(`[EMAIL_EXTRACTION] Finished extraction for ${business.name}`);
     }
   };
 
@@ -648,18 +743,22 @@ function RequirementsGathering() {
           })
         });
         const data = await response.json();
+        console.log('Save project response:', data);
         if (data.success) {
           alert('List saved successfully!');
+          console.log('Refreshing saved lists...');
+          await fetchSavedLists();
           setShowSaveListModal(false);
           setSaveListName('');
           setSaveListMode('create');
           setSelectedAppendProjectId('');
         } else {
+          console.error('Error saving list:', data.error);
           alert('Error saving list: ' + data.error);
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error('Exception while saving:', e);
       alert('An error occurred while saving the list: ' + e.message);
     }
     setIsSavingList(false);
@@ -672,10 +771,10 @@ function RequirementsGathering() {
       return;
     }
 
-    const isSavedListContext = showSavedListsView && activeSavedListLeads && activeSavedListLeads.length > 0;
+    const isSavedListContext = activeSavedList && activeSavedListLeads && activeSavedListLeads.length > 0;
 
     // Gather businesses from current view (saved list or live research)
-    const sourceBusinesses = showSavedListsView && activeSavedListLeads && activeSavedListLeads.length ? activeSavedListLeads : (customerResearchResults?.businesses || []);
+    const sourceBusinesses = (activeSavedList && activeSavedListLeads && activeSavedListLeads.length) ? activeSavedListLeads : (customerResearchResults?.businesses || []);
     if (!sourceBusinesses || sourceBusinesses.length === 0) {
       alert('No leads available to score.');
       return;
@@ -789,11 +888,16 @@ function RequirementsGathering() {
        const userIdentifier = getCurrentUsername();
        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`);
        const data = await res.json();
+       console.log('Fetched saved lists response:', data);
        if (data.success) {
-          setSavedLists(data.projects);
+          setSavedLists(data.projects || []);
+       } else {
+          console.error("Error fetching saved lists:", data.error);
+          setSavedLists([]);
        }
      } catch (e) {
        console.error("Error fetching saved lists", e);
+       setSavedLists([]);
      }
      setIsLoadingSavedLists(false);
   };
@@ -810,7 +914,7 @@ function RequirementsGathering() {
         const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
         const data = await res.json();
         if (data.success) {
-           setActiveSavedListLeads(data.leads.map(l => ({
+           const leads = data.leads.map(l => ({
             name: l.name,
             website: l.website,
             phone: l.phone,
@@ -822,9 +926,28 @@ function RequirementsGathering() {
             social_links: l.social_links,
             summary: l.summary || l.description || 'N/A',
             has_extracted: l.has_extracted
-           })));
-            setActiveSavedList(data.project);
-            setShowSavedListsView(true);
+           }));
+           
+           // Set customer research results to display in regular leads view
+           setCustomerResearchResults({
+             query: data.project.query_used || data.project.name,
+             businesses: leads
+           });
+           try {
+             sessionStorage.setItem('customerResearchResults', JSON.stringify({
+               query: data.project.query_used || data.project.name,
+               businesses: leads
+             }));
+           } catch (e) { /* ignore */ }
+           
+           // Store saved list info for context
+           setActiveSavedList(data.project);
+           setActiveSavedListLeads(leads);
+           
+           // Switch to leads view (not saved lists view)
+           setShowSavedListsView(false);
+           setShowCustomerResearchTable(true);
+           setMinimizedCustomerResearch(false);
         }
      } catch(e) {
         console.error(e);
@@ -1149,9 +1272,9 @@ function RequirementsGathering() {
             <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
           </div>
 
-          <div className="workspace-content-box">
+          <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>
              {showSavedListsView ? (
-               <div className="saved-lists-container" style={{ padding: '20px' }}>
+               <div className="saved-lists-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
                  {activeSavedList && (
                     <button 
                       onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }} 
@@ -1171,7 +1294,7 @@ function RequirementsGathering() {
                     savedLists.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
                     ) : (
-                      <div style={{ overflowX: 'auto' }}>
+                      <div className="saved-lists-table-scroll">
                         <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr>
@@ -1213,7 +1336,7 @@ function RequirementsGathering() {
                       </div>
                     )
                  ) : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div className="saved-list-leads-scroll">
                       <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr>
@@ -1224,8 +1347,8 @@ function RequirementsGathering() {
                             <th>Email</th>
                             <th>LinkedIn</th>
                             <th>Send Email</th>
-                              <th style={{ width: '120px' }}>Match</th>
-                              <th>Summary</th>
+                            <th style={{ width: '120px' }}>Match</th>
+                            <th>Summary</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1285,6 +1408,19 @@ function RequirementsGathering() {
                       <div className="minimized-customer-research-box">
                         <div className="research-summary-row minimized">
                           <div className="summary-badges">
+                            {activeSavedList && (
+                              <button 
+                                onClick={() => { 
+                                  setActiveSavedList(null); 
+                                  setActiveSavedListLeads([]); 
+                                  setShowSavedListsView(true); 
+                                  setShowCustomerResearchTable(false);
+                                }} 
+                                style={{ marginRight: '12px', padding: '8px 16px', background: 'none', border: '1px solid #1E3A5F', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F', fontWeight: 600 }}
+                              >
+                                ← Back to Saved Lists
+                              </button>
+                            )}
                             <div className="summary-badge">
                               <span className="badge-label">Search</span>
                               <span className="badge-value">{customerResearchResults.query}</span>
@@ -1327,17 +1463,15 @@ function RequirementsGathering() {
                                 className="action-icon-button"
                                 onClick={handleCopyToClipboard}
                                 title="Copy to Clipboard"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/copy.png" alt="Copy" style={{ width: '20px', height: '20px' }} />
+                                <img src="/assets/icons/copy.png" alt="Copy" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => setShowExportModal(true)}
                                 title="Export Data"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/import-export.png" alt="Export" style={{ width: '20px', height: '20px' }} />
+                                <img src="/assets/icons/import-export.png" alt="Export" />
                               </button>
                               <button 
                                 className="action-icon-button"
@@ -1347,33 +1481,29 @@ function RequirementsGathering() {
                                   setShowSaveListModal(true);
                                 }}
                                 title="Save to List"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/save.png" alt="Save" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/190/190411.png'}} />
+                                <img src="/assets/icons/document.png" alt="Save Leads" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setScoreQueryText(''); setShowScoreModal(true); }}
                                 title="Score Leads"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/score.png" alt="Score" style={{ width: '20px', height: '20px' }} onError={(e) => { e.target.src='https://cdn-icons-png.flaticon.com/512/2910/2910798.png'}} />
+                                <img src="/assets/icons/bar-chart.png" alt="Score Leads" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
                                 title="Send Emails"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/mail.png" alt="Send Emails" style={{ width: '20px', height: '20px' }} />
+                                <img src="/assets/icons/mail.png" alt="Send Emails" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
                                 title="Maximize"
-                                style={{ margin: 0, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
-                                <img src="/assets/icons/maximize.png" alt="Maximize" style={{ width: '20px', height: '20px' }} />
+                                <img src="/assets/icons/maximize.png" alt="Maximize" />
                               </button>
                           </div>
                         </div>

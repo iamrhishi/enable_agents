@@ -70,9 +70,10 @@ export const API_CONFIG = {
   SAVE_PROJECT: `${API_URL}/api/save-project`,
   APPEND_PROJECT: `${API_URL}/api/append-project`,
   SCORE_LEADS: `${API_URL}/api/score-leads`,
-  GET_SAVED_PROJECTS: `${API_URL}/api/get-saved-projects`,
-  GET_SAVED_PROJECT_LEADS: `${API_URL}/api/get-saved-project-leads`,
-  DELETE_SAVED_PROJECT: `${API_URL}/api/delete-saved-project`,
+  GET_SAVED_PROJECTS: `${API_URL}/api/saved-projects`,
+  GET_SAVED_PROJECT_LEADS: `${API_URL}/api/saved-projects`,
+  DELETE_SAVED_PROJECT: `${API_URL}/api/saved-projects`,
+  SALES_HELPER_CHAT: `${API_URL}/api/sales-helper-chat`,
   
   // Executive Assistant API
   EXECUTIVE_ASSISTANT_BASE: `${API_URL}/api`,

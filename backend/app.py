@@ -3721,7 +3721,7 @@ def rag_test():
 def enterprise_chat():
     """
     Enterprise chat API that collects business context from the user.
-    User can answer any of the 5 key questions first; the API will detect which question was answered,
+    User can answer any of the key questions first; the API will detect which question was answered,
     store it, and then ask the remaining unanswered questions.
     Once all questions are answered, sends chat_state to OpenAI to generate a summary and auto-fill missing fields.
     """
@@ -3733,7 +3733,8 @@ def enterprise_chat():
     # Define the sequence and mapping of questions
     questions = [
         {"key": "industry", "question": "To get a bit of context, which industry does your business operate in?"},
-        {"key": "role_department", "question": "Whatâ€™s your role within the company, and what is your department mainly focused on right now?"},
+        {"key": "product_service", "question": "What primary product or service does your business offer to customers?"},
+        {"key": "role_department", "question": "What is your role within the company, and what is your department mainly focused on right now?"},
         {"key": "tools", "question": "What tools or software do you and your team rely on most, and what do you use them for?"},
         {"key": "business_need", "question": "If you could change or improve one thing about how your team works today, what would it be?"}
     ]
@@ -3768,7 +3769,7 @@ def enterprise_chat():
         # Prompt to format and auto-fill chat_state
         autofill_prompt = (
             "Given the following user answers, format the business context as a JSON object with these keys: "
-            "industry, role, department_context, business_need, and tools (as a list of objects with tool_name and description). "
+            "industry, product_service, role, department_context, business_need, and tools (as a list of objects with tool_name and description). "
             "If any field is missing or vague, infer and auto-fill it based on the other answers. "
             "Example format:\n"
             "{\n"
@@ -3777,14 +3778,15 @@ def enterprise_chat():
             '    {"tool_name": "Salesforce", "description": "CRM for managing customer relationships and sales pipeline"}\n'
             "  ],\n"
             '  "industry": "Technology",\n'
+            '  "product_service": "B2B workflow automation software for sales and operations teams",\n'
             '  "role": "Sales Manager",\n'
             '  "department_context": "Our sales department is focused on improving lead conversion and automating reporting.",\n'
             '  "business_need": "We want to integrate our communication and CRM tools, automate sales reporting, and identify missing modules for analytics."\n'
             "}\n"
             "User answers:\n"
             f"Industry: {chat_state.get('industry', '')}\n"
-            f"Role: {chat_state.get('role', '')}\n"
-            f"Department Context: {chat_state.get('department_context', '')}\n"
+            f"Product/Service: {chat_state.get('product_service', '')}\n"
+            f"Role and Department Context: {chat_state.get('role_department', '')}\n"
             f"Tools: {chat_state.get('tools', '')}\n"
             f"Business Need: {chat_state.get('business_need', '')}\n"
             "Return only valid JSON."
@@ -4964,6 +4966,7 @@ def recommend_agents():
     {
         "tools": [ {"tool_name": "ToolA", "description": "..."}, ... ],
         "industry": "...",
+        "product_service": "...",
         "role": "...",
         "department_context": "...",  # e.g. 'My company/department is doing X and is responsible for Y'
         "business_need": "..."         # e.g. 'I want to track this business task and generate insights'
@@ -4983,18 +4986,35 @@ def recommend_agents():
         data = request.json
         tools = data.get('tools', [])
         industry = data.get('industry', '')
+        product_service = data.get('product_service', '')
         role = data.get('role', '')
         department_context = data.get('department_context', '')
         business_need = data.get('business_need', '')
 
-        # Load available modules (from agents_modules.json)
-        with open(os.path.join(DATA_DIR, 'agents_modules.json'), 'r', encoding='utf-8') as f:
-            modules = json.load(f)
+        # Load available modules (from agents_modules.json). If missing, use a safe fallback catalog.
+        modules_file = os.path.join(DATA_DIR, 'agents_modules.json')
+        if os.path.exists(modules_file):
+            with open(modules_file, 'r', encoding='utf-8') as f:
+                modules = json.load(f)
+        else:
+            modules = [
+                {"name": "Market Research", "description": "Market analysis, competitor research, and customer insights."},
+                {"name": "Sales Helper Agent", "description": "Lead management, sales enablement, and CRM support."},
+                {"name": "Content Marketing Agent", "description": "Content strategy and campaign execution support."},
+                {"name": "Executive Assistant Agent", "description": "Task coordination, reminders, and stakeholder updates."},
+                {"name": "Supply Chain Agent", "description": "Supply chain monitoring and impact analysis."},
+                {"name": "Data Discovery", "description": "Data exploration and business insight generation."},
+                {"name": "AI Chatbot", "description": "Conversational workflow automation and user support."},
+                {"name": "Dashboards", "description": "KPI dashboards, reporting, and decision support."},
+                {"name": "Integration", "description": "Connect tools and automate cross-system data flow."},
+                {"name": "Automation", "description": "Automate repetitive workflows and approvals."}
+            ]
 
         # Prepare context for OpenAI
         context = {
             "tools": tools,
             "industry": industry,
+            "product_service": product_service,
             "role": role,
             "department_context": department_context,
             "business_need": business_need,
@@ -5959,7 +5979,7 @@ def get_content_marketing_knowledge_graph(project_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/get-google-credentials', methods=['GET'])
+@app.route('/api/get-google-credentials', methods=['GET'])
 @cross_origin()
 def get_google_credentials():
     """
@@ -5967,7 +5987,8 @@ def get_google_credentials():
     Returns empty values if not configured
     """
     try:
-        load_dotenv(ENV_FILE, override=True)
+        env_file = os.path.join(os.path.dirname(__file__), '.env')
+        load_dotenv(env_file, override=True)
         has_oauth_credentials = all([
             os.getenv('GOOGLE_CLIENT_ID'),
             os.getenv('GOOGLE_CLIENT_SECRET'),
@@ -6539,7 +6560,7 @@ def _get_google_access_token(client_id: str, client_secret: str, redirect_uri: s
         return None
 
 
-@app.route('/email-extraction-usage', methods=['GET'])
+@app.route('/api/email-extraction-usage', methods=['GET'])
 @cross_origin()
 def get_email_extraction_usage():
     """Return extraction usage summary for a username."""
@@ -6950,7 +6971,7 @@ def check_campaign_replies(campaign_id):
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/enrich-businesses-with-emails', methods=['POST'])
+@app.route('/api/enrich-businesses-with-emails', methods=['POST'])
 @cross_origin()
 def enrich_businesses_with_emails():
     """
@@ -6958,12 +6979,14 @@ def enrich_businesses_with_emails():
     Takes a list of businesses with website URLs and enriches them with email data
     """
     try:
+        print(f"\n[EMAIL_ENRICHMENT] ========== REQUEST START ==========")
         data = request.get_json()
         businesses = data.get('businesses', [])
         username = _normalize_username(
             data.get('username') or data.get('userId') or data.get('firstName')
         )
         scrap_io_api_key = os.getenv('SCRAP_IO_API_KEY')
+        print(f"[EMAIL_ENRICHMENT] Processing {len(businesses)} businesses for user: {username}")
 
         _ensure_email_usage_tables()
         quota = _get_or_create_quota(username)
@@ -7043,12 +7066,14 @@ def enrich_businesses_with_emails():
         def try_sync_website_scrape(website, business_name):
             """Try to scrape website for email addresses synchronously"""
             try:
+                print(f"[EMAIL_ENRICHMENT] Starting website scrape for {website}")
                 response = requests.get(
                     website if website.startswith('http') else f'https://{website}',
                     timeout=5,
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
                 
+                print(f"[EMAIL_ENRICHMENT] Website scrape status: {response.status_code}")
                 if response.status_code == 200:
                     # Look for email patterns in HTML
                     emails = extract_emails_from_text(response.text)
@@ -7056,8 +7081,10 @@ def enrich_businesses_with_emails():
                         # Filter out common auto-generated emails
                         filtered = [e for e in emails if not any(x in e.lower() for x in ['noreply', 'no-reply', 'postmaster'])]
                         return filtered[0] if filtered else None
-            except:
-                pass
+            except requests.exceptions.Timeout:
+                print(f"[EMAIL_ENRICHMENT] Website scrape timeout for {website}")
+            except Exception as e:
+                print(f"[EMAIL_ENRICHMENT] Website scrape error for {website}: {str(e)}")
             
             return None
         
@@ -7129,8 +7156,8 @@ def enrich_businesses_with_emails():
             
             return email
         
-        def call_scrap_io_with_retry(domain, max_retries=3, delay=2):
-            """Call scrap.io with retries to handle async processing"""
+        def call_scrap_io_with_retry(domain, max_retries=1, delay=1):
+            """Call scrap.io with minimal retries to avoid hanging"""
             import time
             
             headers = {
@@ -7140,42 +7167,32 @@ def enrich_businesses_with_emails():
             
             for attempt in range(max_retries):
                 try:
-                    # Use domain parameter
+                    # Use domain parameter with shorter timeout
                     response = requests.get(
                         scrap_io_endpoint,
                         params={'domain': domain},
                         headers=headers,
-                        timeout=15
+                        timeout=8  # Reduced from 15 to 8 seconds
                     )
                     
                     if response.status_code in [200, 202]:
                         result = response.json()
                         data = result.get('data', [])
-                        meta = result.get('meta', {})
-                        status = meta.get('status', 'unknown')
                         
-                        # If we got data, return it
+                        # If we got data, return it immediately
                         if data and len(data) > 0:
                             print(f"[EMAIL_ENRICHMENT] Got data on attempt {attempt + 1}")
                             return result, True
                         
-                        # If status is incomplete, retry with delay
-                        if status == 'incomplete' and attempt < max_retries - 1:
-                            print(f"[EMAIL_ENRICHMENT] Status incomplete, retrying... (attempt {attempt + 1}/{max_retries})")
-                            time.sleep(delay)
-                            continue
-                        
-                        # Status is completed with no data, or this is the last attempt
+                        # If no data, don't retry - move to fallback strategy
+                        print(f"[EMAIL_ENRICHMENT] No data from scrap.io, moving to fallback")
                         return result, False
                     else:
                         print(f"[EMAIL_ENRICHMENT] API Error {response.status_code}: {response.text[:100]}")
                         return {}, False
                         
                 except requests.exceptions.Timeout:
-                    print(f"[EMAIL_ENRICHMENT] Timeout on attempt {attempt + 1}")
-                    if attempt < max_retries - 1:
-                        time.sleep(delay)
-                        continue
+                    print(f"[EMAIL_ENRICHMENT] Timeout on attempt {attempt + 1} - moving to fallback")
                     return {}, False
                 except Exception as e:
                     print(f"[EMAIL_ENRICHMENT] Error on attempt {attempt + 1}: {str(e)}")
@@ -7268,6 +7285,7 @@ def enrich_businesses_with_emails():
         db.session.commit()
 
         print(f"[EMAIL_ENRICHMENT] Successfully enriched {processed_count} businesses")
+        print(f"[EMAIL_ENRICHMENT] ========== REQUEST END ========== (took {request_id})")
         
         return jsonify({
             'success': True,
@@ -7283,6 +7301,7 @@ def enrich_businesses_with_emails():
     except Exception as e:
         db.session.rollback()
         print(f"[EMAIL_ENRICHMENT] Error in enrich_businesses_with_emails: {str(e)}")
+        print(f"[EMAIL_ENRICHMENT] ========== REQUEST ERROR ========== ")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -7291,7 +7310,7 @@ def enrich_businesses_with_emails():
         }), 500
 
 
-@app.route('/enrich-businesses-with-linkedin', methods=['POST'])
+@app.route('/api/enrich-businesses-with-linkedin', methods=['POST'])
 @cross_origin()
 def enrich_businesses_with_linkedin():
     try:
@@ -7818,6 +7837,102 @@ def delete_saved_project(project_id):
          import traceback
          traceback.print_exc()
          return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sales-helper-chat', methods=['POST'])
+@cross_origin()
+def sales_helper_chat():
+    try:
+        data = request.get_json() or {}
+        question = (data.get('question') or '').strip()
+        leads = data.get('leads') or []
+        project = data.get('project') or {}
+
+        if not question:
+            return jsonify({'success': False, 'error': 'Missing question'}), 400
+
+        if not leads:
+            return jsonify({'success': False, 'error': 'No leads provided'}), 400
+
+        # Dynamically detect available fields across all leads
+        available_fields = set()
+        for lead in leads:
+            available_fields.update(lead.keys())
+        
+        available_fields_str = ", ".join(sorted([f for f in available_fields if f != 'match_score']))
+
+        lead_rows = []
+        for index, lead in enumerate(leads[:25], start=1):
+            # Build a row with all available data
+            lead_items = []
+            for field in sorted(lead.keys()):
+                value = lead.get(field, 'N/A')
+                if value and value != 'N/A' and field != 'match_score':
+                    lead_items.append(f"{field.replace('_', ' ').title()}: {value}")
+            
+            if not lead_items:
+                lead_items = [f"Name: {lead.get('name', 'Lead ' + str(index))}"]
+            
+            lead_rows.append(f"{index}. " + " | ".join(lead_items))
+
+        context_text = "\n".join(lead_rows)
+        project_name = project.get('name') or 'Selected saved leads list'
+        project_query = project.get('query_used') or 'N/A'
+
+        prompt = f"""You are an intelligent sales analysis assistant. Your job is to answer the user's question by analyzing the provided leads data creatively and helpfully.
+
+Saved list name: {project_name}
+Original query: {project_query}
+Available data fields: {available_fields_str}
+
+Leads data:
+{context_text}
+
+User's question:
+{question}
+
+IMPORTANT INSTRUCTIONS:
+1. ALWAYS provide a helpful answer, even if some specific fields are missing.
+2. Use inference and reasoning: If exact data is unavailable, derive insights from related information.
+   - Example: If "Number of Employees" is missing, infer from "Company Size", "Budget", "Industry", or "Description".
+   - Example: If "Internship Programs" isn't listed, infer from "Job Listings", "Hiring Status", or "Company Type".
+3. Mention lead names when listing specific companies.
+4. Be concise but comprehensive - provide actionable insights.
+5. If a field is completely unavailable, note it but focus on what you CAN analyze.
+6. When multiple leads match the criteria, group or rank them.
+7. Do not make up details, but DO use available context to reason and infer.
+"""
+
+        if not os.getenv('OPENAI_API_KEY'):
+            lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:5]])
+            return jsonify({
+                'success': True,
+                'answer': f"Selected list: {project_name}. Leads loaded: {len(leads)}. I can see these example leads: {lead_names}. Ask a more specific question to analyze them further.",
+                'lead_count': len(leads)
+            }), 200
+
+        client = openai.OpenAI()
+        client.api_key = os.environ['OPENAI_API_KEY']
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a precise sales analysis assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=900,
+            temperature=0.2
+        )
+
+        answer = response.choices[0].message.content.strip()
+        return jsonify({
+            'success': True,
+            'answer': answer,
+            'lead_count': len(leads)
+        }), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():

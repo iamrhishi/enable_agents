@@ -10,6 +10,12 @@ function SalesHelperAgent() {
   const [csvData, setCsvData] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [savedProjects, setSavedProjects] = useState([]);
+  const [selectedSavedProject, setSelectedSavedProject] = useState(null);
+  const [selectedSavedProjectLeads, setSelectedSavedProjectLeads] = useState([]);
+  const [savedProjectSelection, setSavedProjectSelection] = useState('');
+  const [isLoadingSavedProjects, setIsLoadingSavedProjects] = useState(false);
+  const [isLoadingSavedProjectLeads, setIsLoadingSavedProjectLeads] = useState(false);
   const messagesEndRef = useRef(null);
   const csvFileRef = useRef(null);
   const cvFileRef = useRef(null);
@@ -29,6 +35,10 @@ function SalesHelperAgent() {
   const [currentUserId, setCurrentUserId] = useState('user_001'); // Replace with actual user ID
   const [userFavorites, setUserFavorites] = useState([]);
 
+  const getCurrentUsername = () => {
+    return localStorage.getItem('userEmail') || localStorage.getItem('username') || localStorage.getItem('firstName') || currentUserId || 'anonymous';
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -36,6 +46,10 @@ function SalesHelperAgent() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    fetchSavedProjects();
+  }, []);
 
   // Updated addMessage function with format parameter
   const addMessage = (text, sender, data = null, format = 'markdown') => {
@@ -440,33 +454,147 @@ function SalesHelperAgent() {
       return;
     }
 
+    // Use the same sales-helper-chat backend route used for saved lists
     setIsAnalyzing(true);
     addMessage("🔍 Analyzing your sales pipeline for insights...", 'agent', null, 'markdown');
 
     try {
-      // Sample data for AI analysis
-      const sampleData = csvData.slice(0, 10);
-      
-      const response = await fetch(`${API_CONFIG.API_URL}/chat_api`, {
+      const sampleLeads = csvData.slice(0, 25);
+      const question = `Provide concise sales pipeline insights for these leads. Focus on lead quality trends, pipeline bottlenecks, revenue opportunities, and recommendations.`;
+
+      const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `Analyze this sales data and provide insights: ${JSON.stringify(sampleData)}. Focus on: 1) Lead quality trends, 2) Pipeline bottlenecks, 3) Revenue opportunities, 4) Conversion recommendations.`
-        })
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
       });
 
       const result = await response.json();
-      
-      if (result.answer) {
+      if (result.success && result.answer) {
         addMessage(`🎯 **Sales Pipeline Insights:**\n\n${result.answer}`, 'agent', null, 'markdown');
       } else {
-        addMessage("Unable to generate insights at this time. Please try again.", 'agent', null, 'markdown');
+        addMessage(result.error || "Unable to generate insights at this time. Please try again.", 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('Insights error:', error);
       addMessage("Error generating insights. Please check your connection.", 'agent', null, 'markdown');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Ask about CSV-uploaded leads using the sales helper chat backend
+  const handleAskCsvLeads = async (question) => {
+    if (!csvData || csvData.length === 0) {
+      addMessage('Please upload sales data first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const sampleLeads = csvData.slice(0, 25);
+      const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
+      });
+
+      const result = await response.json();
+      if (result.success && result.answer) {
+        addMessage(result.answer, 'agent', null, 'markdown');
+      } else {
+        addMessage(result.error || 'I could not analyze the uploaded leads right now.', 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('CSV leads chat error:', error);
+      addMessage('Error analyzing the uploaded leads. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchSavedProjects = async () => {
+    try {
+      setIsLoadingSavedProjects(true);
+      const username = getCurrentUsername();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(username)}`);
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.projects)) {
+        setSavedProjects(result.projects);
+        if (result.projects.length > 0 && !savedProjectSelection) {
+          setSavedProjectSelection(String(result.projects[0].id));
+        }
+      } else {
+        setSavedProjects([]);
+      }
+    } catch (error) {
+      console.error('Error loading saved projects:', error);
+      setSavedProjects([]);
+    } finally {
+      setIsLoadingSavedProjects(false);
+    }
+  };
+
+  const loadSavedProjectLeads = async (projectId) => {
+    if (!projectId) return;
+
+    try {
+      setIsLoadingSavedProjectLeads(true);
+      const username = getCurrentUsername();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(username)}`);
+      const result = await response.json();
+
+      if (result.success) {
+        setSelectedSavedProject(result.project);
+        setSelectedSavedProjectLeads(result.leads || []);
+        setSavedProjectSelection(String(projectId));
+        addMessage(
+          `📂 **Loaded saved leads list:** ${result.project?.name || 'Untitled'}\n\nI can now answer questions about these ${result.leads?.length || 0} leads.`,
+          'agent',
+          null,
+          'markdown'
+        );
+      } else {
+        addMessage(`Unable to load saved list: ${result.error || 'Unknown error'}`, 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Error loading saved project leads:', error);
+      addMessage('Error loading the selected saved leads list. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsLoadingSavedProjectLeads(false);
+    }
+  };
+
+  const handleAskSavedLeads = async (question) => {
+    if (!selectedSavedProjectLeads || selectedSavedProjectLeads.length === 0) {
+      addMessage('Please open a saved leads list first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          project: selectedSavedProject,
+          leads: selectedSavedProjectLeads
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.answer) {
+        addMessage(result.answer, 'agent', null, 'markdown');
+      } else {
+        addMessage(result.error || 'I could not analyze the selected leads list right now.', 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Saved leads chat error:', error);
+      addMessage('Error analyzing the saved leads list. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -481,11 +609,15 @@ function SalesHelperAgent() {
     // Add user message
     addMessage(message, 'user', null, 'markdown');
 
-    // Check if user wants to search
+    if (selectedSavedProjectLeads && selectedSavedProjectLeads.length > 0) {
+      await handleAskSavedLeads(message);
+      return;
+    }
+    // If CSV data is loaded, route the question to the sales-helper-chat LLM
     if (csvData && csvData.length > 0) {
-      await handleSearch(message);
+      await handleAskCsvLeads(message);
     } else {
-      addMessage("Please upload your sales data (CSV/XLSX) first, then I can help you search and analyze prospects!", 'agent', null, 'markdown');
+      addMessage("Please upload your sales data (CSV/XLSX) or open a saved leads list first, then I can help you search and analyze prospects!", 'agent', null, 'markdown');
     }
   };
 
@@ -571,28 +703,28 @@ function SalesHelperAgent() {
             <div className="quick-actions">
               <button 
                 className="quick-action-btn"
-                onClick={() => csvData && handleSearch('high value deals')}
+                onClick={() => csvData && handleAskCsvLeads('Which leads look like high value deals?')}
                 disabled={!csvData}
               >
                 💰 High Value Deals
               </button>
               <button 
                 className="quick-action-btn"
-                onClick={() => csvData && handleSearch('qualified leads')}
+                onClick={() => csvData && handleAskCsvLeads('Show me qualified leads and why they are qualified')}
                 disabled={!csvData}
               >
                 ✅ Qualified Leads
               </button>
               <button 
                 className="quick-action-btn"
-                onClick={() => csvData && handleSearch('follow up needed')}
+                onClick={() => csvData && handleAskCsvLeads('Which leads need follow up and what should the follow up be?')}
                 disabled={!csvData}
               >
                 📅 Follow-ups
               </button>
               <button 
                 className="quick-action-btn"
-                onClick={() => csvData && handleSearch('enterprise clients')}
+                onClick={() => csvData && handleAskCsvLeads('Identify enterprise-level prospects from this data')}
                 disabled={!csvData}
               >
                 🏢 Enterprise
@@ -601,44 +733,170 @@ function SalesHelperAgent() {
           </div>
         </div>
 
-        {/* Right Section - Chat Interface */}
-        <div className="chat-section">
-          <div className="chat-header">
-            <h2>💼 Sales Assistant</h2>
-            <p>Search prospects, analyze deals, and get sales insights</p>
-          </div>
-          
-          <div className="messages-container">
-            {messages.map((message) => (
-              <div key={message.id} className={`message ${message.sender}`}>
-                <div className="message-content">
-                  <MessageContent message={message} />
-                  <span className="timestamp">{message.timestamp}</span>
-                </div>
+        <div className="assistant-workspace">
+          <div className="saved-leads-panel">
+            <div className="saved-leads-panel-header">
+              <div>
+                <h2>💾 Saved Leads</h2>
+                <p>Select a saved list to open it in the panel.</p>
               </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <form className="message-form" onSubmit={handleSendMessage}>
-            <div className="input-container">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Search prospects, ask for insights, or analyze deals..."
-                disabled={isLoading}
-                className="message-input"
-              />
-              <button 
-                type="submit" 
-                disabled={isLoading || !inputMessage.trim()}
-                className="send-button"
-              >
-                {isLoading ? '⏳' : '📤'}
+              <button className="refresh-saved-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects}>
+                {isLoadingSavedProjects ? 'Refreshing...' : 'Refresh'}
               </button>
             </div>
-          </form>
+
+            <div className="saved-leads-controls">
+              <select
+                value={savedProjectSelection}
+                onChange={(e) => setSavedProjectSelection(e.target.value)}
+                className="saved-leads-select"
+              >
+                <option value="">Select a saved leads list</option>
+                {savedProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.lead_count})
+                  </option>
+                ))}
+              </select>
+              <button
+                className="open-saved-list-btn"
+                onClick={() => loadSavedProjectLeads(savedProjectSelection)}
+                disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
+              >
+                {isLoadingSavedProjectLeads ? 'Opening...' : 'Open List'}
+              </button>
+            </div>
+
+            {!selectedSavedProject ? (
+              <div className="saved-leads-table-scroll">
+                {isLoadingSavedProjects ? (
+                  <div className="empty-saved-state">Loading saved lists...</div>
+                ) : savedProjects.length === 0 ? (
+                  <div className="empty-saved-state">No saved leads lists found.</div>
+                ) : (
+                  <table className="businesses-table saved-projects-table">
+                    <thead>
+                      <tr>
+                        <th>List Name</th>
+                        <th>Query</th>
+                        <th>Leads</th>
+                        <th>Created</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedProjects.map((project) => (
+                        <tr key={project.id}>
+                          <td>{project.name}</td>
+                          <td>{project.query_used || 'N/A'}</td>
+                          <td>{project.lead_count}</td>
+                          <td>{project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</td>
+                          <td>
+                            <button className="open-row-btn" onClick={() => loadSavedProjectLeads(project.id)}>
+                              Open
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="selected-saved-list-bar">
+                  <div>
+                    <h3>{selectedSavedProject?.name}</h3>
+                    <p>{selectedSavedProjectLeads.length} leads loaded from the saved list.</p>
+                  </div>
+                  <button
+                    className="back-to-lists-btn"
+                    onClick={() => {
+                      setSelectedSavedProject(null);
+                      setSelectedSavedProjectLeads([]);
+                    }}
+                  >
+                    Back to Lists
+                  </button>
+                </div>
+
+                <div className="saved-leads-table-scroll">
+                  <table className="businesses-table saved-leads-table">
+                    <thead>
+                      <tr>
+                        <th>Business Name</th>
+                        <th>Website</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>LinkedIn</th>
+                        <th>Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSavedProjectLeads.map((lead, index) => (
+                        <tr key={`${lead.id || index}`}>
+                          <td>{lead.name || 'N/A'}</td>
+                          <td>{lead.website ? <a href={lead.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
+                          <td>{lead.phone || 'N/A'}</td>
+                          <td>{lead.email || (Array.isArray(lead.emails) && lead.emails[0]) || 'N/A'}</td>
+                          <td>{lead.linkedin ? <a href={lead.linkedin} target="_blank" rel="noopener noreferrer">View</a> : 'N/A'}</td>
+                          <td className="lead-summary-cell">{lead.summary || lead.description || 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Right Section - Chat Interface */}
+          <div className="chat-section">
+            <div className="chat-header">
+              <h2>💼 Sales Assistant</h2>
+              <p>
+                {selectedSavedProject
+                  ? `Asking questions about ${selectedSavedProject.name}`
+                  : 'Search prospects, analyze deals, and get sales insights'}
+              </p>
+            </div>
+            
+            <div className="messages-container">
+              {messages.map((message) => (
+                <div key={message.id} className={`message ${message.sender}`}>
+                  <div className="message-content">
+                    <MessageContent message={message} />
+                    <span className="timestamp">{message.timestamp}</span>
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form className="message-form" onSubmit={handleSendMessage}>
+              <div className="input-container">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  placeholder={
+                    selectedSavedProject
+                      ? 'Ask a question about the selected saved leads list...'
+                      : 'Search prospects, ask for insights, or analyze deals...'
+                  }
+                  disabled={isLoading}
+                  className="message-input"
+                />
+                <button 
+                  type="submit" 
+                  disabled={isLoading || !inputMessage.trim()}
+                  className="send-button"
+                >
+                  {isLoading ? '⏳' : '📤'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
