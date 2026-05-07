@@ -23,16 +23,21 @@ PORT_REDIS_UI=8081
 usage() {
   cat <<'EOF'
 Usage:
-  ./run.sh dev                    # same as ./scripts/run.sh dev (repo root wrapper)
-  ./scripts/run.sh dev            # Docker: mysql + redis + backend (hot-reload) + frontend (npm dev)
-  ./scripts/run.sh prod           # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
-  ./scripts/run.sh stop           # Stop all Docker services
-  ./scripts/run.sh test           # Run all tests (no Docker needed — uses a local venv)
-  ./scripts/run.sh test docker    # Run tests inside the running dev container
-  ./scripts/run.sh local          # Non-Docker: venv + npm start (fallback / CI)
-  ./scripts/run.sh local-stop     # Stop non-Docker local services
+  ./run.sh dev                    # Docker: mysql + redis + backend (hot-reload) + frontend (npm dev)
+  ./run.sh prod                   # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
+  ./run.sh remote                 # Docker: production with nginx reverse proxy (GCP/AWS)
+  ./run.sh remote-ssl             # Setup Let's Encrypt SSL (requires DOMAIN in .env.docker)
+  ./run.sh stop                   # Stop all Docker services
+  ./run.sh test                   # Run all tests (no Docker needed — uses a local venv)
+  ./run.sh test docker            # Run tests inside the running dev container
+  ./run.sh local                  # Non-Docker: venv + npm start (fallback / CI)
+  ./run.sh local-stop             # Stop non-Docker local services
+  ./run.sh logs [service]         # View logs (all or specific service)
 
-If the UI shows ERR_CONNECTION_REFUSED on port 8000, the backend container is not running — start Docker Desktop, then run ./run.sh dev again.
+Remote Deployment (GCP/AWS):
+  1. Edit .env.docker: set DEPLOY_MODE=remote, SERVER_IP, DOMAIN (optional)
+  2. Run: ./run.sh remote
+  3. (Optional) Setup SSL: ./run.sh remote-ssl
 
 First-time Docker (Linux — installs Engine + Compose; may prompt for sudo):
   ./scripts/install-prerequisites.sh
@@ -312,6 +317,61 @@ run_migrations() {
   }
 }
 
+# Load environment variables from .env.docker
+load_env() {
+  if [ -f "$PROJECT_ROOT/.env.docker" ]; then
+    set -a
+    source "$PROJECT_ROOT/.env.docker"
+    set +a
+  fi
+}
+
+# Setup nginx config based on DOMAIN/SERVER_IP
+setup_nginx_config() {
+  local nginx_dir="$PROJECT_ROOT/deploy/nginx"
+  mkdir -p "$nginx_dir"
+
+  load_env
+
+  if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+    echo "Using SSL nginx config for $DOMAIN"
+    export DOMAIN SERVER_IP
+    envsubst '${DOMAIN} ${SERVER_IP}' < "$nginx_dir/nginx.conf" > "$nginx_dir/active.conf"
+  else
+    echo "Using HTTP-only nginx config"
+    cp "$nginx_dir/nginx-http.conf" "$nginx_dir/active.conf"
+  fi
+}
+
+# Update PUBLIC_URL and OAuth redirect URIs based on deployment mode
+update_public_url() {
+  load_env
+  local public_url
+
+  if [ -n "${DOMAIN:-}" ]; then
+    if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+      public_url="https://${DOMAIN}"
+    else
+      public_url="http://${DOMAIN}"
+    fi
+  elif [ -n "${SERVER_IP:-}" ]; then
+    public_url="http://${SERVER_IP}"
+  else
+    echo "Warning: Neither DOMAIN nor SERVER_IP set in .env.docker"
+    return 1
+  fi
+
+  echo "Setting PUBLIC_URL to: $public_url"
+
+  # Update .env.docker with correct PUBLIC_URL
+  if grep -q "^PUBLIC_URL=" "$PROJECT_ROOT/.env.docker"; then
+    sed -i.bak "s|^PUBLIC_URL=.*|PUBLIC_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
+    sed -i.bak "s|^GOOGLE_REDIRECT_URI=.*|GOOGLE_REDIRECT_URI=${public_url}/auth/google/callback|" "$PROJECT_ROOT/.env.docker"
+    sed -i.bak "s|^REACT_APP_API_URL=.*|REACT_APP_API_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
+    rm -f "$PROJECT_ROOT/.env.docker.bak"
+  fi
+}
+
 case "${1:-}" in
   dev)
     check_env_docker
@@ -370,12 +430,98 @@ case "${1:-}" in
     echo "  Backend:  http://localhost:${PORT_BACKEND}"
     echo "  MySQL:    localhost:${PORT_MYSQL}"
     ;;
+  remote)
+    check_env_docker
+    ensure_docker
+    load_env
+
+    # Validate remote config
+    if [ -z "${SERVER_IP:-}" ] && [ -z "${DOMAIN:-}" ]; then
+      echo "Error: Set SERVER_IP or DOMAIN in .env.docker for remote deployment"
+      exit 1
+    fi
+
+    update_public_url
+    setup_nginx_config
+
+    compose_down_clean
+    wait_for_docker_engine 90
+
+    echo "Starting remote deployment..."
+    $COMPOSE --profile remote up --build -d
+
+    wait_for_backend_http "http://127.0.0.1:${PORT_BACKEND}/health" 180 || {
+      echo ""
+      echo "Fix backend startup, then run: ./run.sh remote"
+      exit 1
+    }
+    run_migrations "backend-remote"
+
+    echo ""
+    echo "Waiting for services to become ready..."
+    sleep 5
+    wait_for_http "http://127.0.0.1:80" 60 || {
+      echo "Nginx/Frontend not ready. Check logs: $COMPOSE logs nginx frontend-remote"
+    }
+
+    load_env
+    echo ""
+    echo "Remote stack ready:"
+    if [ -n "${DOMAIN:-}" ]; then
+      echo "  Frontend: https://${DOMAIN} (after SSL) or http://${DOMAIN}"
+    fi
+    if [ -n "${SERVER_IP:-}" ]; then
+      echo "  Frontend: http://${SERVER_IP}"
+    fi
+    echo ""
+    echo "Next: Update Google OAuth redirect URI to: ${PUBLIC_URL}/auth/google/callback"
+    ;;
+  remote-ssl)
+    load_env
+
+    if [ -z "${DOMAIN:-}" ]; then
+      echo "Error: DOMAIN not set in .env.docker"
+      exit 1
+    fi
+    if [ -z "${ADMIN_EMAIL:-}" ]; then
+      echo "Error: ADMIN_EMAIL not set in .env.docker (required for Let's Encrypt)"
+      exit 1
+    fi
+
+    echo "Setting up SSL for ${DOMAIN}..."
+
+    # Ensure HTTP nginx is running for ACME challenge
+    cp "$PROJECT_ROOT/deploy/nginx/nginx-http.conf" "$PROJECT_ROOT/deploy/nginx/active.conf"
+    $COMPOSE --profile remote up -d nginx
+    sleep 5
+
+    # Run certbot
+    echo "Requesting certificate from Let's Encrypt..."
+    $COMPOSE run --rm certbot certonly \
+      --webroot \
+      --webroot-path=/var/www/certbot \
+      --email "${ADMIN_EMAIL}" \
+      --agree-tos \
+      --no-eff-email \
+      -d "${DOMAIN}"
+
+    # Switch to SSL config and reload
+    update_public_url
+    setup_nginx_config
+    $COMPOSE --profile remote up -d --build
+
+    echo ""
+    echo "SSL setup complete!"
+    echo "  Site available at: https://${DOMAIN}"
+    echo ""
+    echo "Update Google OAuth redirect URI to: https://${DOMAIN}/auth/google/callback"
+    ;;
   stop)
     if ! docker info >/dev/null 2>&1; then
       echo "Docker daemon is not running — nothing to stop via Compose (or start Docker Desktop and run stop again)."
       exit 0
     fi
-    $COMPOSE --profile dev --profile prod down --remove-orphans
+    $COMPOSE --profile dev --profile prod --profile remote down --remove-orphans
     ;;
   test)
     shift
@@ -392,6 +538,17 @@ case "${1:-}" in
     ;;
   local-stop)
     "$PROJECT_ROOT/scripts/stop.sh"
+    ;;
+  logs)
+    shift
+    $COMPOSE logs --tail=100 "$@"
+    ;;
+  logs-f)
+    shift
+    $COMPOSE logs -f "$@"
+    ;;
+  status)
+    $COMPOSE ps
     ;;
   *)
     usage
