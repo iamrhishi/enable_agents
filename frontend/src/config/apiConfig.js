@@ -4,13 +4,11 @@
  * Single source of truth for the backend URL and all API endpoints.
  * The base URL is taken from REACT_APP_API_URL (baked in at build time).
  *
- * Local dev default: http://localhost:5000
- * Set via:
- *   - Non-Docker local:  auto-written by ./scripts/run.sh local
- *   - Docker:            provided via .env.docker / docker build args
+ * Default when unset: http://localhost:8000 (matches `./scripts/run.sh dev` / docker-compose).
+ * Non-Docker local (`./scripts/run.sh local`): uses frontend/.env from run.sh → :5000.
  */
 
-export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // ── Environment flags ───────────────────────────────────────────────────────
 export const ENVIRONMENT = process.env.NODE_ENV || 'development';

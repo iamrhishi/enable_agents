@@ -1,6 +1,7 @@
+# yaml-language-server: $schema=https://json.schemastore.org/docker-compose.json
 services:
 
-  # ─── Infrastructure (always-on, no profile) ─────────────────────────────────
+  # --- Infrastructure (always-on, no profile)
 
   mysql:
     image: mysql:8.4
@@ -38,8 +39,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Development profile ─────────────────────────────────────────────────────
+  # --- Development profile
 
+  # Use either profile dev OR prod (not both): both publish host port 8000 for the API.
   backend-dev:
     profiles: ["dev"]
     build:
@@ -47,20 +49,9 @@ services:
       dockerfile: Dockerfile
     container_name: enable_agents_backend_dev
     command: flask run --host=0.0.0.0 --port=8000 --debug --reload
-    env_file:
-      - .env.docker
-    environment:
-      FLASK_APP: app.py
-      FLASK_ENV: development
-      FLASK_DEBUG: 1
-      PYTHONUNBUFFERED: 1
-      ENVIRONMENT: development
-      PUBLIC_URL: http://localhost:8000
-      DATABASE_URI: mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
     ports:
       - "8000:8000"
+      - "5000:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -68,6 +59,27 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - .env.docker
+    # OAuth redirects use port 5000 (host ports 8000 and 5000 forward to container 8000).
+    environment:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      PYTHONUNBUFFERED: 1
+      ENVIRONMENT: development
+      PUBLIC_URL: "http://localhost:8000"
+      GOOGLE_REDIRECT_URI: "http://localhost:5000/auth/google/callback"
+      LINKEDIN_REDIRECT_URI: "http://localhost:5000/auth/linkedin/callback"
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
     restart: unless-stopped
     networks:
       - enable-network
@@ -79,15 +91,16 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm start"
     environment:
-      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_API_URL: "http://localhost:8000"
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      - frontend_node_modules:/app/node_modules
     depends_on:
-      - backend-dev
+      backend-dev:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - enable-network
@@ -102,9 +115,9 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend:/app
     depends_on:
@@ -126,13 +139,16 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend:/app
     depends_on:
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - enable-network
@@ -152,7 +168,8 @@ services:
 
   redis-commander:
     profiles: ["dev"]
-    image: rediscommander/redis-commander:latest
+    # GHCR image is multi-arch (arm64 and amd64) for Apple Silicon.
+    image: ghcr.io/joeferner/redis-commander:latest
     container_name: enable_agents_redis_commander
     environment:
       REDIS_HOSTS: "local:redis:6379"
@@ -164,7 +181,7 @@ services:
     networks:
       - enable-network
 
-  # ─── Production profile ──────────────────────────────────────────────────────
+  # --- Production profile
 
   backend:
     profiles: ["prod"]
@@ -179,10 +196,10 @@ services:
       FLASK_ENV: production
       PYTHONUNBUFFERED: 1
       ENVIRONMENT: production
-      PUBLIC_URL: http://localhost:8000
-      DATABASE_URI: mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      PUBLIC_URL: "http://localhost:8000"
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     ports:
       - "8000:8000"
     volumes:
@@ -213,9 +230,33 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+    volumes:
+      - ./backend/data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - enable-network
+
+  celery-beat:
+    profiles: ["prod"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: enable_agents_beat
+    command: celery -A core.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend/data:/app/data
     depends_on:
@@ -233,7 +274,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - REACT_APP_API_URL=http://localhost:8000
+        REACT_APP_API_URL: "http://localhost:8000"
     container_name: enable_agents_frontend
     ports:
       - "80:80"
@@ -252,6 +293,7 @@ services:
 
 volumes:
   mysql_data:
+  frontend_node_modules:
 
 networks:
   enable-network:

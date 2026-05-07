@@ -32,6 +32,7 @@ from email.message import EmailMessage
 import base64
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -116,11 +117,23 @@ ENV_FILES = [
     os.path.join(PROJECT_ROOT, '.env'),
     os.path.join(PROJECT_ROOT, 'tools', '.env'),
     os.path.join(os.path.dirname(__file__), '.env'),
+    os.path.join(PROJECT_ROOT, '.env.docker'),
 ]
+
+# Docker Compose injects `.env.docker` before Python starts; `load_dotenv(..., override=True)`
+# below can replace those URIs from repo/backend `.env` and break Google/LinkedIn redirect matching.
+_oauth_google_redirect_from_process_env = os.environ.get('GOOGLE_REDIRECT_URI')
+_oauth_linkedin_redirect_from_process_env = os.environ.get('LINKEDIN_REDIRECT_URI')
 
 for env_file in ENV_FILES:
     if os.path.exists(env_file):
         load_dotenv(env_file, override=True)
+
+if _oauth_google_redirect_from_process_env:
+    os.environ['GOOGLE_REDIRECT_URI'] = _oauth_google_redirect_from_process_env
+if _oauth_linkedin_redirect_from_process_env:
+    os.environ['LINKEDIN_REDIRECT_URI'] = _oauth_linkedin_redirect_from_process_env
+
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
 LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
@@ -143,12 +156,28 @@ PROMPTS_FILE = os.path.join(DATA_DIR, 'prompts.json')
 
 
 app = Flask(__name__)
-CORS(app)
 
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+_cors_raw = os.getenv('CORS_ORIGINS', '').strip()
+if _cors_raw:
+    _cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
+else:
+    _cors_origins = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        FRONTEND_URL,
+    ]
+_seen_cors = set()
+CORS_ORIGINS = []
+for _o in _cors_origins:
+    if _o not in _seen_cors:
+        _seen_cors.add(_o)
+        CORS_ORIGINS.append(_o)
+CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
+
+GOOGLE_CLIENT_ID = (os.getenv('GOOGLE_CLIENT_ID') or '').strip()
+GOOGLE_CLIENT_SECRET = (os.getenv('GOOGLE_CLIENT_SECRET') or '').strip()
+GOOGLE_REDIRECT_URI = (os.getenv('GOOGLE_REDIRECT_URI') or 'http://localhost:5000/auth/google/callback').strip()
 if os.getenv('ENVIRONMENT') != 'production':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev only
 
@@ -160,6 +189,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -4493,7 +4523,14 @@ def google_auth_start():
         'state': 'user_login_flow'
     }
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    return jsonify({"auth_url": auth_url, "state": "user_login_flow"})
+    # redirect_uri + client_id must exactly match one row in Google Cloud Console for this OAuth client
+    out = {
+        "auth_url": auth_url,
+        "state": "user_login_flow",
+        "redirect_uri_used": GOOGLE_REDIRECT_URI,
+        "oauth_client_id": GOOGLE_CLIENT_ID,
+    }
+    return jsonify(out)
 
 
 @app.route('/emails/send_via_gmail', methods=['POST'])
