@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
 import '../styles/CommunityNetworkAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
