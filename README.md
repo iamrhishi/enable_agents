@@ -5,14 +5,16 @@ A full-stack multi-agent platform — Flask backend, React frontend, MySQL, Redi
 ## Quick start
 
 ```bash
+./scripts/install-prerequisites.sh    # first time: Docker Engine + Compose (Linux: sudo; macOS: Homebrew cask or instructions)
 cp .env.docker.example .env.docker   # fill in API keys
-./scripts/run.sh dev                  # start dev stack (hot-reload)
+./scripts/run.sh dev                  # start dev stack; installs Docker automatically if missing (via install script)
 ```
 
 ## All run commands
 
 | Command | What it does |
 |---|---|
+| `./scripts/install-prerequisites.sh` | One-time: Docker + Compose v2 (`docker compose`). Linux uses Docker’s official installer; macOS uses Homebrew cask or a download link |
 | `./scripts/run.sh dev` | Docker: mysql + redis + backend (hot-reload) + frontend (npm dev) |
 | `./scripts/run.sh prod` | Docker: mysql + redis + backend (gunicorn) + frontend (nginx) |
 | `./scripts/run.sh stop` | Stop all Docker services |
@@ -26,7 +28,7 @@ cp .env.docker.example .env.docker   # fill in API keys
 | Service | URL |
 |---|---|
 | Frontend | http://localhost:3000 |
-| Backend API | http://localhost:5000 |
+| Backend API | http://localhost:8000 |
 | Flower (task monitor) | http://localhost:5555 |
 | Redis UI | http://localhost:8081 |
 | MySQL | localhost:3306 |
@@ -42,6 +44,7 @@ frontend/
   src/agents/      Agent UI components
   src/core/        Shared UI (Header, Login, Register)
 scripts/
+  install-prerequisites.sh  Docker + Compose (Linux/macOS one-time setup)
   run.sh           Main entry point (dev / prod / test / local)
   start.sh         Start services (non-Docker)
   stop.sh          Stop services (non-Docker)

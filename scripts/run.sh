@@ -8,6 +8,8 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 VENV_DIR="$PROJECT_ROOT/venv"
 COMPOSE="docker compose -f $PROJECT_ROOT/docker-compose.yml"
+INSTALL_SCRIPT="$SCRIPT_DIR/install-prerequisites.sh"
+OS="$(uname -s)"
 
 usage() {
   cat <<'EOF'
@@ -16,44 +18,121 @@ Usage:
   ./scripts/run.sh prod         # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
   ./scripts/run.sh stop         # Stop all Docker services
   ./scripts/run.sh test         # Run all tests (no Docker needed — uses a local venv)
-  ./scripts/run.sh test docker  # Run all tests inside the running dev container
+  ./scripts/run.sh test docker  # Run tests inside the running dev container
   ./scripts/run.sh local        # Non-Docker: venv + npm start (fallback / CI)
   ./scripts/run.sh local-stop   # Stop non-Docker local services
+
+First-time Docker (Linux — installs Engine + Compose; may prompt for sudo):
+  ./scripts/install-prerequisites.sh
 EOF
 }
 
 DEV_PORTS=(8000 3000 3306 6379 5555 8081)
 
-ensure_docker() {
+# Free one TCP port: lsof (macOS/Linux), else fuser (Linux psmisc), else skip.
+kill_port_listeners() {
+  local port="$1"
+  local pids=""
+  if command -v lsof >/dev/null 2>&1; then
+    pids=$(lsof -ti :"$port" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      echo "  Killing process(es) on port $port: $pids"
+      # shellcheck disable=SC2086
+      kill -9 $pids 2>/dev/null || true
+    fi
+    return 0
+  fi
+  if command -v fuser >/dev/null 2>&1; then
+    if fuser "$port/tcp" >/dev/null 2>&1; then
+      echo "  Freeing port $port (fuser)..."
+      fuser -k "$port/tcp" 2>/dev/null || true
+    fi
+    return 0
+  fi
+  echo "  Warning: cannot free port $port — install lsof or psmisc (fuser)." >&2
+}
+
+free_ports() {
+  echo "Freeing required ports..."
+  for port in "${DEV_PORTS[@]}"; do
+    kill_port_listeners "$port"
+  done
+  sleep 1
+}
+
+ensure_docker_installed() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Docker CLI or Docker Compose v2 plugin not found."
+  if [ ! -f "$INSTALL_SCRIPT" ]; then
+    echo "Missing $INSTALL_SCRIPT"
+    exit 1
+  fi
+  echo "Running one-time setup: $INSTALL_SCRIPT"
+  bash "$INSTALL_SCRIPT" || {
+    echo "Install script failed. Fix the errors above or install Docker manually:"
+    echo "  https://docs.docker.com/engine/install/"
+    exit 1
+  }
+  if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+    echo "Docker still not available. On Linux, you may need to log out and back in after being added to the 'docker' group, then run:"
+    echo "  newgrp docker"
+    exit 1
+  fi
+}
+
+ensure_docker_daemon() {
   if docker info >/dev/null 2>&1; then
     return 0
   fi
-  echo "Docker is not running. Starting Docker Desktop..."
-  open -a Docker 2>/dev/null || true
+
+  case "$OS" in
+    Darwin)
+      echo "Docker daemon not responding. Starting Docker Desktop..."
+      open -a Docker 2>/dev/null || true
+      ;;
+    Linux)
+      echo "Docker daemon not running. Trying to start it (may ask for sudo)..."
+      if command -v systemctl >/dev/null 2>&1; then
+        sudo systemctl start docker 2>/dev/null || true
+      fi
+      if ! docker info >/dev/null 2>&1 && command -v service >/dev/null 2>&1; then
+        sudo service docker start 2>/dev/null || true
+      fi
+      ;;
+    *)
+      echo "Start the Docker service manually, then retry."
+      exit 1
+      ;;
+  esac
+
   local waited=0
   while ! docker info >/dev/null 2>&1; do
     printf "."
     sleep 2
     waited=$((waited + 2))
-    if [ "$waited" -ge 60 ]; then
+    if [ "$waited" -ge 120 ]; then
       echo ""
-      echo "Docker did not start within 60s. Please start Docker Desktop manually and retry."
+      echo "Docker did not become ready in time."
+      case "$OS" in
+        Darwin)
+          echo "Open Docker Desktop and wait until it finishes starting, then retry."
+          ;;
+        Linux)
+          echo "Try: sudo systemctl status docker"
+          echo "Ensure your user can run docker (group 'docker'), or use: newgrp docker"
+          ;;
+      esac
       exit 1
     fi
   done
   echo " Docker is ready."
 }
 
-free_ports() {
-  echo "Freeing required ports..."
-  for port in "${DEV_PORTS[@]}"; do
-    pids=$(lsof -ti :"$port" 2>/dev/null || true)
-    if [ -n "$pids" ]; then
-      echo "  Killing process(es) on port $port: $pids"
-      kill -9 $pids 2>/dev/null || true
-    fi
-  done
-  sleep 1
+ensure_docker() {
+  ensure_docker_installed
+  ensure_docker_daemon
 }
 
 check_env_docker() {
@@ -81,7 +160,6 @@ ensure_venv() {
   fi
   # shellcheck disable=SC1091
   source "$VENV_DIR/bin/activate"
-  # Install only the test-time dependencies (lighter than full backend stack)
   pip install -q --upgrade pip
   pip install -q flask flask-sqlalchemy flask-migrate flask-cors werkzeug \
     celery redis pytest python-dotenv requests
