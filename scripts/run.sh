@@ -39,7 +39,9 @@ Remote Deployment (GCP/AWS):
   2. Run: ./run.sh remote
   3. (Optional) Setup SSL: ./run.sh remote-ssl
   On Linux, ./run.sh remote (and remote-ssl) stops host nginx/apache/httpd if they hold :80/:443
-  so the Compose nginx container can bind. To skip that: SKIP_STOP_HOST_HTTP=1 ./run.sh remote
+  so the Compose nginx container can bind. Opt out only on the command line:
+  SKIP_STOP_HOST_HTTP=1 ./scripts/run.sh remote
+  (SKIP_STOP_HOST_HTTP in .env.docker is ignored so deploys default to stopping host nginx.)
 
 First-time Docker (Linux — installs Engine + Compose; may prompt for sudo):
   ./scripts/install-prerequisites.sh
@@ -358,6 +360,29 @@ load_env() {
     source "$PROJECT_ROOT/.env.docker"
     set +a
   fi
+  run_sh_restore_skip_host_http_after_dotenv
+}
+
+# SKIP_STOP_HOST_HTTP must only work when set on the CLI (e.g. VAR=1 ./script),
+# not when pulled from .env.docker — default is always to stop host nginx/apache.
+run_sh_begin_skip_host_http_cli_capture() {
+  RUN_SH_SKIP_HOST_HTTP_CAPTURE_ACTIVE=1
+  RUN_SH_CLI_SKIP_HOST_HTTP_SET=0
+  if [ -n "${SKIP_STOP_HOST_HTTP+x}" ]; then
+    RUN_SH_CLI_SKIP_HOST_HTTP_SET=1
+    RUN_SH_CLI_SKIP_HOST_HTTP_VALUE="${SKIP_STOP_HOST_HTTP-}"
+  fi
+}
+
+run_sh_restore_skip_host_http_after_dotenv() {
+  if [ "${RUN_SH_SKIP_HOST_HTTP_CAPTURE_ACTIVE:-0}" != "1" ]; then
+    return 0
+  fi
+  if [ "${RUN_SH_CLI_SKIP_HOST_HTTP_SET:-0}" = "1" ]; then
+    SKIP_STOP_HOST_HTTP="${RUN_SH_CLI_SKIP_HOST_HTTP_VALUE-}"
+  else
+    unset SKIP_STOP_HOST_HTTP
+  fi
 }
 
 # Setup nginx config based on DOMAIN/SERVER_IP
@@ -468,6 +493,7 @@ case "${1:-}" in
   remote)
     check_env_docker
     ensure_docker
+    run_sh_begin_skip_host_http_cli_capture
     load_env
 
     # Validate remote config
@@ -513,6 +539,7 @@ case "${1:-}" in
     echo "Next: Update Google OAuth redirect URI to: ${PUBLIC_URL}/auth/google/callback"
     ;;
   remote-ssl)
+    run_sh_begin_skip_host_http_cli_capture
     load_env
 
     if [ -z "${DOMAIN:-}" ]; then
