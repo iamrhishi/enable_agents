@@ -38,6 +38,8 @@ Remote Deployment (GCP/AWS):
   1. Edit .env.docker: set DEPLOY_MODE=remote, SERVER_IP, DOMAIN (optional)
   2. Run: ./run.sh remote
   3. (Optional) Setup SSL: ./run.sh remote-ssl
+  On Linux, ./run.sh remote (and remote-ssl) stops host nginx/apache/httpd if they hold :80/:443
+  so the Compose nginx container can bind. To skip that: SKIP_STOP_HOST_HTTP=1 ./run.sh remote
 
 First-time Docker (Linux — installs Engine + Compose; may prompt for sudo):
   ./scripts/install-prerequisites.sh
@@ -68,10 +70,42 @@ is_docker_port_forwarder() {
   return 1
 }
 
+# Stop OS-packaged reverse proxies that reserve 80/443 (common on GCP images with apt nginx).
+# Remote Compose publishes enable_agents_nginx on those ports; host nginx causes "address already in use".
+stop_host_services_blocking_http() {
+  if [ "${SKIP_STOP_HOST_HTTP:-}" = "1" ]; then
+    echo "SKIP_STOP_HOST_HTTP=1 — not stopping host nginx/apache/httpd."
+    return 0
+  fi
+  if [ "$OS" != "Linux" ]; then
+    return 0
+  fi
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "Note: systemctl not found — if port 80/443 is busy, stop host nginx/apache manually." >&2
+    return 0
+  fi
+
+  local svc
+  for svc in nginx apache2 httpd; do
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      echo "Stopping host service $svc so Docker can bind ports 80/443 (remote stack)..."
+      if systemctl stop "$svc" 2>/dev/null; then
+        :
+      elif sudo systemctl stop "$svc" 2>/dev/null; then
+        :
+      else
+        echo "Warning: could not stop $svc — free ports 80/443 with: sudo systemctl stop $svc" >&2
+      fi
+    fi
+  done
+  sleep 2
+  echo "Tip: to keep host nginx off after reboot: sudo systemctl disable nginx  (only if Docker should own HTTP permanently)"
+}
+
 compose_down_clean() {
   echo "Stopping any running project containers (safe port release)..."
-  # Both profiles so all services are known; removes published ports without killing Docker internals.
-  $COMPOSE --profile dev --profile prod down --remove-orphans 2>/dev/null || true
+  # Include remote so a prior ./run.sh remote releases 80/443 before the next up.
+  $COMPOSE --profile dev --profile prod --profile remote down --remove-orphans 2>/dev/null || true
   sleep 2
 }
 
@@ -410,6 +444,7 @@ case "${1:-}" in
     ensure_docker
     compose_down_clean
     free_ports
+    stop_host_services_blocking_http
     wait_for_docker_engine 90
     $COMPOSE --profile prod up --build -d
     wait_for_backend_http "http://127.0.0.1:${PORT_BACKEND}/health" 180 || {
@@ -445,6 +480,7 @@ case "${1:-}" in
     setup_nginx_config
 
     compose_down_clean
+    stop_host_services_blocking_http
     wait_for_docker_engine 90
 
     echo "Starting remote deployment..."
@@ -492,6 +528,7 @@ case "${1:-}" in
 
     # Ensure HTTP nginx is running for ACME challenge
     cp "$PROJECT_ROOT/deploy/nginx/nginx-http.conf" "$PROJECT_ROOT/deploy/nginx/active.conf"
+    stop_host_services_blocking_http
     $COMPOSE --profile remote up -d nginx
     sleep 5
 
