@@ -189,7 +189,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: enable_agents_backend
-    command: gunicorn "app:create_app()" --bind 0.0.0.0:8000 --workers 4 --timeout 120
+    command: gunicorn "app:app" --bind 0.0.0.0:8000 --workers 4 --timeout 120
     env_file:
       - .env.docker
     environment:
@@ -299,7 +299,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: enable_agents_backend_remote
-    command: gunicorn "app:create_app()" --bind 0.0.0.0:8000 --workers 4 --timeout 120
+    command: gunicorn "app:app" --bind 0.0.0.0:8000 --workers 4 --timeout 120
     env_file:
       - .env.docker
     environment:
