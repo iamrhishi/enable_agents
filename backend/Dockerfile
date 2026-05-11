@@ -1,12 +1,17 @@
 # Backend Dockerfile - Python Flask Application
-FROM python:3.11-slim
+# Pin Debian 12 (bookworm): unqualified python:3.11-slim tracks newer Debian (trixie) which
+# can make `apt-get` flaky on some hosts/mirrors during remote builds.
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    curl \
+RUN apt-get update -o Acquire::Retries=5 \
+    && apt-get install -y --no-install-recommends \
+        gcc \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
