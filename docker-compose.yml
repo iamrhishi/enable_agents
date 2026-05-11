@@ -322,6 +322,9 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    ports:
+      # Publish 8000 on host so ./scripts/run.sh can curl /health (prod backend does the same)
+      - "8000:8000"
     networks:
       enable-network:
         aliases:

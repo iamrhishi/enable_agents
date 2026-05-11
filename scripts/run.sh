@@ -327,11 +327,19 @@ wait_for_backend_http() {
   local url="${1:-http://127.0.0.1:8000/health}"
   local max_s="${2:-180}"
   local s=0
+  local hinted=0
   echo "Waiting for backend HTTP (${url})..."
   while [ "$s" -lt "$max_s" ]; do
     if curl -fsS "$url" >/dev/null 2>&1; then
-      echo "Backend is reachable on port ${PORT_BACKEND}."
+      echo ""
+      echo "Backend is reachable (${url})."
       return 0
+    fi
+    if [ "$hinted" = "0" ] && [ "$s" -ge 30 ]; then
+      hinted=1
+      echo ""
+      echo "  Still waiting… If this runs until timeout, check migrations/DB and:"
+      echo "    $COMPOSE logs --tail=120 backend-remote   # or: backend-dev / backend"
     fi
     sleep 2
     s=$((s + 2))
@@ -340,7 +348,8 @@ wait_for_backend_http() {
   echo ""
   echo "Backend never became reachable at ${url} within ${max_s}s."
   echo "Inspect logs:"
-  echo "  $COMPOSE logs --tail=80 backend-dev"
+  echo "  $COMPOSE logs --tail=120 backend-dev"
+  echo "  $COMPOSE logs --tail=120 backend-remote"
   return 1
 }
 
