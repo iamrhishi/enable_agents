@@ -1,6 +1,6 @@
 # Frontend Dockerfile - React Application with Nginx
-# Stage 1: Build
-FROM node:18-alpine AS builder
+# Stage 1: Build (Node 20+ required by pdfjs-dist, react-router 7)
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
