@@ -562,9 +562,25 @@ case "${1:-}" in
 
     echo "Setting up SSL for ${DOMAIN}..."
 
-    # Ensure HTTP nginx is running for ACME challenge
+    ensure_docker
+
+    # ACME HTTP-01 needs this project's nginx on :80. Common conflicts: apt nginx, prod
+    # `frontend` (also publishes 80:80), or a stuck enable_agents_nginx from a failed run.
+    for c in enable_agents_nginx enable_agents_frontend; do
+      docker stop "$c" 2>/dev/null || true
+      docker rm -f "$c" 2>/dev/null || true
+    done
+
     cp "$PROJECT_ROOT/deploy/nginx/nginx-http.conf" "$PROJECT_ROOT/deploy/nginx/active.conf"
     stop_host_services_blocking_http
+    sleep 1
+    if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -qE ':(80|443)\s'; then
+      echo "Ports 80/443 listeners (expect none before Compose nginx starts):"
+      ss -tlnp 2>/dev/null | grep -E ':(80|443)\s' || true
+      echo "(Docker) containers publishing 80 or 443:"
+      docker ps --format 'table {{.Names}}\t{{.Ports}}' 2>/dev/null | grep -E '(:80->|:443->|0\.0\.0\.0:80|0\.0\.0\.0:443)' || echo "  (none matched filter — run: docker ps)"
+    fi
+
     $COMPOSE --profile remote up -d nginx
     sleep 5
 
