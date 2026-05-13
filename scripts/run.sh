@@ -428,6 +428,27 @@ run_sh_restore_skip_host_http_after_dotenv() {
   fi
 }
 
+# True if a Let's Encrypt cert for DOMAIN exists on the host or in Docker volume certbot_certs
+# (certs from compose certbot are not under /etc/letsencrypt on the VM — only in the volume).
+letsencrypt_live_present() {
+  local domain="${1:-}"
+  [ -n "$domain" ] || return 1
+  if [ -d "/etc/letsencrypt/live/${domain}" ]; then
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    return 1
+  fi
+  local vol
+  while IFS= read -r vol; do
+    [ -n "$vol" ] || continue
+    if docker run --rm -v "$vol:/lets:ro" busybox test -d "/lets/live/${domain}" 2>/dev/null; then
+      return 0
+    fi
+  done < <(docker volume ls -q 2>/dev/null | grep certbot_certs || true)
+  return 1
+}
+
 # Setup nginx config based on DOMAIN/SERVER_IP
 setup_nginx_config() {
   local nginx_dir="$PROJECT_ROOT/deploy/nginx"
@@ -435,7 +456,7 @@ setup_nginx_config() {
 
   load_env
 
-  if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+  if [ -n "${DOMAIN:-}" ] && letsencrypt_live_present "${DOMAIN}"; then
     echo "Using SSL nginx config for $DOMAIN"
     export DOMAIN SERVER_IP
     envsubst '${DOMAIN} ${SERVER_IP}' < "$nginx_dir/nginx.conf" > "$nginx_dir/active.conf"
@@ -451,7 +472,7 @@ update_public_url() {
   local public_url
 
   if [ -n "${DOMAIN:-}" ]; then
-    if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+    if letsencrypt_live_present "${DOMAIN}"; then
       public_url="https://${DOMAIN}"
     else
       public_url="http://${DOMAIN}"
@@ -470,6 +491,12 @@ update_public_url() {
     sed -i.bak "s|^PUBLIC_URL=.*|PUBLIC_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
     sed -i.bak "s|^GOOGLE_REDIRECT_URI=.*|GOOGLE_REDIRECT_URI=${public_url}/auth/google/callback|" "$PROJECT_ROOT/.env.docker"
     sed -i.bak "s|^REACT_APP_API_URL=.*|REACT_APP_API_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
+    if grep -q "^LINKEDIN_REDIRECT_URI=" "$PROJECT_ROOT/.env.docker"; then
+      sed -i.bak "s|^LINKEDIN_REDIRECT_URI=.*|LINKEDIN_REDIRECT_URI=${public_url}/auth/linkedin/callback|" "$PROJECT_ROOT/.env.docker"
+    fi
+    if grep -q "^FRONTEND_URL=" "$PROJECT_ROOT/.env.docker"; then
+      sed -i.bak "s|^FRONTEND_URL=.*|FRONTEND_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
+    fi
     rm -f "$PROJECT_ROOT/.env.docker.bak"
   fi
 }
