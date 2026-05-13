@@ -26,6 +26,7 @@ Usage:
   ./run.sh dev                    # Docker: mysql + redis + backend (hot-reload) + frontend (npm dev)
   ./run.sh prod                   # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
   ./run.sh remote                 # Docker: production with nginx reverse proxy (GCP/AWS)
+  ./run.sh remote-rebuild         # Stop all profiles, prune builder + unused images, then remote (DB volumes kept)
   ./run.sh remote-ssl             # Setup Let's Encrypt SSL (requires DOMAIN in .env.docker)
   ./run.sh stop                   # Stop all Docker services
   ./run.sh test                   # Run all tests (no Docker needed — uses a local venv)
@@ -38,6 +39,7 @@ Remote Deployment (GCP/AWS):
   1. Edit .env.docker: set DEPLOY_MODE=remote, SERVER_IP, DOMAIN (optional)
   2. Run: ./run.sh remote
   3. (Optional) Setup SSL: ./run.sh remote-ssl
+  4. Nuclear refresh (same as remote after cleanup): ./run.sh remote-rebuild
   On Linux, ./run.sh remote (and remote-ssl) stops host nginx/apache/httpd if they hold :80/:443
   so the Compose nginx container can bind. Opt out only on the command line:
   SKIP_STOP_HOST_HTTP=1 ./scripts/run.sh remote
@@ -559,6 +561,31 @@ case "${1:-}" in
     echo "  Frontend: http://localhost"
     echo "  Backend:  http://localhost:${PORT_BACKEND}"
     echo "  MySQL:    localhost:${PORT_MYSQL}"
+    ;;
+  remote-rebuild)
+    check_env_docker
+    ensure_docker
+
+    echo ""
+    echo "=== 1/4 Stop dev + prod + remote and remove project containers ==="
+    compose_down_clean
+
+    echo ""
+    echo "=== 2/4 Stop stray 'docker compose … profile remote' processes (this repo only) ==="
+    if command -v pkill >/dev/null 2>&1; then
+      pkill -f "${PROJECT_ROOT}/docker-compose.yml.*--profile remote" 2>/dev/null || true
+      pkill -f "docker compose -f ${PROJECT_ROOT}/docker-compose.yml" 2>/dev/null || true
+    fi
+    sleep 3
+
+    echo ""
+    echo "=== 3/4 Prune BuildKit cache and unused images/networks (not volumes — MySQL/Redis data kept) ==="
+    docker builder prune -af 2>/dev/null || true
+    docker system prune -af 2>/dev/null || true
+
+    echo ""
+    echo "=== 4/4 Full remote deploy (rebuild images) ==="
+    exec "$SCRIPT_DIR/run.sh" remote
     ;;
   remote)
     check_env_docker
