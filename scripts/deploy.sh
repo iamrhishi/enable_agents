@@ -9,7 +9,8 @@
 # - Starts Python backend (if not running)
 # - Runs both in background (returns terminal access)
 #
-# NOTE: You must pull code manually before running this script
+# NOTE: You must pull code manually before running this script.
+# For Docker + Compose on the VM, use scripts/run.sh (remote / remote-ssl / remote-rebuild).
 #
 # Usage: ./deploy.sh <remote_user> <remote_ip>
 # Example: ./deploy.sh rhishi 34.70.101.143

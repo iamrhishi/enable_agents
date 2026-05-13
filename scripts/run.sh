@@ -25,9 +25,9 @@ usage() {
 Usage:
   ./run.sh dev                    # Docker: mysql + redis + backend (hot-reload) + frontend (npm dev)
   ./run.sh prod                   # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
-  ./run.sh remote                 # Docker: production with nginx reverse proxy (GCP/AWS)
-  ./run.sh remote-rebuild         # Stop all profiles, prune builder + unused images, then remote (DB volumes kept)
-  ./run.sh remote-ssl             # Setup Let's Encrypt SSL (requires DOMAIN in .env.docker)
+  ./run.sh remote                 # Docker: production + nginx (HTTPS if Let's Encrypt certs already exist)
+  ./run.sh remote-rebuild         # Down all profiles, prune builder + unused images, then same as ./run.sh remote (volumes kept)
+  ./run.sh remote-ssl             # Obtain/renew certs via certbot (needs DOMAIN + ADMIN_EMAIL); not required on every rebuild
   ./run.sh stop                   # Stop all Docker services
   ./run.sh test                   # Run all tests (no Docker needed — uses a local venv)
   ./run.sh test docker            # Run tests inside the running dev container
@@ -38,8 +38,9 @@ Usage:
 Remote Deployment (GCP/AWS):
   1. Edit .env.docker: set DEPLOY_MODE=remote, SERVER_IP, DOMAIN (optional)
   2. Run: ./run.sh remote
-  3. (Optional) Setup SSL: ./run.sh remote-ssl
-  4. Nuclear refresh (same as remote after cleanup): ./run.sh remote-rebuild
+  3. HTTPS: First time or missing cert → ./run.sh remote-ssl (DOMAIN + ADMIN_EMAIL). Otherwise ./run.sh remote
+     already enables HTTPS when certs are in the certbot Docker volume.
+  4. Nuclear refresh (images/networks; DB volumes kept) → ./run.sh remote-rebuild (still ends with remote, not remote-ssl)
   On Linux, ./run.sh remote (and remote-ssl) stops host nginx/apache/httpd if they hold :80/:443
   so the Compose nginx container can bind. Opt out only on the command line:
   SKIP_STOP_HOST_HTTP=1 ./scripts/run.sh remote
@@ -451,7 +452,8 @@ letsencrypt_live_present() {
   return 1
 }
 
-# Setup nginx config based on DOMAIN/SERVER_IP
+# Picks SSL nginx when DOMAIN is set and live certs exist (Docker certbot volume or host).
+# `remote` uses this for HTTPS without re-running certbot; use `remote-ssl` when certs are missing.
 setup_nginx_config() {
   local nginx_dir="$PROJECT_ROOT/deploy/nginx"
   mkdir -p "$nginx_dir"
@@ -585,6 +587,8 @@ case "${1:-}" in
 
     echo ""
     echo "=== 4/4 Full remote deploy (rebuild images) ==="
+    echo "Chaining to './run.sh remote' (HTTPS auto if certs exist in the certbot volume)."
+    echo "If you need Let's Encrypt issuance instead, run: ./run.sh remote-ssl"
     exec "$SCRIPT_DIR/run.sh" remote
     ;;
   remote)
@@ -627,7 +631,12 @@ case "${1:-}" in
     echo ""
     echo "Remote stack ready:"
     if [ -n "${DOMAIN:-}" ]; then
-      echo "  Frontend: https://${DOMAIN} (after SSL) or http://${DOMAIN}"
+      if letsencrypt_live_present "${DOMAIN}"; then
+        echo "  Frontend: https://${DOMAIN}"
+      else
+        echo "  Frontend: http://${DOMAIN}"
+        echo "  For HTTPS with Let's Encrypt: ./run.sh remote-ssl (DOMAIN + ADMIN_EMAIL in .env.docker)"
+      fi
     fi
     if [ -n "${SERVER_IP:-}" ]; then
       echo "  Frontend: http://${SERVER_IP}"
