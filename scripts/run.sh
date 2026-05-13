@@ -395,7 +395,8 @@ run_migrations() {
   local container="${1:-backend-dev}"
   echo "Running database migrations..."
   $COMPOSE exec -T "$container" flask db upgrade 2>&1 || {
-    echo "Warning: Migrations failed or no migrations to run."
+    echo "Error: Database migrations failed (container: $container). Check logs: $COMPOSE logs \"$container\""
+    return 1
   }
 }
 
