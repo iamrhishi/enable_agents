@@ -422,6 +422,9 @@ services:
       args:
         REACT_APP_API_URL: "${PUBLIC_URL:-http://localhost}"
     container_name: enable_agents_frontend_remote
+    depends_on:
+      backend-remote:
+        condition: service_started
     restart: unless-stopped
     networks:
       enable-network:
