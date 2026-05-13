@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=https://json.schemastore.org/docker-compose.json
+# Re-run / port cleanup: when adding container_name entries, sync ENABLE_AGENTS_CONTAINERS in scripts/run.sh
 services:
 
   # --- Infrastructure (always-on, no profile)

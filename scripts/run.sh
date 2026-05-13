@@ -50,6 +50,28 @@ EOF
 
 DEV_PORTS=($PORT_BACKEND $PORT_BACKEND_OAUTH $PORT_FRONTEND $PORT_MYSQL $PORT_REDIS $PORT_FLOWER $PORT_REDIS_UI)
 
+# container_name values from docker-compose.yml — keep in sync when adding services.
+# Used to force-remove orphans so host ports 80, 443, 3000, 3306, 5000, 5555, 6379, 8000, 8081 are free on re-run.
+ENABLE_AGENTS_CONTAINERS=(
+  enable_agents_mysql
+  enable_agents_redis
+  enable_agents_backend_dev
+  enable_agents_frontend_dev
+  enable_agents_celery_dev
+  enable_agents_beat_dev
+  enable_agents_flower
+  enable_agents_redis_commander
+  enable_agents_backend
+  enable_agents_celery
+  enable_agents_beat
+  enable_agents_frontend
+  enable_agents_backend_remote
+  enable_agents_celery_remote
+  enable_agents_beat_remote
+  enable_agents_frontend_remote
+  enable_agents_nginx
+)
+
 # Host listeners for published container ports are often docker-proxy / Desktop forwarders.
 # kill -9 on those breaks the Docker engine until Docker Desktop is restarted.
 is_docker_port_forwarder() {
@@ -104,10 +126,22 @@ stop_host_services_blocking_http() {
   echo "Tip: to keep host nginx off after reboot: sudo systemctl disable nginx  (only if Docker should own HTTP permanently)"
 }
 
+remove_stale_enable_agents_containers() {
+  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Removing stale enable_agents_* containers (releases all Compose-published host ports)..."
+  local c
+  for c in "${ENABLE_AGENTS_CONTAINERS[@]}"; do
+    docker rm -f "$c" 2>/dev/null || true
+  done
+}
+
 compose_down_clean() {
   echo "Stopping any running project containers (safe port release)..."
-  # Include remote so a prior ./run.sh remote releases 80/443 before the next up.
+  remove_stale_enable_agents_containers
   $COMPOSE --profile dev --profile prod --profile remote down --remove-orphans 2>/dev/null || true
+  remove_stale_enable_agents_containers
   sleep 2
 }
 
@@ -548,6 +582,7 @@ case "${1:-}" in
     echo "Next: Update Google OAuth redirect URI to: ${PUBLIC_URL}/auth/google/callback"
     ;;
   remote-ssl)
+    check_env_docker
     run_sh_begin_skip_host_http_cli_capture
     load_env
 
@@ -563,19 +598,12 @@ case "${1:-}" in
     echo "Setting up SSL for ${DOMAIN}..."
 
     ensure_docker
-
-    # ACME HTTP-01 needs this project's nginx on :80. Common conflicts: apt nginx, prod
-    # `frontend` (also publishes 80:80), or a stuck enable_agents_nginx from a failed run.
-    for c in enable_agents_nginx enable_agents_frontend; do
-      docker stop "$c" 2>/dev/null || true
-      docker rm -f "$c" 2>/dev/null || true
-    done
-
-    cp "$PROJECT_ROOT/deploy/nginx/nginx-http.conf" "$PROJECT_ROOT/deploy/nginx/active.conf"
+    compose_down_clean
     stop_host_services_blocking_http
+    cp "$PROJECT_ROOT/deploy/nginx/nginx-http.conf" "$PROJECT_ROOT/deploy/nginx/active.conf"
     sleep 1
     if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -qE ':(80|443)\s'; then
-      echo "Ports 80/443 listeners (expect none before Compose nginx starts):"
+      echo "Ports 80/443 still busy — show listeners (stop host nginx or other stacks using these):"
       ss -tlnp 2>/dev/null | grep -E ':(80|443)\s' || true
       echo "(Docker) containers publishing 80 or 443:"
       docker ps --format 'table {{.Names}}\t{{.Ports}}' 2>/dev/null | grep -E '(:80->|:443->|0\.0\.0\.0:80|0\.0\.0\.0:443)' || echo "  (none matched filter — run: docker ps)"
@@ -611,6 +639,7 @@ case "${1:-}" in
       exit 0
     fi
     $COMPOSE --profile dev --profile prod --profile remote down --remove-orphans
+    remove_stale_enable_agents_containers
     ;;
   test)
     shift
