@@ -1,14 +1,34 @@
 /**
  * API & Environment Configuration
  *
- * Single source of truth for the backend URL and all API endpoints.
- * The base URL is taken from REACT_APP_API_URL (baked in at build time).
- *
- * Default when unset: http://localhost:8000 (matches `./scripts/run.sh dev` / docker-compose).
- * Non-Docker local (`./scripts/run.sh local`): uses frontend/.env from run.sh → :5000.
+ * Base URL from REACT_APP_API_URL (baked at build time).
+ * When the user loads the site over HTTPS but the build used http:// for the same host
+ * (e.g. PUBLIC_URL before SSL), upgrade to window.location.origin to avoid mixed content.
  */
 
-export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+function resolveApiBase() {
+  const fromEnv = process.env.REACT_APP_API_URL;
+  const fallback = 'http://localhost:8000';
+  let base =
+    fromEnv !== undefined && fromEnv !== null && String(fromEnv).trim() !== ''
+      ? String(fromEnv).trim()
+      : fallback;
+
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && base.startsWith('http://')) {
+    try {
+      const parsed = new URL(base);
+      if (parsed.hostname === window.location.hostname) {
+        base = window.location.origin;
+      }
+    } catch (_) {
+      /* keep base */
+    }
+  }
+
+  return base.replace(/\/$/, '');
+}
+
+export const API_URL = resolveApiBase();
 
 // ── Environment flags ───────────────────────────────────────────────────────
 export const ENVIRONMENT = process.env.NODE_ENV || 'development';
