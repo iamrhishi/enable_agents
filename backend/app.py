@@ -174,9 +174,38 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 PROMPTS_FILE = os.path.join(DATA_DIR, 'prompts.json')
 
 
+def _default_frontend_url():
+    """Browser origin for the SPA (CORS, defaults). Prefer FRONTEND_URL, then PUBLIC_URL for real hosts."""
+    fe = (os.getenv('FRONTEND_URL') or '').strip().rstrip('/')
+    if fe:
+        return fe
+    pub = (os.getenv('PUBLIC_URL') or '').strip().rstrip('/')
+    if pub:
+        pl = pub.lower()
+        if pl.startswith('https://'):
+            return pub
+        if pl.startswith('http://') and 'localhost' not in pl and '127.0.0.1' not in pl:
+            return pub
+    if (os.getenv('DEPLOY_MODE') or '').strip().lower() == 'remote' and pub:
+        return pub
+    return 'http://localhost:3000'
+
+
+def _spa_redirect_base():
+    """OAuth/callback redirects: same as _default_frontend_url, or Host/Proto from the edge proxy."""
+    base = _default_frontend_url()
+    if base != 'http://localhost:3000':
+        return base
+    scheme = (request.headers.get('X-Forwarded-Proto') or request.scheme or 'https').split(',')[0].strip()
+    host = (request.headers.get('X-Forwarded-Host') or request.host or '').split(',')[0].strip()
+    if host:
+        return f'{scheme}://{host}'.rstrip('/')
+    return base
+
+
 app = Flask(__name__)
 
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = _default_frontend_url()
 _cors_raw = os.getenv('CORS_ORIGINS', '').strip()
 if _cors_raw:
     _cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
@@ -6198,7 +6227,9 @@ def google_auth_callback():
             db.session.commit()
             
             # Redirecting to login page with params to automatically log in the user on the frontend
-            return redirect(f"{FRONTEND_URL}/login?google_auth=success&email={email}")
+            return redirect(
+                f"{_spa_redirect_base()}/login?google_auth=success&email={email}"
+            )
 
         # Exchange code for refresh token for Google Business
 
@@ -6211,7 +6242,7 @@ def google_auth_callback():
         
         if success:
             # Redirect back to app with success
-            return redirect(f'{FRONTEND_URL}?google_connected=true')
+            return redirect(f'{_spa_redirect_base()}?google_connected=true')
         else:
             return jsonify({
                 'success': False,

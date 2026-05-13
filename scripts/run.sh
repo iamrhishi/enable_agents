@@ -491,19 +491,28 @@ update_public_url() {
 
   echo "Setting PUBLIC_URL to: $public_url"
 
-  # Update .env.docker with correct PUBLIC_URL
-  if grep -q "^PUBLIC_URL=" "$PROJECT_ROOT/.env.docker"; then
-    sed -i.bak "s|^PUBLIC_URL=.*|PUBLIC_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
-    sed -i.bak "s|^GOOGLE_REDIRECT_URI=.*|GOOGLE_REDIRECT_URI=${public_url}/auth/google/callback|" "$PROJECT_ROOT/.env.docker"
-    sed -i.bak "s|^REACT_APP_API_URL=.*|REACT_APP_API_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
-    if grep -q "^LINKEDIN_REDIRECT_URI=" "$PROJECT_ROOT/.env.docker"; then
-      sed -i.bak "s|^LINKEDIN_REDIRECT_URI=.*|LINKEDIN_REDIRECT_URI=${public_url}/auth/linkedin/callback|" "$PROJECT_ROOT/.env.docker"
-    fi
-    if grep -q "^FRONTEND_URL=" "$PROJECT_ROOT/.env.docker"; then
-      sed -i.bak "s|^FRONTEND_URL=.*|FRONTEND_URL=${public_url}|" "$PROJECT_ROOT/.env.docker"
-    fi
-    rm -f "$PROJECT_ROOT/.env.docker.bak"
+  if [ ! -f "$PROJECT_ROOT/.env.docker" ]; then
+    echo "Warning: .env.docker not found — set PUBLIC_URL and FRONTEND_URL to ${public_url} manually."
+    return 0
   fi
+
+  _env_docker_set() {
+    local k="$1" v="$2"
+    if grep -q "^${k}=" "$PROJECT_ROOT/.env.docker"; then
+      sed -i.bak "s|^${k}=.*|${k}=${v}|" "$PROJECT_ROOT/.env.docker"
+    else
+      echo "${k}=${v}" >> "$PROJECT_ROOT/.env.docker"
+    fi
+  }
+
+  _env_docker_set "PUBLIC_URL" "${public_url}"
+  _env_docker_set "GOOGLE_REDIRECT_URI" "${public_url}/auth/google/callback"
+  _env_docker_set "REACT_APP_API_URL" "${public_url}"
+  _env_docker_set "FRONTEND_URL" "${public_url}"
+  if grep -q "^LINKEDIN_REDIRECT_URI=" "$PROJECT_ROOT/.env.docker"; then
+    sed -i.bak "s|^LINKEDIN_REDIRECT_URI=.*|LINKEDIN_REDIRECT_URI=${public_url}/auth/linkedin/callback|" "$PROJECT_ROOT/.env.docker"
+  fi
+  rm -f "$PROJECT_ROOT/.env.docker.bak"
 }
 
 case "${1:-}" in
