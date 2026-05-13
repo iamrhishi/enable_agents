@@ -23,6 +23,9 @@ RUN npm run build
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
 
+# nginx:alpine-slim (used by many tags) often has no wget; curl is reliable for HEALTHCHECK.
+RUN apk add --no-cache curl
+
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
@@ -33,7 +36,7 @@ COPY --from=builder /app/build /usr/share/nginx/html
 EXPOSE 80
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=5 \
+    CMD curl -fsS --max-time 5 http://127.0.0.1/ >/dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
