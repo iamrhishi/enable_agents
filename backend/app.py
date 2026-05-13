@@ -23,6 +23,7 @@ import nltk
 import pandas as pd
 import pickle
 import hashlib
+import zipfile
 import http.client
 import glob
 from google_auth_oauthlib.flow import Flow
@@ -139,13 +140,31 @@ LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
 LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
 
 def _ensure_nltk_resource(resource_path, download_name):
+    """Fetch NLTK data if missing; repair corrupt caches (e.g. partial zip → BadZipFile)."""
+    force = False
     try:
         nltk.data.find(resource_path)
+        return
     except LookupError:
+        pass
+    except (zipfile.BadZipFile, OSError) as exc:
+        force = True
+        print(
+            f"Warning: NLTK {resource_path!r} unreadable ({type(exc).__name__}: {exc}); "
+            f"re-downloading {download_name!r}."
+        )
+    try:
+        nltk.download(download_name, quiet=True, force=force)
+    except TypeError:
+        nltk.download(download_name, quiet=True)
+    except Exception as download_error:
+        print(f"Warning: could not download NLTK resource {download_name}: {download_error}")
+        return
+    if force:
         try:
-            nltk.download(download_name, quiet=True)
-        except Exception as download_error:
-            print(f"Warning: could not download NLTK resource {download_name}: {download_error}")
+            nltk.data.find(resource_path)
+        except Exception as err:
+            print(f"Warning: NLTK {resource_path!r} still unavailable after re-download: {err}")
 
 
 _ensure_nltk_resource('corpora/stopwords', 'stopwords')
