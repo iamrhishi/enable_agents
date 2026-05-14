@@ -8,7 +8,7 @@
 
 function resolveApiBase() {
   const fromEnv = process.env.REACT_APP_API_URL;
-  const fallback = 'http://localhost:8000';
+  const fallback = 'http://localhost:5000';
   let base =
     fromEnv !== undefined && fromEnv !== null && String(fromEnv).trim() !== ''
       ? String(fromEnv).trim()

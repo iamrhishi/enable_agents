@@ -212,7 +212,11 @@ if _cors_raw:
 else:
     _cors_origins = [
         'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
         'http://127.0.0.1:3000',
+        'http://127.0.0.1:3001',
+        'http://127.0.0.1:3002',
         FRONTEND_URL,
     ]
 _seen_cors = set()
@@ -431,6 +435,22 @@ class SavedLead(db.Model):
     raw_data = db.Column(db.Text) 
     
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+# Shared context entries so agents can persist and query user-scoped data
+class ContextEntry(db.Model):
+    __tablename__ = 'context_entries'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(120), index=True, nullable=False)
+    project_id = db.Column(db.String(120), index=True, nullable=True)
+    source_agent = db.Column(db.String(120), nullable=True)
+    source_action = db.Column(db.String(120), nullable=True)
+    entry_type = db.Column(db.String(80), nullable=True)
+    data = db.Column(db.Text)  # JSON blob
+    text = db.Column(db.Text)  # flattened text used for search/embedding
+    entry_metadata = db.Column(db.Text)  # JSON metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 
@@ -7943,7 +7963,7 @@ def sales_helper_chat():
         available_fields_str = ", ".join(sorted([f for f in available_fields if f != 'match_score']))
 
         lead_rows = []
-        for index, lead in enumerate(leads[:25], start=1):
+        for index, lead in enumerate(leads[:50], start=1):
             # Build a row with all available data
             lead_items = []
             for field in sorted(lead.keys()):
@@ -7976,13 +7996,38 @@ IMPORTANT INSTRUCTIONS:
 1. ALWAYS provide a helpful answer, even if some specific fields are missing.
 2. Use inference and reasoning: If exact data is unavailable, derive insights from related information.
    - Example: If "Number of Employees" is missing, infer from "Company Size", "Budget", "Industry", or "Description".
-   - Example: If "Internship Programs" isn't listed, infer from "Job Listings", "Hiring Status", or "Company Type".
 3. Mention lead names when listing specific companies.
 4. Be concise but comprehensive - provide actionable insights.
 5. If a field is completely unavailable, note it but focus on what you CAN analyze.
 6. When multiple leads match the criteria, group or rank them.
 7. Do not make up details, but DO use available context to reason and infer.
 """
+
+        # Persist incoming leads into shared context so other agents can reuse them
+        try:
+            user_id_for_context = data.get('user_id') or data.get('username') or 'anonymous'
+            for lead in leads:
+                try:
+                    flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in lead.items() if v is not None and v != ''])
+                    ce = ContextEntry(
+                        user_id=user_id_for_context,
+                        project_id=str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None),
+                        source_agent='sales_helper',
+                        source_action='ingest_lead',
+                        entry_type='lead',
+                        data=json.dumps(lead),
+                        text=flattened,
+                        entry_metadata=json.dumps({'project_name': project.get('name') if project else None})
+                    )
+                    db.session.add(ce)
+                except Exception:
+                    db.session.rollback()
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        except Exception:
+            pass
 
         if not os.getenv('OPENAI_API_KEY'):
             lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:5]])
@@ -7994,6 +8039,24 @@ IMPORTANT INSTRUCTIONS:
 
         client = openai.OpenAI()
         client.api_key = os.environ['OPENAI_API_KEY']
+
+        # Before calling LLM, attempt to surface additional saved context entries for this user
+        extra_context_text = ""
+        try:
+            user_q = data.get('user_id') or data.get('username') or None
+            if user_q:
+                # simple keyword match search against flattened text/entry_metadata
+                like = f"%{question}%"
+                matches = ContextEntry.query.filter(ContextEntry.user_id == user_q).filter(
+                    (ContextEntry.text.ilike(like)) | (ContextEntry.entry_metadata.ilike(like))
+                ).order_by(ContextEntry.created_at.desc()).limit(6).all()
+                if matches:
+                    extra_context_text = "\n".join([f"- {m.text}" for m in matches])
+        except Exception:
+            extra_context_text = ""
+
+        if extra_context_text:
+            prompt = prompt + "\n\nAdditional saved context entries for this user:\n" + extra_context_text
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -8015,6 +8078,73 @@ IMPORTANT INSTRUCTIONS:
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ========== SHARED CONTEXT API ENDPOINTS ==========
+
+@app.route('/api/context/save', methods=['POST'])
+def api_context_save():
+    try:
+        payload = request.get_json() or {}
+        user_id = payload.get('user_id') or payload.get('username') or 'anonymous'
+        project_id = payload.get('project_id')
+        entries = payload.get('entries') or []
+        saved = 0
+        for e in entries:
+            try:
+                flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in e.items() if v is not None and v != ''])
+                ce = ContextEntry(
+                    user_id=user_id,
+                    project_id=project_id,
+                    source_agent=payload.get('source_agent') or 'unknown',
+                    source_action=payload.get('source_action') or 'batch_save',
+                    entry_type=e.get('type') or 'data',
+                    data=json.dumps(e),
+                    text=flattened,
+                    entry_metadata=json.dumps(payload.get('entry_metadata') or {})
+                )
+                db.session.add(ce)
+                saved += 1
+            except Exception:
+                db.session.rollback()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({'success': True, 'saved': saved}), 200
+    except Exception as ex:
+        return jsonify({'success': False, 'error': str(ex)}), 500
+
+
+@app.route('/api/context/search', methods=['POST'])
+def api_context_search():
+    try:
+        payload = request.get_json() or {}
+        user_id = payload.get('user_id') or payload.get('username') or None
+        query = (payload.get('query') or '').strip()
+        limit = int(payload.get('limit') or 10)
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Missing user_id'}), 400
+
+        q = ContextEntry.query.filter(ContextEntry.user_id == user_id)
+        if query:
+            like = f"%{query}%"
+            q = q.filter((ContextEntry.text.ilike(like)) | (ContextEntry.entry_metadata.ilike(like)))
+        results = q.order_by(ContextEntry.created_at.desc()).limit(limit).all()
+        out = []
+        for r in results:
+            try:
+                data_obj = json.loads(r.data) if r.data else None
+            except Exception:
+                data_obj = None
+            try:
+                meta_obj = json.loads(r.entry_metadata) if r.entry_metadata else None
+            except Exception:
+                meta_obj = None
+            out.append({'id': r.id, 'text': r.text, 'data': data_obj, 'entry_metadata': meta_obj, 'created_at': r.created_at.isoformat()})
+        return jsonify({'success': True, 'results': out}), 200
+    except Exception as ex:
+        return jsonify({'success': False, 'error': str(ex)}), 500
+
 
 if __name__ == '__main__':
     with app.app_context():

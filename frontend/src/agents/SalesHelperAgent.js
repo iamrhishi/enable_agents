@@ -379,10 +379,11 @@ function SalesHelperAgent() {
       const sampleLeads = csvData.slice(0, 25);
       const question = `Provide concise sales pipeline insights for these leads. Focus on lead quality trends, pipeline bottlenecks, revenue opportunities, and recommendations.`;
 
+      const username = getCurrentUsername();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: username })
       });
 
       const result = await response.json();
@@ -409,10 +410,11 @@ function SalesHelperAgent() {
     try {
       setIsLoading(true);
       const sampleLeads = csvData.slice(0, 25);
+      const username = getCurrentUsername();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: username })
       });
 
       const result = await response.json();
@@ -490,13 +492,15 @@ function SalesHelperAgent() {
 
     try {
       setIsLoading(true);
+      const username = getCurrentUsername();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
           project: selectedSavedProject,
-          leads: selectedSavedProjectLeads
+          leads: selectedSavedProjectLeads,
+          user_id: username
         })
       });
 
