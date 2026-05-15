@@ -39,7 +39,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
 from urllib.parse import urlencode, urlparse
-from core.database import db as core_db
+from core.database import db, init_db
 from core.models import AgentContext
 
 # LangChain imports with fallbacks for version compatibility
@@ -139,7 +139,7 @@ if _oauth_linkedin_redirect_from_process_env:
 
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
-LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
+LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:8000/linkedin/callback')
 
 def _ensure_nltk_resource(resource_path, download_name):
     """Fetch NLTK data if missing; repair corrupt caches (e.g. partial zip → BadZipFile)."""
@@ -213,12 +213,6 @@ if _cors_raw:
     _cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
 else:
     _cors_origins = [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:3002',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001',
-        'http://127.0.0.1:3002',
         FRONTEND_URL,
     ]
 _seen_cors = set()
@@ -231,7 +225,7 @@ CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
 
 GOOGLE_CLIENT_ID = (os.getenv('GOOGLE_CLIENT_ID') or '').strip()
 GOOGLE_CLIENT_SECRET = (os.getenv('GOOGLE_CLIENT_SECRET') or '').strip()
-GOOGLE_REDIRECT_URI = (os.getenv('GOOGLE_REDIRECT_URI') or 'http://localhost:5000/auth/google/callback').strip()
+GOOGLE_REDIRECT_URI = (os.getenv('GOOGLE_REDIRECT_URI') or 'http://localhost:8000/auth/google/callback').strip()
 if os.getenv('ENVIRONMENT') != 'production':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev only
 
@@ -242,9 +236,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-core_db.init_app(app)
+init_db(app)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -613,8 +605,8 @@ def _upsert_shared_context_entry(user_id, agent_id, key, value, session_id=None)
             key=key,
             value=value,
         )
-        core_db.session.add(row)
-    core_db.session.commit()
+        db.session.add(row)
+    db.session.commit()
 
 
 def _search_shared_context_entries(user_id, query, limit=10):
@@ -8078,7 +8070,7 @@ IMPORTANT INSTRUCTIONS:
                         session_id=(str(project_id_value)[:36] if project_id_value else None),
                     )
                 except Exception:
-                    core_db.session.rollback()
+                    db.session.rollback()
         except Exception:
             pass
 
@@ -8165,7 +8157,7 @@ def api_context_save():
                 )
                 saved += 1
             except Exception:
-                core_db.session.rollback()
+                db.session.rollback()
         return jsonify({'success': True, 'saved': saved}), 200
     except Exception as ex:
         return jsonify({'success': False, 'error': str(ex)}), 500
@@ -8215,5 +8207,5 @@ def api_context_search():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        core_db.create_all()
-    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
+        db.create_all()
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=8000)
