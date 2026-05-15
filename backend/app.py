@@ -39,8 +39,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
 from urllib.parse import urlencode, urlparse
+import logging
+
 from core.database import db as core_db
-from core.models import AgentContext
+from core.context import ContextStore
 
 # LangChain imports with fallbacks for version compatibility
 try:
@@ -565,9 +567,22 @@ def _normalize_username(value):
     return candidate if candidate else 'anonymous'
 
 
-def _escape_sql_like(value):
-    text_value = (value or '')
-    return text_value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+def _require_context_api_or_401():
+    """
+    When CONTEXT_API_SECRET is set, require matching X-Context-Api-Key or
+    Authorization: Bearer ... for /api/context/* mutating and search routes.
+    """
+    secret = (os.getenv('CONTEXT_API_SECRET') or '').strip()
+    if not secret:
+        return None
+    header_key = request.headers.get('X-Context-Api-Key', '').strip()
+    auth = (request.headers.get('Authorization') or '').strip()
+    token = ''
+    if auth.lower().startswith('bearer '):
+        token = auth[7:].strip()
+    if header_key == secret or token == secret:
+        return None
+    return jsonify({'success': False, 'error': 'Invalid or missing context API credentials'}), 401
 
 
 def _shared_context_entry_key(source_agent, source_action, entry_type, payload):
@@ -584,54 +599,18 @@ def _shared_context_entry_key(source_agent, source_action, entry_type, payload):
     return hashlib.sha1(digest_source.encode('utf-8')).hexdigest()
 
 
-def _shared_context_entry_value(source_agent, source_action, entry_type, project_id, data_obj, text_value, metadata_obj):
-    return json.dumps(
-        {
-            'source_agent': source_agent,
-            'source_action': source_action,
-            'entry_type': entry_type,
-            'project_id': project_id,
-            'data': data_obj,
-            'text': text_value,
-            'entry_metadata': metadata_obj or {},
-        },
-        default=str,
-    )
-
-
-def _upsert_shared_context_entry(user_id, agent_id, key, value, session_id=None):
-    row = AgentContext.query.filter_by(user_id=user_id, agent_id=agent_id, key=key).first()
-    if row:
-        row.value = value
-        row.session_id = session_id
-        row.updated_at = datetime.utcnow()
-    else:
-        row = AgentContext(
-            user_id=user_id,
-            session_id=session_id,
-            agent_id=agent_id,
-            key=key,
-            value=value,
-        )
-        core_db.session.add(row)
-    core_db.session.commit()
-
-
-def _search_shared_context_entries(user_id, query, limit=10):
-    try:
-        limit = int(limit)
-    except (TypeError, ValueError):
-        raise ValueError('Invalid limit; must be an integer')
-
-    if limit < 1:
-        raise ValueError('Invalid limit; must be greater than 0')
-
-    limit = min(limit, 100)
-    q = AgentContext.query.filter(AgentContext.user_id == user_id)
-    if query:
-        like = f"%{_escape_sql_like(query)}%"
-        q = q.filter((AgentContext.value.ilike(like, escape='\\')) | (AgentContext.key.ilike(like, escape='\\')))
-    return q.order_by(AgentContext.updated_at.desc()).limit(limit).all()
+def _shared_context_payload_dict(
+    source_agent, source_action, entry_type, project_id, data_obj, text_value, metadata_obj
+):
+    return {
+        'source_agent': source_agent,
+        'source_action': source_action,
+        'entry_type': entry_type,
+        'project_id': project_id,
+        'data': data_obj,
+        'text': text_value,
+        'entry_metadata': metadata_obj or {},
+    }
 
 
 def _is_billable_email(value):
@@ -8053,6 +8032,7 @@ IMPORTANT INSTRUCTIONS:
 1. ALWAYS provide a helpful answer, even if some specific fields are missing.
 2. Use inference and reasoning: If exact data is unavailable, derive insights from related information.
    - Example: If "Number of Employees" is missing, infer from "Company Size", "Budget", "Industry", or "Description".
+   - Example: If "Internship Programs" isn't listed, infer from "Job Listings", "Hiring Status", or "Company Type".
 3. Mention lead names when listing specific companies.
 4. Be concise but comprehensive - provide actionable insights.
 5. If a field is completely unavailable, note it but focus on what you CAN analyze.
@@ -8060,34 +8040,52 @@ IMPORTANT INSTRUCTIONS:
 7. Do not make up details, but DO use available context to reason and infer.
 """
 
-        # Persist incoming leads into shared context so other agents can reuse them
+        # Persist incoming leads into shared context (Redis + MySQL via ContextStore)
+        user_id_for_context = data.get('user_id') or data.get('username') or 'anonymous'
+        project_id_value = (
+            str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None)
+        )
+        session_ctx = str(project_id_value)[:36] if project_id_value else None
+        ingest_entries = []
+        for lead in lead_batch:
+            if not isinstance(lead, dict):
+                continue
+            try:
+                flattened = " | ".join(
+                    [
+                        f"{k.replace('_', ' ').title()}: {v}"
+                        for k, v in lead.items()
+                        if v is not None and v != ''
+                    ]
+                )
+                entry_metadata = {'project_name': project.get('name') if project else None}
+                entry_key = _shared_context_entry_key('sales_helper', 'ingest_lead', 'lead', lead)
+                payload_dict = _shared_context_payload_dict(
+                    'sales_helper',
+                    'ingest_lead',
+                    'lead',
+                    project_id_value,
+                    lead,
+                    flattened,
+                    entry_metadata,
+                )
+                ingest_entries.append((entry_key, payload_dict, session_ctx))
+            except Exception as ing_exc:
+                logging.getLogger(__name__).warning('sales_helper context ingest row skipped: %s', ing_exc)
         try:
-            user_id_for_context = data.get('user_id') or data.get('username') or 'anonymous'
-            for lead in lead_batch:
-                try:
-                    flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in lead.items() if v is not None and v != ''])
-                    project_id_value = str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None)
-                    entry_metadata = {'project_name': project.get('name') if project else None}
-                    entry_key = _shared_context_entry_key('sales_helper', 'ingest_lead', 'lead', lead)
-                    entry_value = _shared_context_entry_value('sales_helper', 'ingest_lead', 'lead', project_id_value, lead, flattened, entry_metadata)
-                    _upsert_shared_context_entry(
-                        user_id=user_id_for_context,
-                        agent_id='sales_helper',
-                        key=entry_key,
-                        value=entry_value,
-                        session_id=(str(project_id_value)[:36] if project_id_value else None),
-                    )
-                except Exception:
-                    core_db.session.rollback()
-        except Exception:
-            pass
+            if ingest_entries:
+                ContextStore().set_many(user_id_for_context, 'sales_helper', ingest_entries)
+        except Exception as persist_exc:
+            logging.getLogger(__name__).exception('sales_helper shared context ingest failed: %s', persist_exc)
 
         if not os.getenv('OPENAI_API_KEY'):
             lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:5]])
             return jsonify({
                 'success': True,
                 'answer': f"Selected list: {project_name}. Leads loaded: {len(leads)}. I can see these example leads: {lead_names}. Ask a more specific question to analyze them further.",
-                'lead_count': len(leads)
+                'lead_count': len(lead_batch),
+                'lead_count_total': len(leads),
+                'lead_count_limited': len(leads) > len(lead_batch)
             }), 200
 
         client = openai.OpenAI()
@@ -8099,7 +8097,7 @@ IMPORTANT INSTRUCTIONS:
             user_q = data.get('user_id') or data.get('username') or None
             if user_q:
                 # simple keyword match search against stored JSON payloads/keys
-                matches = _search_shared_context_entries(user_q, question, limit=6)
+                matches = ContextStore().search(user_q, question, limit=6)
                 if matches:
                     extracted_lines = []
                     for m in matches:
@@ -8142,37 +8140,51 @@ IMPORTANT INSTRUCTIONS:
 
 @app.route('/api/context/save', methods=['POST'])
 def api_context_save():
+    auth_err = _require_context_api_or_401()
+    if auth_err is not None:
+        return auth_err
     try:
         payload = request.get_json() or {}
         user_id = payload.get('user_id') or payload.get('username') or 'anonymous'
         project_id = payload.get('project_id')
         entries = payload.get('entries') or []
-        saved = 0
+        source_agent = payload.get('source_agent') or 'unknown'
+        source_action = payload.get('source_action') or 'batch_save'
+        sid = str(project_id)[:36] if project_id is not None else None
+        batch = []
+        meta = payload.get('entry_metadata') or {}
         for e in entries:
-            try:
-                flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in e.items() if v is not None and v != ''])
-                entry_type = e.get('type') or 'data'
-                source_agent = payload.get('source_agent') or 'unknown'
-                source_action = payload.get('source_action') or 'batch_save'
-                entry_key = _shared_context_entry_key(source_agent, source_action, entry_type, e)
-                entry_value = _shared_context_entry_value(source_agent, source_action, entry_type, project_id, e, flattened, payload.get('entry_metadata') or {})
-                _upsert_shared_context_entry(
-                    user_id=user_id,
-                    agent_id=source_agent,
-                    key=entry_key,
-                    value=entry_value,
-                    session_id=(str(project_id)[:36] if project_id is not None else None),
-                )
-                saved += 1
-            except Exception:
-                core_db.session.rollback()
-        return jsonify({'success': True, 'saved': saved}), 200
+            if not isinstance(e, dict):
+                continue
+            flattened = " | ".join(
+                [
+                    f"{k.replace('_', ' ').title()}: {v}"
+                    for k, v in e.items()
+                    if v is not None and v != ''
+                ]
+            )
+            entry_type = e.get('type') or 'data'
+            entry_key = _shared_context_entry_key(source_agent, source_action, entry_type, e)
+            payload_dict = _shared_context_payload_dict(
+                source_agent, source_action, entry_type, project_id, e, flattened, meta
+            )
+            batch.append((entry_key, payload_dict, sid))
+
+        if not batch:
+            return jsonify({'success': True, 'saved': 0}), 200
+
+        ContextStore().set_many(user_id, source_agent, batch)
+        return jsonify({'success': True, 'saved': len(batch)}), 200
     except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_save failed')
         return jsonify({'success': False, 'error': str(ex)}), 500
 
 
 @app.route('/api/context/search', methods=['POST'])
 def api_context_search():
+    auth_err = _require_context_api_or_401()
+    if auth_err is not None:
+        return auth_err
     try:
         payload = request.get_json() or {}
         user_id = payload.get('user_id') or payload.get('username') or None
@@ -8188,7 +8200,10 @@ def api_context_search():
         if limit < 1:
             return jsonify({'success': False, 'error': 'Invalid limit; must be greater than 0'}), 400
 
-        results = _search_shared_context_entries(user_id, query, limit=limit)
+        try:
+            results = ContextStore().search(user_id, query, limit=limit)
+        except ValueError as ve:
+            return jsonify({'success': False, 'error': str(ve)}), 400
         out = []
         for r in results:
             try:
@@ -8209,6 +8224,7 @@ def api_context_search():
             )
         return jsonify({'success': True, 'results': out}), 200
     except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_search failed')
         return jsonify({'success': False, 'error': str(ex)}), 500
 
 

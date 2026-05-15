@@ -107,6 +107,34 @@ class TestContextStoreMySQL(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertIn("a@b.com", result)
 
+    @patch("core.context._get_redis", return_value=None)
+    def test_set_many_writes_all_keys(self, _mock_redis):
+        store = self._store()
+        store.set_many(
+            "user_batch",
+            "sales_helper",
+            [
+                ("key_a", {"text": "alpha"}, None),
+                ("key_b", {"text": "beta"}, None),
+            ],
+        )
+        self.assertEqual(store.get("user_batch", "key_a"), {"text": "alpha"})
+        self.assertEqual(store.get("user_batch", "key_b"), {"text": "beta"})
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_search_matches_value_substring(self, _mock_redis):
+        store = self._store()
+        store.set("search_u", "agent", "k1", {"text": "Contoso Robotics", "data": {}})
+        rows = store.search("search_u", "Robotics", limit=10)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].key, "k1")
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_search_limit_validation(self, _mock_redis):
+        store = self._store()
+        with self.assertRaises(ValueError):
+            store.search("u", "", limit=0)
+
 
 class TestContextStoreRedis(unittest.TestCase):
     """Tests that verify the Redis fast-path is hit when Redis is available."""

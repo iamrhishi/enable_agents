@@ -41,9 +41,24 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
+
+
+def _escape_sql_like(value: Optional[str]) -> str:
+    text_value = value or ''
+    return text_value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+def _validate_search_limit(limit: Any) -> int:
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        raise ValueError('Invalid limit; must be an integer')
+    if n < 1:
+        raise ValueError('Invalid limit; must be greater than 0')
+    return min(n, 100)
 
 CONTEXT_TTL_SECONDS = int(os.environ.get("CONTEXT_TTL_SECONDS", 7200))
 REDIS_KEY_PREFIX = "agent_ctx"
@@ -72,6 +87,36 @@ class ContextStore:
     across a module — all state lives in Redis / MySQL, not in the object.
     """
 
+    @staticmethod
+    def _mysql_upsert(
+        user_id: str,
+        agent_id: str,
+        key: str,
+        serialised: str,
+        session_id: Optional[str],
+    ) -> None:
+        from core.models import AgentContext
+        from core.database import db
+
+        row = AgentContext.query.filter_by(
+            user_id=user_id, agent_id=agent_id, key=key
+        ).first()
+        if row:
+            row.value = serialised
+            row.updated_at = datetime.utcnow()
+            if session_id is not None:
+                row.session_id = session_id
+        else:
+            db.session.add(
+                AgentContext(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    key=key,
+                    value=serialised,
+                    session_id=session_id,
+                )
+            )
+
     def set(
         self,
         user_id: str,
@@ -87,7 +132,7 @@ class ContextStore:
         value can be any JSON-serialisable object (dict, list, str, etc.).
         ttl controls the Redis expiry (seconds); the MySQL copy has no expiry.
         """
-        serialised = json.dumps(value)
+        serialised = json.dumps(value, default=str)
 
         # ── Redis write ───────────────────────────────────────────────────────
         rc = _get_redis()
@@ -99,28 +144,73 @@ class ContextStore:
 
         # ── MySQL write ───────────────────────────────────────────────────────
         try:
-            from core.models import AgentContext
             from core.database import db
 
-            row = AgentContext.query.filter_by(
-                user_id=user_id, agent_id=agent_id, key=key
-            ).first()
-            if row:
-                row.value = serialised
-                row.updated_at = datetime.utcnow()
-                if session_id:
-                    row.session_id = session_id
-            else:
-                db.session.add(AgentContext(
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    key=key,
-                    value=serialised,
-                    session_id=session_id,
-                ))
+            self._mysql_upsert(user_id, agent_id, key, serialised, session_id)
             db.session.commit()
         except Exception as exc:
+            from core.database import db
+
+            db.session.rollback()
             logger.error("MySQL write failed for %s/%s: %s", user_id, key, exc)
+
+    def set_many(
+        self,
+        user_id: str,
+        agent_id: str,
+        entries: List[Union[Tuple[str, Any], Tuple[str, Any, Optional[str]]]],
+        ttl: int = CONTEXT_TTL_SECONDS,
+    ) -> None:
+        """
+        Batch write many keys for one user + agent. One MySQL commit at the end.
+
+        Each entry is (key, value) or (key, value, session_id).
+        """
+        if not entries:
+            return
+
+        from core.database import db
+
+        rc = _get_redis()
+        try:
+            for raw in entries:
+                if len(raw) == 2:
+                    key, value = raw[0], raw[1]
+                    session_id: Optional[str] = None
+                else:
+                    key, value, session_id = raw[0], raw[1], raw[2]
+                serialised = json.dumps(value, default=str)
+                if rc:
+                    try:
+                        rc.set(_redis_key(user_id, key), serialised, ex=ttl)
+                    except Exception as exc:
+                        logger.warning(
+                            "Redis write failed for %s/%s: %s", user_id, key, exc
+                        )
+                self._mysql_upsert(user_id, agent_id, key, serialised, session_id)
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            logger.error("MySQL batch write failed for %s/%s: %s", user_id, agent_id, exc)
+            raise
+
+    def search(self, user_id: str, query: str = '', limit: int = 10):
+        """
+        Search persisted context by substring match on JSON value or key (MySQL only).
+        Returns AgentContext rows, newest first.
+        """
+        from core.models import AgentContext
+
+        limit = _validate_search_limit(limit)
+        q = AgentContext.query.filter(AgentContext.user_id == user_id)
+        qstr = (query or '').strip()
+        if qstr:
+            like = f"%{_escape_sql_like(qstr)}%"
+            q = q.filter(
+                (AgentContext.value.ilike(like, escape='\\'))
+                | (AgentContext.key.ilike(like, escape='\\'))
+            )
+        return q.order_by(AgentContext.updated_at.desc()).limit(limit).all()
 
     def get(self, user_id: str, key: str, default: Any = None) -> Any:
         """
