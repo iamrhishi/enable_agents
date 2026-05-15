@@ -39,8 +39,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
 from urllib.parse import urlencode, urlparse
-from core.database import db, init_db
-from core.models import AgentContext
+import logging
+
+from core.database import db as core_db
+from core.context import ContextStore
 
 # LangChain imports with fallbacks for version compatibility
 try:
@@ -139,7 +141,7 @@ if _oauth_linkedin_redirect_from_process_env:
 
 LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
-LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:8000/linkedin/callback')
+LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:5000/linkedin/callback')
 
 def _ensure_nltk_resource(resource_path, download_name):
     """Fetch NLTK data if missing; repair corrupt caches (e.g. partial zip → BadZipFile)."""
@@ -206,6 +208,10 @@ def _spa_redirect_base():
 
 
 app = Flask(__name__)
+_sk = (os.getenv('SECRET_KEY') or '').strip()
+if not _sk:
+    _sk = 'local-dev-insecure-enable-agents-set-SECRET_KEY-in-production'
+app.config['SECRET_KEY'] = _sk
 
 FRONTEND_URL = _default_frontend_url()
 _cors_raw = os.getenv('CORS_ORIGINS', '').strip()
@@ -225,7 +231,7 @@ CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
 
 GOOGLE_CLIENT_ID = (os.getenv('GOOGLE_CLIENT_ID') or '').strip()
 GOOGLE_CLIENT_SECRET = (os.getenv('GOOGLE_CLIENT_SECRET') or '').strip()
-GOOGLE_REDIRECT_URI = (os.getenv('GOOGLE_REDIRECT_URI') or 'http://localhost:8000/auth/google/callback').strip()
+GOOGLE_REDIRECT_URI = (os.getenv('GOOGLE_REDIRECT_URI') or 'http://localhost:5000/auth/google/callback').strip()
 if os.getenv('ENVIRONMENT') != 'production':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev only
 
@@ -236,7 +242,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-init_db(app)
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+core_db.init_app(app)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -557,9 +565,76 @@ def _normalize_username(value):
     return candidate if candidate else 'anonymous'
 
 
-def _escape_sql_like(value):
-    text_value = (value or '')
-    return text_value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+def _require_context_service_key_or_401():
+    """
+    When CONTEXT_API_SECRET is set, require matching X-Context-Api-Key.
+    Session identity must use Authorization: Bearer <browser_session_token> (signed with SECRET_KEY).
+    """
+    secret = (os.getenv('CONTEXT_API_SECRET') or '').strip()
+    if not secret:
+        return None
+    header_key = request.headers.get('X-Context-Api-Key', '').strip()
+    if header_key != secret:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid or missing X-Context-Api-Key (CONTEXT_API_SECRET is set)',
+        }), 401
+    return None
+
+
+def _production_auth_strict():
+    return os.getenv('ENVIRONMENT', '').strip().lower() == 'production'
+
+
+def _bearer_session_user_id():
+    auth = (request.headers.get('Authorization') or '').strip()
+    if not auth.lower().startswith('bearer '):
+        return None
+    raw = auth[7:].strip()
+    if not raw:
+        return None
+    from core.session_token import verify_browser_session_token
+
+    return verify_browser_session_token(app.config.get('SECRET_KEY') or '', raw)
+
+
+def _resolve_session_user_id(fallback_claimed=None):
+    """
+    Prefer Authorization: Bearer <signed session_token> from login/Google/register.
+    In production without a valid bearer → 401.
+    In development/test, falls back to client-supplied user id (legacy).
+    """
+    uid = _bearer_session_user_id()
+    if uid:
+        return uid, None
+    if _production_auth_strict():
+        return None, (
+            jsonify({
+                'success': False,
+                'error': 'Missing or invalid session. Sign in and send Authorization: Bearer <session_token>.',
+            }),
+            401,
+        )
+    return _normalize_username(fallback_claimed), None
+
+
+def _effective_context_api_user_id(payload_dict):
+    """Bearer always wins; with CONTEXT_API_SECRET, bearer is mandatory (ignore body principal)."""
+    uid = _bearer_session_user_id()
+    if uid:
+        return uid, None
+    if (os.getenv('CONTEXT_API_SECRET') or '').strip():
+        return None, (
+            jsonify({
+                'success': False,
+                'error': 'Bearer session token required when CONTEXT_API_SECRET is set',
+            }),
+            401,
+        )
+    claimed = (
+        (payload_dict or {}).get('user_id') or (payload_dict or {}).get('username')
+    )
+    return _resolve_session_user_id(claimed)
 
 
 def _shared_context_entry_key(source_agent, source_action, entry_type, payload):
@@ -576,54 +651,18 @@ def _shared_context_entry_key(source_agent, source_action, entry_type, payload):
     return hashlib.sha1(digest_source.encode('utf-8')).hexdigest()
 
 
-def _shared_context_entry_value(source_agent, source_action, entry_type, project_id, data_obj, text_value, metadata_obj):
-    return json.dumps(
-        {
-            'source_agent': source_agent,
-            'source_action': source_action,
-            'entry_type': entry_type,
-            'project_id': project_id,
-            'data': data_obj,
-            'text': text_value,
-            'entry_metadata': metadata_obj or {},
-        },
-        default=str,
-    )
-
-
-def _upsert_shared_context_entry(user_id, agent_id, key, value, session_id=None):
-    row = AgentContext.query.filter_by(user_id=user_id, agent_id=agent_id, key=key).first()
-    if row:
-        row.value = value
-        row.session_id = session_id
-        row.updated_at = datetime.utcnow()
-    else:
-        row = AgentContext(
-            user_id=user_id,
-            session_id=session_id,
-            agent_id=agent_id,
-            key=key,
-            value=value,
-        )
-        db.session.add(row)
-    db.session.commit()
-
-
-def _search_shared_context_entries(user_id, query, limit=10):
-    try:
-        limit = int(limit)
-    except (TypeError, ValueError):
-        raise ValueError('Invalid limit; must be an integer')
-
-    if limit < 1:
-        raise ValueError('Invalid limit; must be greater than 0')
-
-    limit = min(limit, 100)
-    q = AgentContext.query.filter(AgentContext.user_id == user_id)
-    if query:
-        like = f"%{_escape_sql_like(query)}%"
-        q = q.filter((AgentContext.value.ilike(like, escape='\\')) | (AgentContext.key.ilike(like, escape='\\')))
-    return q.order_by(AgentContext.updated_at.desc()).limit(limit).all()
+def _shared_context_payload_dict(
+    source_agent, source_action, entry_type, project_id, data_obj, text_value, metadata_obj
+):
+    return {
+        'source_agent': source_agent,
+        'source_action': source_action,
+        'entry_type': entry_type,
+        'project_id': project_id,
+        'data': data_obj,
+        'text': text_value,
+        'entry_metadata': metadata_obj or {},
+    }
 
 
 def _is_billable_email(value):
@@ -4585,7 +4624,15 @@ def register():
         )
         db.session.add(user)
         db.session.commit()
-        return jsonify({'message': 'User registered successfully'}), 201
+        from core.session_token import issue_browser_session_token
+
+        token = issue_browser_session_token(app.config['SECRET_KEY'], username)
+        return jsonify({
+            'message': 'User registered successfully',
+            'session_token': token,
+            'email': email,
+            'username': username,
+        }), 201
     except Exception as e:
         print("Registration error:", e)  # Add this line
         return jsonify({'error': str(e)}), 500
@@ -4602,7 +4649,15 @@ def login():
     user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password, password):
         # Login via email, but still return the username for frontend session storage if needed
-        return jsonify({'message': 'Login successful', 'username': user.username, 'email': user.email}), 200
+        from core.session_token import issue_browser_session_token
+
+        token = issue_browser_session_token(app.config['SECRET_KEY'], user.username)
+        return jsonify({
+            'message': 'Login successful',
+            'username': user.username,
+            'email': user.email,
+            'session_token': token,
+        }), 200
     else:
         return jsonify({'error': 'Invalid email or password'}), 401
 
@@ -6293,10 +6348,17 @@ def google_auth_callback():
             token_record.scopes = scopes_received
             db.session.commit()
             
-            # Redirecting to login page with params to automatically log in the user on the frontend
-            return redirect(
-                f"{_spa_redirect_base()}/login?google_auth=success&email={email}"
+            from core.session_token import issue_browser_session_token
+
+            session_tok = issue_browser_session_token(app.config['SECRET_KEY'], email)
+            qs = urlencode(
+                {
+                    'google_auth': 'success',
+                    'email': email,
+                    'session_token': session_tok,
+                }
             )
+            return redirect(f"{_spa_redirect_base()}/login?{qs}")
 
         # Exchange code for refresh token for Google Business
 
@@ -7529,13 +7591,17 @@ def save_project():
         return jsonify({}), 200
     try:
         data = request.json
-        username = data.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(data.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+        username = trusted_uid
+
         name = data.get('name')
         query_used = data.get('query') or data.get('query_used', '')
         leads = data.get('businesses') or data.get('leads') or []
         
-        if not username or not name:
-            return jsonify({'success': False, 'error': 'Missing username or name'}), 400
+        if not username or username == 'anonymous' or not name:
+            return jsonify({'success': False, 'error': 'Missing authenticated user or name'}), 400
             
         # Create Project
         project = SavedProject(username=username, name=name, query_used=query_used)
@@ -7832,12 +7898,15 @@ def append_project():
         return jsonify({}), 200
     try:
         data = request.json
-        username = data.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(data.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+        username = trusted_uid
         project_id = data.get('projectId')
         leads = data.get('businesses') or data.get('leads') or []
         
-        if not username or not project_id:
-            return jsonify({'success': False, 'error': 'Missing username or projectId'}), 400
+        if not username or username == 'anonymous' or not project_id:
+            return jsonify({'success': False, 'error': 'Missing authenticated user or projectId'}), 400
             
         # verify
         project = db.session.get(SavedProject, project_id)
@@ -7898,11 +7967,12 @@ def append_project():
 @cross_origin()
 def get_saved_projects():
     try:
-        username = request.args.get('username')
-        if not username:
-             return jsonify({'success': False, 'error': 'Missing username'}), 400
-             
-        projects = db.session.query(SavedProject).filter_by(username=username).order_by(SavedProject.created_at.desc()).all()
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        projects = db.session.query(SavedProject).filter_by(username=trusted_uid).order_by(SavedProject.created_at.desc()).all()
         result = []
         for p in projects:
             lead_count = db.session.query(SavedLead).filter_by(project_id=p.id).count()
@@ -7924,10 +7994,14 @@ def get_saved_projects():
 @cross_origin()
 def get_project_leads(project_id):
     try:
-        username = request.args.get('username')
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         project = db.session.get(SavedProject, project_id)
-        
-        if not project or (username and project.username != username):
+
+        if not project or project.username != trusted_uid:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
             
         leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
@@ -7970,12 +8044,13 @@ def delete_saved_project(project_id):
     if request.method == 'OPTIONS':
         return jsonify({}), 200
     try:
-        username = request.args.get('username')
-        if not username:
-             return jsonify({'success': False, 'error': 'Missing username'}), 400
-             
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         project = db.session.get(SavedProject, project_id)
-        if not project or project.username != username:
+        if not project or project.username != trusted_uid:
             return jsonify({'success': False, 'error': 'Project not found or unauthorized'}), 404
             
         db.session.delete(project)
@@ -7996,13 +8071,20 @@ def sales_helper_chat():
         leads = data.get('leads') or []
         project = data.get('project') or {}
 
+        trusted_uid, uid_err = _resolve_session_user_id(
+            data.get('user_id') or data.get('username')
+        )
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         if not question:
             return jsonify({'success': False, 'error': 'Missing question'}), 400
 
         if not leads:
             return jsonify({'success': False, 'error': 'No leads provided'}), 400
 
-        # Dynamically detect available fields across all leads
+        # Limit to first 50 leads for AI model context window management
+        # Keeps API tokens reasonable and ensures fast response times
         lead_batch = leads[:50]
 
         available_fields = set()
@@ -8052,34 +8134,53 @@ IMPORTANT INSTRUCTIONS:
 7. Do not make up details, but DO use available context to reason and infer.
 """
 
-        # Persist incoming leads into shared context so other agents can reuse them
+        # Persist incoming leads into shared context (Redis + MySQL via ContextStore)
+        user_id_for_context = trusted_uid
+        project_id_value = (
+            str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None)
+        )
+        session_ctx = str(project_id_value)[:36] if project_id_value else None
+        ingest_entries = []
+        for lead in lead_batch:
+            if not isinstance(lead, dict):
+                continue
+            try:
+                flattened = " | ".join(
+                    [
+                        f"{k.replace('_', ' ').title()}: {v}"
+                        for k, v in lead.items()
+                        if v is not None and v != ''
+                    ]
+                )
+                entry_metadata = {'project_name': project.get('name') if project else None}
+                entry_key = _shared_context_entry_key('sales_helper', 'ingest_lead', 'lead', lead)
+                payload_dict = _shared_context_payload_dict(
+                    'sales_helper',
+                    'ingest_lead',
+                    'lead',
+                    project_id_value,
+                    lead,
+                    flattened,
+                    entry_metadata,
+                )
+                ingest_entries.append((entry_key, payload_dict, session_ctx))
+            except Exception as ing_exc:
+                logging.getLogger(__name__).warning('sales_helper context ingest row skipped: %s', ing_exc)
         try:
-            user_id_for_context = data.get('user_id') or data.get('username') or 'anonymous'
-            for lead in lead_batch:
-                try:
-                    flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in lead.items() if v is not None and v != ''])
-                    project_id_value = str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None)
-                    entry_metadata = {'project_name': project.get('name') if project else None}
-                    entry_key = _shared_context_entry_key('sales_helper', 'ingest_lead', 'lead', lead)
-                    entry_value = _shared_context_entry_value('sales_helper', 'ingest_lead', 'lead', project_id_value, lead, flattened, entry_metadata)
-                    _upsert_shared_context_entry(
-                        user_id=user_id_for_context,
-                        agent_id='sales_helper',
-                        key=entry_key,
-                        value=entry_value,
-                        session_id=(str(project_id_value)[:36] if project_id_value else None),
-                    )
-                except Exception:
-                    db.session.rollback()
-        except Exception:
-            pass
+            if ingest_entries:
+                ContextStore().set_many(user_id_for_context, 'sales_helper', ingest_entries)
+        except Exception as persist_exc:
+            logging.getLogger(__name__).exception('sales_helper shared context ingest failed: %s', persist_exc)
 
         if not os.getenv('OPENAI_API_KEY'):
-            lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:5]])
+            # Show first 10 lead names as preview in response
+            lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:10]])
             return jsonify({
                 'success': True,
                 'answer': f"Selected list: {project_name}. Leads loaded: {len(leads)}. I can see these example leads: {lead_names}. Ask a more specific question to analyze them further.",
-                'lead_count': len(leads)
+                'lead_count': len(lead_batch),
+                'lead_count_total': len(leads),
+                'lead_count_limited': len(leads) > len(lead_batch)
             }), 200
 
         client = openai.OpenAI()
@@ -8088,10 +8189,10 @@ IMPORTANT INSTRUCTIONS:
         # Before calling LLM, attempt to surface additional saved context entries for this user
         extra_context_text = ""
         try:
-            user_q = data.get('user_id') or data.get('username') or None
+            user_q = trusted_uid
             if user_q:
                 # simple keyword match search against stored JSON payloads/keys
-                matches = _search_shared_context_entries(user_q, question, limit=6)
+                matches = ContextStore().search(user_q, question, limit=6)
                 if matches:
                     extracted_lines = []
                     for m in matches:
@@ -8134,43 +8235,63 @@ IMPORTANT INSTRUCTIONS:
 
 @app.route('/api/context/save', methods=['POST'])
 def api_context_save():
+    sk_err = _require_context_service_key_or_401()
+    if sk_err is not None:
+        return sk_err
     try:
         payload = request.get_json() or {}
-        user_id = payload.get('user_id') or payload.get('username') or 'anonymous'
+        user_id, uid_err = _effective_context_api_user_id(payload)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         project_id = payload.get('project_id')
         entries = payload.get('entries') or []
-        saved = 0
+        source_agent = payload.get('source_agent') or 'unknown'
+        source_action = payload.get('source_action') or 'batch_save'
+        sid = str(project_id)[:36] if project_id is not None else None
+        batch = []
+        meta = payload.get('entry_metadata') or {}
         for e in entries:
-            try:
-                flattened = " | ".join([f"{k.replace('_',' ').title()}: {v}" for k, v in e.items() if v is not None and v != ''])
-                entry_type = e.get('type') or 'data'
-                source_agent = payload.get('source_agent') or 'unknown'
-                source_action = payload.get('source_action') or 'batch_save'
-                entry_key = _shared_context_entry_key(source_agent, source_action, entry_type, e)
-                entry_value = _shared_context_entry_value(source_agent, source_action, entry_type, project_id, e, flattened, payload.get('entry_metadata') or {})
-                _upsert_shared_context_entry(
-                    user_id=user_id,
-                    agent_id=source_agent,
-                    key=entry_key,
-                    value=entry_value,
-                    session_id=(str(project_id)[:36] if project_id is not None else None),
-                )
-                saved += 1
-            except Exception:
-                db.session.rollback()
-        return jsonify({'success': True, 'saved': saved}), 200
+            if not isinstance(e, dict):
+                continue
+            flattened = " | ".join(
+                [
+                    f"{k.replace('_', ' ').title()}: {v}"
+                    for k, v in e.items()
+                    if v is not None and v != ''
+                ]
+            )
+            entry_type = e.get('type') or 'data'
+            entry_key = _shared_context_entry_key(source_agent, source_action, entry_type, e)
+            payload_dict = _shared_context_payload_dict(
+                source_agent, source_action, entry_type, project_id, e, flattened, meta
+            )
+            batch.append((entry_key, payload_dict, sid))
+
+        if not batch:
+            return jsonify({'success': True, 'saved': 0}), 200
+
+        ContextStore().set_many(user_id, source_agent, batch)
+        return jsonify({'success': True, 'saved': len(batch)}), 200
     except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_save failed')
         return jsonify({'success': False, 'error': str(ex)}), 500
 
 
 @app.route('/api/context/search', methods=['POST'])
 def api_context_search():
+    sk_err = _require_context_service_key_or_401()
+    if sk_err is not None:
+        return sk_err
     try:
         payload = request.get_json() or {}
-        user_id = payload.get('user_id') or payload.get('username') or None
+        user_id, uid_err = _effective_context_api_user_id(payload)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         query = (payload.get('query') or '').strip()
         if not user_id:
-            return jsonify({'success': False, 'error': 'Missing user_id'}), 400
+            return jsonify({'success': False, 'error': 'Missing user identity'}), 400
 
         raw_limit = payload.get('limit')
         try:
@@ -8180,7 +8301,10 @@ def api_context_search():
         if limit < 1:
             return jsonify({'success': False, 'error': 'Invalid limit; must be greater than 0'}), 400
 
-        results = _search_shared_context_entries(user_id, query, limit=limit)
+        try:
+            results = ContextStore().search(user_id, query, limit=limit)
+        except ValueError as ve:
+            return jsonify({'success': False, 'error': str(ve)}), 400
         out = []
         for r in results:
             try:
@@ -8201,11 +8325,12 @@ def api_context_search():
             )
         return jsonify({'success': True, 'results': out}), 200
     except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_search failed')
         return jsonify({'success': False, 'error': str(ex)}), 500
 
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        db.create_all()
-    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=8000)
+        core_db.create_all()
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

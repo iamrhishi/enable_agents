@@ -27,6 +27,9 @@ function Header({ onProcessClick }) {
 
   const handleSignOutClick = () => {
     localStorage.removeItem('firstName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('username');
+    localStorage.removeItem('sessionToken');
     sessionStorage.clear();
     setShowUserDropdown(false);
     navigate('/login');

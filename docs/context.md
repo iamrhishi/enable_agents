@@ -57,7 +57,7 @@ Agents communicate through a two-tier shared store (`backend/core/context.py`), 
 
 | Tier | Backend | Lifetime | Use |
 |---|---|---|---|
-| Fast | Redis | TTL (default 2h, env `CONTEXT_TTL_SECONDS`) | Session state, in-flight results |
+| Fast | Redis | TTL (default 2h, env `CONTEXT_TTL_SECONDS`) | Per-key cache: `agent_ctx:{user}:{agent}:{key}` |
 | Persistent | MySQL `agent_context` table | Forever | Company profiles, user prefs, research results |
 
 Usage in agent service code:
@@ -67,10 +67,14 @@ from core.context import ContextStore
 
 ctx = ContextStore()
 ctx.set(user_id, agent_id="market_research", key="company_profile", value={...})
-profile = ctx.get(user_id, "company_profile")   # Redis-first, MySQL fallback
-snapshot = ctx.snapshot(user_id)                # all keys for this user
-ctx.clear(user_id)                              # logout / full reset
+profile = ctx.get(user_id, agent_id="market_research", key="company_profile")  # Redis-first, MySQL fallback
+snapshot = ctx.snapshot(user_id)   # nested: agent_id -> logical key -> value
+ctx.clear(user_id)                 # logout / full reset (DB + Redis keys for user)
 ```
+
+**API authentication:** `/login`, `/register`, and Google OAuth return `session_token`. The SPA stores it and sends `Authorization: Bearer <session_token>` on secured routes. In `ENVIRONMENT=production`, APIs that resolve a trusted user reject requests without a valid bearer token.
+
+**`/api/context/*` when `CONTEXT_API_SECRET` is set:** send `X-Context-Api-Key` matching the secret and `Authorization: Bearer <session_token>`; JSON `user_id` is ignored for scoping.
 
 Each agent's `manifest.json` declares its data contract:
 

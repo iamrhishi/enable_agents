@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable';
 import Header from '../core/Header';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 
 function RequirementsGathering() {
   const [overview, setOverview] = useState('');
@@ -703,7 +704,7 @@ function RequirementsGathering() {
 
         const response = await fetch(API_CONFIG.APPEND_PROJECT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             username: getCurrentUsername(),
             projectId: selectedAppendProjectId,
@@ -733,7 +734,7 @@ function RequirementsGathering() {
 
         const response = await fetch(API_CONFIG.SAVE_PROJECT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             username: getCurrentUsername(),
             name: saveListName,
@@ -860,7 +861,8 @@ function RequirementsGathering() {
     setDeletingListId(projectId);
     try {
       const response = await fetch(`${API_CONFIG.DELETE_SAVED_PROJECT}/${projectId}?username=${encodeURIComponent(getCurrentUsername())}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: authOptionalHeaders(),
       });
 
       const data = await response.json();
@@ -886,7 +888,9 @@ function RequirementsGathering() {
      setIsLoadingSavedLists(true);
      try {
        const userIdentifier = getCurrentUsername();
-       const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`);
+       const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`, {
+        headers: authOptionalHeaders(),
+       });
        const data = await res.json();
        console.log('Fetched saved lists response:', data);
        if (data.success) {
@@ -911,7 +915,9 @@ function RequirementsGathering() {
   const loadSavedListDetails = async (projectId) => {
      try {
         const userIdentifier = getCurrentUsername();
-        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
+        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`, {
+          headers: authOptionalHeaders(),
+        });
         const data = await res.json();
         if (data.success) {
            const leads = data.leads.map(l => ({
