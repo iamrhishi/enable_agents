@@ -25,6 +25,23 @@ def create_project():
     )
     db.session.add(project)
     db.session.commit()
+    try:
+        from core.context import ContextStore
+
+        ContextStore().set(
+            data["user_id"],
+            "market_research",
+            f"project:{project.project_id}",
+            {
+                "project_id": project.project_id,
+                "company_name": project.company_name,
+                "industry": project.industry,
+                "status": project.status,
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+    except Exception:
+        pass
     return jsonify({"success": True, "project_id": project.project_id}), 201
 
 

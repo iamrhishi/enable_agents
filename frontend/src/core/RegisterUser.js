@@ -56,8 +56,13 @@ function RegisterUser() {
       });
       const data = await response.json();
       if (response.ok) {
-        showToast('Account created! Please sign in.', 'success');
-        navigate('/login');
+        if (data.session_token) {
+          localStorage.setItem('sessionToken', data.session_token);
+        }
+        localStorage.setItem('userEmail', email.trim());
+        localStorage.setItem('firstName', firstName || email.trim().split('@')[0] || 'User');
+        showToast('Account created. You are signed in.', 'success');
+        navigate('/agents');
       } else {
         showToast(data.error || 'Registration failed. Please try again.', 'error');
       }

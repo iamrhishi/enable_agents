@@ -7,7 +7,7 @@ Two-tier storage, abstracted behind a single API:
 
   Redis (ephemeral)            MySQL AgentContext table (persistent)
   ─────────────────            ────────────────────────────────────
-  Keyed by user_id + key       Keyed by user_id + agent_id + key
+  Keyed by user+agent+key      Keyed by user_id + agent_id + key
   TTL: CONTEXT_TTL_SECONDS     Survives restarts / Redis flushes
   (default 7200 = 2 hours)     Queryable, auditable, exportable
 
@@ -26,9 +26,9 @@ Usage in agent service.py
             value={"industry": "SaaS", "name": "Acme"})
 
     # Read (Redis first, falls back to MySQL)
-    profile = ctx.get(user_id="u1", key="company_profile")
+    profile = ctx.get(user_id="u1", agent_id="market_research", key="company_profile")
 
-    # Read everything available for a user
+    # Read everything available for a user (nested: agent_id -> key -> value)
     snapshot = ctx.snapshot(user_id="u1")
 
     # Delete a key
@@ -64,8 +64,14 @@ CONTEXT_TTL_SECONDS = int(os.environ.get("CONTEXT_TTL_SECONDS", 7200))
 REDIS_KEY_PREFIX = "agent_ctx"
 
 
-def _redis_key(user_id: str, key: str) -> str:
-    return f"{REDIS_KEY_PREFIX}:{user_id}:{key}"
+def _redis_key(user_id: str, agent_id: str, key: str) -> str:
+    """Redis cache key aligned with MySQL unique (user_id, agent_id, key)."""
+    return f"{REDIS_KEY_PREFIX}:{user_id}:{agent_id}:{key}"
+
+
+def _redis_pattern_for_user(user_id: str) -> str:
+    """Match all cached context rows for a user (any agent, any logical key)."""
+    return f"{REDIS_KEY_PREFIX}:{user_id}:*"
 
 
 def _get_redis():
@@ -138,7 +144,7 @@ class ContextStore:
         rc = _get_redis()
         if rc:
             try:
-                rc.set(_redis_key(user_id, key), serialised, ex=ttl)
+                rc.set(_redis_key(user_id, agent_id, key), serialised, ex=ttl)
             except Exception as exc:
                 logger.warning("Redis write failed for %s/%s: %s", user_id, key, exc)
 
@@ -182,7 +188,7 @@ class ContextStore:
                 serialised = json.dumps(value, default=str)
                 if rc:
                     try:
-                        rc.set(_redis_key(user_id, key), serialised, ex=ttl)
+                        rc.set(_redis_key(user_id, agent_id, key), serialised, ex=ttl)
                     except Exception as exc:
                         logger.warning(
                             "Redis write failed for %s/%s: %s", user_id, key, exc
@@ -212,9 +218,9 @@ class ContextStore:
             )
         return q.order_by(AgentContext.updated_at.desc()).limit(limit).all()
 
-    def get(self, user_id: str, key: str, default: Any = None) -> Any:
+    def get(self, user_id: str, agent_id: str, key: str, default: Any = None) -> Any:
         """
-        Read a value by user_id + key.
+        Read a value by user_id + agent_id + key (matches persistent row identity).
 
         Tries Redis first (fast); falls back to MySQL if Redis misses or is
         unavailable.  Returns default if the key doesn't exist anywhere.
@@ -223,46 +229,61 @@ class ContextStore:
         rc = _get_redis()
         if rc:
             try:
-                raw = rc.get(_redis_key(user_id, key))
+                raw = rc.get(_redis_key(user_id, agent_id, key))
                 if raw is not None:
                     return json.loads(raw)
             except Exception as exc:
-                logger.warning("Redis read failed for %s/%s: %s", user_id, key, exc)
+                logger.warning("Redis read failed for %s/%s/%s: %s", user_id, agent_id, key, exc)
 
         # ── MySQL fallback ────────────────────────────────────────────────────
         try:
             from core.models import AgentContext
 
-            row = (
-                AgentContext.query
-                .filter_by(user_id=user_id, key=key)
-                .order_by(AgentContext.updated_at.desc())
-                .first()
-            )
+            row = AgentContext.query.filter_by(
+                user_id=user_id, agent_id=agent_id, key=key
+            ).first()
             if row:
                 value = json.loads(row.value)
                 # Warm Redis cache back up
                 if rc:
                     try:
-                        rc.set(_redis_key(user_id, key), row.value, ex=CONTEXT_TTL_SECONDS)
+                        rc.set(
+                            _redis_key(user_id, agent_id, key),
+                            row.value,
+                            ex=CONTEXT_TTL_SECONDS,
+                        )
                     except Exception:
                         pass
                 return value
         except Exception as exc:
-            logger.error("MySQL read failed for %s/%s: %s", user_id, key, exc)
+            logger.error(
+                "MySQL read failed for %s/%s/%s: %s", user_id, agent_id, key, exc
+            )
 
         return default
 
-    def snapshot(self, user_id: str) -> Dict[str, Any]:
-        """Return all context keys currently stored for a user (from MySQL)."""
+    def snapshot(self, user_id: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Return all context for a user from MySQL.
+
+        Structure: ``{ agent_id: { logical_key: value, ... }, ... }``.
+        When the same agent+key appears more than once (should not happen),
+        the newest ``updated_at`` wins.
+        """
         try:
             from core.models import AgentContext
 
-            rows = AgentContext.query.filter_by(user_id=user_id).all()
-            result: Dict[str, Any] = {}
+            rows = (
+                AgentContext.query.filter_by(user_id=user_id)
+                .order_by(AgentContext.updated_at.desc())
+                .all()
+            )
+            result: Dict[str, Dict[str, Any]] = {}
             for row in rows:
-                if row.key not in result:  # keep latest (ordered by updated_at desc below)
-                    result[row.key] = json.loads(row.value)
+                agent_bucket = result.setdefault(row.agent_id, {})
+                if row.key in agent_bucket:
+                    continue
+                agent_bucket[row.key] = json.loads(row.value)
             return result
         except Exception as exc:
             logger.error("Snapshot failed for %s: %s", user_id, exc)
@@ -273,7 +294,7 @@ class ContextStore:
         rc = _get_redis()
         if rc:
             try:
-                rc.delete(_redis_key(user_id, key))
+                rc.delete(_redis_key(user_id, agent_id, key))
             except Exception:
                 pass
 
@@ -293,7 +314,7 @@ class ContextStore:
         rc = _get_redis()
         if rc:
             try:
-                pattern = _redis_key(user_id, "*")
+                pattern = _redis_pattern_for_user(user_id)
                 keys = rc.keys(pattern)
                 if keys:
                     rc.delete(*keys)

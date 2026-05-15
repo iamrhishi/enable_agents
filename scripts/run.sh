@@ -23,7 +23,7 @@ PORT_REDIS_UI=8081
 usage() {
   cat <<'EOF'
 Usage:
-  ./run.sh dev                    # Docker: mysql + redis + backend (hot-reload) + frontend (npm dev)
+  ./run.sh dev                    # Docker: mysql + redis + backend + frontend npm dev — flushes Redis DB 0 after stack is up (fresh broker/context cache)
   ./run.sh prod                   # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
   ./run.sh remote                 # Docker: production + nginx (HTTPS if Let's Encrypt certs already exist)
   ./run.sh remote-rebuild         # Down all profiles, prune builder + unused images, then same as ./run.sh remote (volumes kept)
@@ -40,7 +40,7 @@ Remote Deployment (GCP/AWS):
   2. Run: ./run.sh remote
   3. HTTPS: First time or missing cert → ./run.sh remote-ssl (DOMAIN + ADMIN_EMAIL). Otherwise ./run.sh remote
      already enables HTTPS when certs are in the certbot Docker volume.
-  4. Nuclear refresh (images/networks; DB volumes kept) → ./run.sh remote-rebuild (still ends with remote, not remote-ssl)
+  4. Nuclear refresh (images/networks; DB volumes kept) → ./run.sh remote-rebuild — runs remote, then flushes Redis DB 0 (drops stale agent context keys; clears in-queue Celery work on that Redis DB)
   On Linux, ./run.sh remote (and remote-ssl) stops host nginx/apache/httpd if they hold :80/:443
   so the Compose nginx container can bind. Opt out only on the command line:
   SKIP_STOP_HOST_HTTP=1 ./scripts/run.sh remote
@@ -146,6 +146,18 @@ compose_down_clean() {
   $COMPOSE --profile dev --profile prod --profile remote down --remove-orphans 2>/dev/null || true
   remove_stale_enable_agents_containers
   sleep 2
+}
+
+# Flush Redis logical DB 0 — removes ContextStore agent_ctx:* keys AND Celery broker payloads using that DB.
+compose_flush_redis_db() {
+  echo "Flushing Redis DB 0 (agent context cache + anything else on DB 0, e.g. Celery broker)..."
+  if ! docker info >/dev/null 2>&1; then
+    echo "Docker not available — skip Redis flush."
+    return 0
+  fi
+  if ! $COMPOSE exec -T redis redis-cli FLUSHDB 2>/dev/null; then
+    echo "Redis flush skipped (is the stack up? service name: redis)." >&2
+  fi
 }
 
 # Free one TCP port: lsof (macOS/Linux), else fuser (Linux psmisc), else skip.
@@ -547,6 +559,8 @@ case "${1:-}" in
     echo "  Flower (tasks): http://localhost:${PORT_FLOWER}"
     echo "  Redis UI:       http://localhost:${PORT_REDIS_UI}"
     echo "  MySQL:          localhost:${PORT_MYSQL}"
+    compose_flush_redis_db
+    echo "  (Redis DB 0 flushed after dev startup — stale ContextStore keys cleared; Celery queue on DB 0 reset.)"
     ;;
   prod)
     check_env_docker
@@ -599,7 +613,10 @@ case "${1:-}" in
     echo "=== 4/4 Full remote deploy (rebuild images) ==="
     echo "Chaining to './run.sh remote' (HTTPS auto if certs exist in the certbot volume)."
     echo "If you need Let's Encrypt issuance instead, run: ./run.sh remote-ssl"
-    exec "$SCRIPT_DIR/run.sh" remote
+    if ! "$SCRIPT_DIR/run.sh" remote; then
+      exit $?
+    fi
+    compose_flush_redis_db
     ;;
   remote)
     check_env_docker

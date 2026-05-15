@@ -23,15 +23,21 @@ function Login() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    if (searchParams.get('google_auth') === 'success') {
-      const googleEmail = searchParams.get('email');
-      localStorage.setItem('userEmail', googleEmail);
-      localStorage.setItem('firstName', googleEmail.split('@')[0]);
-      navigate('/agents');
-    }
     const oauthError = searchParams.get('error');
     if (oauthError) {
       showToast(`Google sign-in failed: ${oauthError}`, 'error');
+    }
+    if (searchParams.get('google_auth') === 'success') {
+      const googleEmail = searchParams.get('email');
+      const sess = searchParams.get('session_token');
+      if (googleEmail) {
+        localStorage.setItem('userEmail', googleEmail);
+        localStorage.setItem('firstName', googleEmail.split('@')[0]);
+      }
+      if (sess) {
+        localStorage.setItem('sessionToken', sess);
+      }
+      navigate('/agents');
     }
   }, [location, navigate]);
 
@@ -59,6 +65,9 @@ function Login() {
       });
       const data = await response.json();
       if (response.ok) {
+        if (data.session_token) {
+          localStorage.setItem('sessionToken', data.session_token);
+        }
         localStorage.setItem('firstName', data.username || data.first_name || 'User');
         localStorage.setItem('userEmail', email);
         navigate('/agents');

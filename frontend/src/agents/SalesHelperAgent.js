@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
 import '../styles/SalesHelperAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 
@@ -382,7 +383,7 @@ function SalesHelperAgent() {
       const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: userId })
       });
 
@@ -413,7 +414,7 @@ function SalesHelperAgent() {
       const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: userId })
       });
 
@@ -435,7 +436,9 @@ function SalesHelperAgent() {
     try {
       setIsLoadingSavedProjects(true);
       const userId = getCurrentUserIdentifier();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userId)}`);
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
       const result = await response.json();
 
       if (result.success && Array.isArray(result.projects)) {
@@ -460,7 +463,9 @@ function SalesHelperAgent() {
     try {
       setIsLoadingSavedProjectLeads(true);
       const userId = getCurrentUserIdentifier();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userId)}`);
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
       const result = await response.json();
 
       if (result.success) {
@@ -495,7 +500,7 @@ function SalesHelperAgent() {
       const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           question,
           project: selectedSavedProject,
