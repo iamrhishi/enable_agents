@@ -27,14 +27,14 @@ function SalesHelperAgent() {
   const csvFileRef = useRef(null);
   const cvFileRef = useRef(null);
   const [existingFiles, setExistingFiles] = useState(new Map());
-  const [currentUserId] = useState('user_001');
+  const [defaultUserId] = useState('user_001');
   const [userFavorites, setUserFavorites] = useState([]);
 
-  const getCurrentUsername = () =>
+  const getCurrentUserIdentifier = () =>
     localStorage.getItem('userEmail') ||
     localStorage.getItem('username') ||
     localStorage.getItem('firstName') ||
-    currentUserId ||
+    defaultUserId ||
     'anonymous';
 
   useEffect(() => {
@@ -379,11 +379,11 @@ function SalesHelperAgent() {
       const sampleLeads = csvData.slice(0, 25);
       const question = `Provide concise sales pipeline insights for these leads. Focus on lead quality trends, pipeline bottlenecks, revenue opportunities, and recommendations.`;
 
-      const username = getCurrentUsername();
+      const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: username })
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: userId })
       });
 
       const result = await response.json();
@@ -410,11 +410,11 @@ function SalesHelperAgent() {
     try {
       setIsLoading(true);
       const sampleLeads = csvData.slice(0, 25);
-      const username = getCurrentUsername();
+      const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: username })
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: userId })
       });
 
       const result = await response.json();
@@ -434,8 +434,8 @@ function SalesHelperAgent() {
   const fetchSavedProjects = async () => {
     try {
       setIsLoadingSavedProjects(true);
-      const username = getCurrentUsername();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(username)}`);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userId)}`);
       const result = await response.json();
 
       if (result.success && Array.isArray(result.projects)) {
@@ -459,8 +459,8 @@ function SalesHelperAgent() {
 
     try {
       setIsLoadingSavedProjectLeads(true);
-      const username = getCurrentUsername();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(username)}`);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userId)}`);
       const result = await response.json();
 
       if (result.success) {
@@ -492,7 +492,7 @@ function SalesHelperAgent() {
 
     try {
       setIsLoading(true);
-      const username = getCurrentUsername();
+      const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -500,7 +500,7 @@ function SalesHelperAgent() {
           question,
           project: selectedSavedProject,
           leads: selectedSavedProjectLeads,
-          user_id: username
+          user_id: userId
         })
       });
 

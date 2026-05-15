@@ -34,7 +34,7 @@ cp .env.docker.example .env.docker   # fill in API keys
 | Redis UI | http://localhost:8081 |
 | MySQL | localhost:3306 |
 
-**API URL for the React app:** Docker dev serves the API on **port 8000**. If you run `npm start` on the host (not in the frontend container), `frontend/src/config/apiConfig.js` defaults to `http://localhost:8000`. For non-Docker `./scripts/run.sh local`, `frontend/.env` is set to **port 5000** to match `start.sh`. Override anytime with `REACT_APP_API_URL` (then restart `npm start`).
+**API URL for the React app:** Docker dev serves the API on **port 8000**. If you run `npm start` on the host (not in the frontend container), `frontend/src/config/apiConfig.js` now defaults to `http://localhost:5000` so it matches the local Flask backend. For Docker-based dev, set `REACT_APP_API_URL` to the container API URL when needed. Override anytime with `REACT_APP_API_URL` (then restart `npm start`).
 
 If the browser shows **`ERR_CONNECTION_REFUSED`** on port **8000**, the backend is not up: start **Docker Desktop**, run **`./run.sh dev`**, and wait — the script polls **`/health`** for up to ~3 minutes. If it still fails, run `docker compose -f docker-compose.yml --profile dev logs --tail=100 backend-dev` (often MySQL/env issues).
 
