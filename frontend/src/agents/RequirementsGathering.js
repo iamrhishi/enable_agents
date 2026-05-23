@@ -168,6 +168,13 @@ function RequirementsGathering() {
     return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
   };
 
+  const getResearchEntityMeta = () => {
+    const mode = customerResearchResults?.researchType || activeSavedList?.researchType || responseFormat;
+    return mode === 'Supplier Research'
+      ? { singular: 'vendor', plural: 'vendors', title: 'Vendors' }
+      : { singular: 'lead', plural: 'leads', title: 'Leads' };
+  };
+
   // Check if user just returned from Google OAuth authorization
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -232,14 +239,14 @@ function RequirementsGathering() {
 
   const handleGenerate = async () => {
     try {
-      // Check if Customer Research format is selected
-      if (responseFormat === 'Customer Research') {
+      // Check if Customer Research or Supplier Research format is selected
+      if (responseFormat === 'Customer Research' || responseFormat === 'Supplier Research') {
         // Allow customer research even when OAuth is not connected.
         // Backend can run this flow via Google Places API key.
 
-        // Validate required inputs for customer research
+        // Validate required inputs for research
         if (!overview || !industries || !countries) {
-          alert('Please fill in Overview, Industries, and Region/Countries for customer research');
+          alert('Please fill in Overview, Industries, and Region/Countries for research');
           return;
         }
 
@@ -260,7 +267,7 @@ function RequirementsGathering() {
 
         if (!searchResponse.ok) {
           const errorData = await searchResponse.json();
-          const errorMessage = errorData.error || 'Failed to fetch customer research data';
+          const errorMessage = errorData.error || 'Failed to fetch research data';
           console.error('Search API error:', errorData);
           throw new Error(errorMessage);
         }
@@ -279,6 +286,7 @@ function RequirementsGathering() {
           location: countries,
           industry: industries,
           context: context,
+          researchType: responseFormat,
           businesses: searchData.businesses || [],
           totalResults: searchData.totalResults || 0
         });
@@ -347,7 +355,8 @@ function RequirementsGathering() {
 
   const handleGetEmails = async () => {
     if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
-      alert('No businesses to enrich with emails');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} to enrich with emails`);
       return;
     }
 
@@ -376,7 +385,7 @@ function RequirementsGathering() {
       }
 
       if (enrichedData.success && enrichedData.businesses) {
-        // Update the customer research results with enriched businesses
+        // Update the research results with enriched businesses
         setCustomerResearchResults({
           ...customerResearchResults,
           businesses: enrichedData.businesses
@@ -675,7 +684,8 @@ function RequirementsGathering() {
   const handleSaveList = async () => {
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
-      alert('No data available to save.');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} available to save.`);
       return;
     }
 
@@ -746,7 +756,8 @@ function RequirementsGathering() {
         const data = await response.json();
         console.log('Save project response:', data);
         if (data.success) {
-          alert('List saved successfully!');
+          const { title } = getResearchEntityMeta();
+          alert(`${title} list saved successfully!`);
           console.log('Refreshing saved lists...');
           await fetchSavedLists();
           setShowSaveListModal(false);
@@ -777,7 +788,8 @@ function RequirementsGathering() {
     // Gather businesses from current view (saved list or live research)
     const sourceBusinesses = (activeSavedList && activeSavedListLeads && activeSavedListLeads.length) ? activeSavedListLeads : (customerResearchResults?.businesses || []);
     if (!sourceBusinesses || sourceBusinesses.length === 0) {
-      alert('No leads available to score.');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} available to score.`);
       return;
     }
 
@@ -841,7 +853,8 @@ function RequirementsGathering() {
           setMinimizedCustomerResearch(false);
         }
 
-        alert('Scoring complete — updated ' + results.length + ' leads (sorted by score)');
+        const { plural } = getResearchEntityMeta();
+        alert(`Scoring complete — updated ${results.length} ${plural} (sorted by score)`);
         setShowScoreModal(false);
         setScoreQueryText('');
       } else {
@@ -937,11 +950,13 @@ function RequirementsGathering() {
            // Set customer research results to display in regular leads view
            setCustomerResearchResults({
              query: data.project.query_used || data.project.name,
+             researchType: data.project.researchType || 'Customer Research',
              businesses: leads
            });
            try {
              sessionStorage.setItem('customerResearchResults', JSON.stringify({
                query: data.project.query_used || data.project.name,
+               researchType: data.project.researchType || 'Customer Research',
                businesses: leads
              }));
            } catch (e) { /* ignore */ }
@@ -1241,6 +1256,7 @@ function RequirementsGathering() {
               >
                  <option value="">Select format...</option>
                  <option value="Detailed PRD">Detailed PRD</option>
+                 <option value="Supplier Research">Supplier Research</option>
                  <option value="Customer Research">Customer Research</option>
                  <option value="Industry Use Cases">Industry Use Cases</option>
                  <option value="Product Requirements">Product Requirements</option>
@@ -1273,8 +1289,8 @@ function RequirementsGathering() {
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>Leads</button>
-            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>Saved Leads</button>
+            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>{responseFormat === 'Supplier Research' ? 'Vendors' : 'Leads'}</button>
+            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</button>
             <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
           </div>
 
@@ -1291,7 +1307,7 @@ function RequirementsGathering() {
                  )}
                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
                     <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1E3A5F' }}>
-                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : 'Saved Leads Lists'}
+                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : (responseFormat === 'Supplier Research' ? 'Saved Vendors Lists' : 'Saved Leads Lists')}
                     </h2>
                  </div>
                  {isLoadingSavedLists ? (
@@ -1387,7 +1403,7 @@ function RequirementsGathering() {
               {isLoadingResearch ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
                     <div className="loader" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #ff725e', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
-                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing leads... please wait...</p>
+                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing {getResearchEntityMeta().plural}... please wait...</p>
                     <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
                   </div>
               ) : (!aiRequirements && !customerResearchResults) ? (
@@ -1469,15 +1485,17 @@ function RequirementsGathering() {
                                 className="action-icon-button"
                                 onClick={handleCopyToClipboard}
                                 title="Copy to Clipboard"
+                                aria-label="Copy to Clipboard"
                               >
-                                <img src="/assets/icons/copy.png" alt="Copy" />
+                                <img src="/assets/icons/copy.png" alt="Copy to Clipboard" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => setShowExportModal(true)}
                                 title="Export Data"
+                                aria-label="Export Data"
                               >
-                                <img src="/assets/icons/import-export.png" alt="Export" />
+                                <img src="/assets/icons/import-export.png" alt="Export Data" />
                               </button>
                               <button 
                                 className="action-icon-button"
@@ -1486,21 +1504,24 @@ function RequirementsGathering() {
                                   setSelectedAppendProjectId('');
                                   setShowSaveListModal(true);
                                 }}
-                                title="Save to List"
+                                title={responseFormat === 'Supplier Research' ? 'Save Vendors List' : 'Save Leads List'}
+                                aria-label={responseFormat === 'Supplier Research' ? 'Save Vendors List' : 'Save Leads List'}
                               >
-                                <img src="/assets/icons/document.png" alt="Save Leads" />
+                                <img src="/assets/icons/document.png" alt={responseFormat === 'Supplier Research' ? 'Save Vendors' : 'Save Leads'} />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setScoreQueryText(''); setShowScoreModal(true); }}
-                                title="Score Leads"
+                                title={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'}
+                                aria-label={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'}
                               >
-                                <img src="/assets/icons/bar-chart.png" alt="Score Leads" />
+                                <img src="/assets/icons/bar-chart.png" alt={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'} />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
                                 title="Send Emails"
+                                aria-label="Send Emails"
                               >
                                 <img src="/assets/icons/mail.png" alt="Send Emails" />
                               </button>
@@ -1508,6 +1529,7 @@ function RequirementsGathering() {
                                 className="action-icon-button"
                                 onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
                                 title="Maximize"
+                                aria-label="Maximize Table"
                               >
                                 <img src="/assets/icons/maximize.png" alt="Maximize" />
                               </button>
@@ -2067,7 +2089,7 @@ function RequirementsGathering() {
             <div className="popup-overlay" style={{ zIndex: 3000 }}>
               <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
+                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>{`${getResearchEntityMeta().title} List`}</h2>
                   <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2097,7 +2119,7 @@ function RequirementsGathering() {
                       ))}
                     </select>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                      Duplicate leads are removed automatically when appending.
+                      Duplicate {getResearchEntityMeta().plural} are removed automatically when appending.
                     </div>
                   </div>
                 ) : (
@@ -2109,7 +2131,7 @@ function RequirementsGathering() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                   <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
                   <button onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                    {isSavingList ? 'Saving...' : (saveListMode === 'append' ? 'Append Leads' : 'Save List')}
+                    {isSavingList ? 'Saving...' : (saveListMode === 'append' ? `Append ${getResearchEntityMeta().title}` : `Save ${getResearchEntityMeta().title} List`)}
                   </button>
                 </div>
               </div>
@@ -2121,17 +2143,17 @@ function RequirementsGathering() {
             <div className="popup-overlay" style={{ zIndex: 3100 }}>
               <div className="popup-content" style={{ width: '520px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Score Leads</h2>
+                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>{`Score ${getResearchEntityMeta().title}`}</h2>
                   <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
                   <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g. We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
-                  <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank leads. Results will add a Match score and a two-line summary for each company.</div>
+                  <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
                   <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleScoreLeads} disabled={isScoring} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>{isScoring ? 'Scoring...' : 'Score Leads'}</button>
+                  <button onClick={handleScoreLeads} disabled={isScoring} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>{isScoring ? 'Scoring...' : `Score ${getResearchEntityMeta().title}`}</button>
                 </div>
               </div>
             </div>
