@@ -25,11 +25,23 @@ function SalesHelperAgent() {
   const [savedProjectSelection, setSavedProjectSelection] = useState('');
   const [isLoadingSavedProjects, setIsLoadingSavedProjects] = useState(false);
   const [isLoadingSavedProjectLeads, setIsLoadingSavedProjectLeads] = useState(false);
+  const [campaigns, setCampaigns] = useState([]);
+  const [selectedRankingCampaignId, setSelectedRankingCampaignId] = useState('');
+  const [rankingCriteria, setRankingCriteria] = useState(
+    'Cost / Pricing, Quality of Materials or Products, Reliability & Delivery Performance, Vendor Reputation & Experience, Production Capacity, Compliance & Legal Requirements, Communication & Support, Location & Logistics, Technology & Innovation, Risk Factors, Sustainability & ESG Factors, Payment Terms, Lead Time, After-Sales Service, Customization Capability, Financial Stability, Scalability, Warranty & Return Policies, Inventory Availability, Contract Flexibility, Industry Certifications, Data Security & Confidentiality, Ethical Business Practices, Existing Client References, Supply Chain Stability'
+  );
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+  const [isRankingVendors, setIsRankingVendors] = useState(false);
+  const [rankedVendors, setRankedVendors] = useState([]);
+  const [activeWorkspaceView, setActiveWorkspaceView] = useState('savedLeads');
   const csvFileRef = useRef(null);
   const cvFileRef = useRef(null);
+  const rankingResultsRef = useRef(null);
   const [existingFiles, setExistingFiles] = useState(new Map());
   const [defaultUserId] = useState('user_001');
   const [userFavorites, setUserFavorites] = useState([]);
+  const selectedRankingCampaign = campaigns.find((campaign) => String(campaign.id) === String(selectedRankingCampaignId));
+  const savedLeadsCount = selectedSavedProjectLeads.length;
 
   const getCurrentUserIdentifier = () =>
     localStorage.getItem('userEmail') ||
@@ -40,7 +52,36 @@ function SalesHelperAgent() {
 
   useEffect(() => {
     fetchSavedProjects();
+    fetchCampaigns();
   }, []);
+
+  useEffect(() => {
+    if (activeWorkspaceView !== 'vendorRanking' || rankedVendors.length === 0) return;
+
+    // If the parent panel is scrollable, scroll that container to show the results.
+    const panel = rankingResultsRef.current?.closest('.saved-leads-panel');
+    if (panel) {
+      // compute target top relative to panel and perform a delayed scroll
+      const panelRect = panel.getBoundingClientRect();
+      const targetRect = rankingResultsRef.current.getBoundingClientRect();
+      const offset = 16; // small padding
+      const scrollTop = panel.scrollTop + (targetRect.top - panelRect.top) - offset;
+      const timeoutId = setTimeout(() => {
+        try {
+          panel.scrollTo({ top: scrollTop, behavior: 'smooth' });
+        } catch (e) {
+          /* ignore scroll errors */
+        }
+      }, 120);
+      return () => clearTimeout(timeoutId);
+    }
+
+    const scrollTimer = window.requestAnimationFrame(() => {
+      rankingResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    return () => window.cancelAnimationFrame(scrollTimer);
+  }, [activeWorkspaceView, rankedVendors.length]);
 
   // Function to save JSON data to file
   // Enhanced handleSearch function for sales data
@@ -104,6 +145,31 @@ function SalesHelperAgent() {
     } catch (error) {
       console.error('Search error:', error);
       addMessage("❌ **Connection error.** Please check your connection and try again.", 'agent', null, 'markdown');
+    }
+  };
+
+  const fetchCampaigns = async () => {
+    try {
+      setIsLoadingCampaigns(true);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.campaigns)) {
+        setCampaigns(result.campaigns);
+        if (!selectedRankingCampaignId && result.campaigns.length > 0) {
+          setSelectedRankingCampaignId(String(result.campaigns[0].id));
+        }
+      } else {
+        setCampaigns([]);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      setCampaigns([]);
+    } finally {
+      setIsLoadingCampaigns(false);
     }
   };
 
@@ -524,6 +590,47 @@ function SalesHelperAgent() {
     }
   };
 
+  const handleRankVendorReplies = async () => {
+    if (!selectedRankingCampaignId) {
+      addMessage('Please select a campaign with vendor replies first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsRankingVendors(true);
+      addMessage('🧮 Ranking vendor replies by your criteria...', 'agent', null, 'markdown');
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(API_CONFIG.RANK_CAMPAIGN_VENDORS.replace('{campaignId}', selectedRankingCampaignId), {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({
+          criteria: rankingCriteria,
+          user_id: userId,
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.vendors)) {
+        setRankedVendors(result.vendors);
+        const campaignName = result.campaign?.name || 'selected campaign';
+        addMessage(
+          `🏆 **Vendor ranking completed for ${campaignName}:**\n\n${result.vendors.map(v => `${v.rank}. ${v.vendor_name} - ${v.score}/100\n${v.reason || v.reply_summary || ''}`).join('\n\n')}`,
+          'agent',
+          null,
+          'markdown'
+        );
+      } else {
+        setRankedVendors([]);
+        addMessage(result.error || 'Unable to rank vendor replies right now.', 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Vendor ranking error:', error);
+      addMessage('Error ranking vendor replies. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsRankingVendors(false);
+    }
+  };
+
   // Handle message sending
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -574,205 +681,221 @@ function SalesHelperAgent() {
       <Header />
       
       <div className="main-container">
-        {/* Left Section - Upload and Tools */}
-        <div className="upload-section">
-          <h3>📊 Sales Pipeline Manager</h3>
-          
-          {/* Sales Data Upload */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>📈 Sales Data</h4>
-              {csvData && <span className="status-indicator">✅ Loaded</span>}
-            </div>
-            <p>Upload your prospects, leads, or customer data in CSV/XLSX format.</p>
-            <input
-              type="file"
-              ref={csvFileRef}
-              onChange={handleCSVUpload}
-              accept=".csv,.xlsx,.xls"
-              style={{ display: 'none' }}
-            />
-            <button 
-              className="upload-btn"
-              onClick={() => csvFileRef.current?.click()}
-              disabled={isLoading}
-            >
-              {isLoading ? '⏳ Processing...' : '📊 Upload Sales Data'}
-            </button>
-            {csvData && (
-              <div className="file-info">
-                <span>📋 {csvData.length} prospects loaded</span>
-              </div>
-            )}
-          </div>
-
-          {/* Sales Insights */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>🎯 AI Insights</h4>
-            </div>
-            <p>Get AI-powered insights about your sales pipeline, conversion opportunities, and lead quality.</p>
-            <button 
-              className="upload-btn secondary"
-              onClick={handleSalesInsights}
-              disabled={!csvData || isAnalyzing}
-            >
-              {isAnalyzing ? '🔍 Analyzing...' : '🧠 Generate Insights'}
-            </button>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>⚡ Quick Actions</h4>
-            </div>
-            <div className="quick-actions">
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Which leads look like high value deals?')}
-                disabled={!csvData}
-              >
-                💰 High Value Deals
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Show me qualified leads and why they are qualified')}
-                disabled={!csvData}
-              >
-                ✅ Qualified Leads
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Which leads need follow up and what should the follow up be?')}
-                disabled={!csvData}
-              >
-                📅 Follow-ups
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Identify enterprise-level prospects from this data')}
-                disabled={!csvData}
-              >
-                🏢 Enterprise
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div className="assistant-workspace">
           <div className="saved-leads-panel">
             <div className="saved-leads-panel-header">
-              <div>
-                <h2>💾 Saved Leads</h2>
-                <p>Select a saved list to open it in the panel.</p>
+              <div className="panel-title-block">
+                <span className="panel-eyebrow">Sales workspace</span>
+                <h2>{activeWorkspaceView === 'savedLeads' ? 'Saved Leads' : 'Vendor Reply Ranking'}</h2>
+                <p>{activeWorkspaceView === 'savedLeads' ? 'Open any saved list and review it in a focused workspace.' : 'Compare vendor replies against your buying criteria with a cleaner ranking view.'}</p>
+                <div className="workspace-summary">
+                  {activeWorkspaceView === 'savedLeads' ? (
+                    <>
+                      <div className="summary-chip"><span>Lists</span><strong>{savedProjects.length}</strong></div>
+                      <div className="summary-chip"><span>Loaded leads</span><strong>{savedLeadsCount}</strong></div>
+                      <div className="summary-chip"><span>Status</span><strong>{selectedSavedProject ? 'Open' : 'Ready'}</strong></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="summary-chip"><span>Campaigns</span><strong>{campaigns.length}</strong></div>
+                      <div className="summary-chip"><span>Ranked</span><strong>{rankedVendors.length}</strong></div>
+                      <div className="summary-chip"><span>Replies</span><strong>{selectedRankingCampaign?.totalReplied || 0}</strong></div>
+                    </>
+                  )}
+                </div>
               </div>
-              <button className="refresh-saved-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects}>
-                {isLoadingSavedProjects ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
-
-            <div className="saved-leads-controls">
-              <select
-                value={savedProjectSelection}
-                onChange={(e) => setSavedProjectSelection(e.target.value)}
-                className="saved-leads-select"
-              >
-                <option value="">Select a saved leads list</option>
-                {savedProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.lead_count})
-                  </option>
-                ))}
-              </select>
-              <button
-                className="open-saved-list-btn"
-                onClick={() => loadSavedProjectLeads(savedProjectSelection)}
-                disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
-              >
-                {isLoadingSavedProjectLeads ? 'Opening...' : 'Open List'}
-              </button>
-            </div>
-
-            {!selectedSavedProject ? (
-              <div className="saved-leads-table-scroll">
-                {isLoadingSavedProjects ? (
-                  <div className="empty-saved-state">Loading saved lists...</div>
-                ) : savedProjects.length === 0 ? (
-                  <div className="empty-saved-state">No saved leads lists found.</div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <div className="workspace-toggle-group" role="tablist" aria-label="Sales helper workspace toggle">
+                  <button
+                    type="button"
+                    className={`workspace-toggle-btn ${activeWorkspaceView === 'savedLeads' ? 'active' : ''}`}
+                    onClick={() => setActiveWorkspaceView('savedLeads')}
+                    aria-pressed={activeWorkspaceView === 'savedLeads'}
+                  >
+                    💾 Saved Leads
+                  </button>
+                  <button
+                    type="button"
+                    className={`workspace-toggle-btn ${activeWorkspaceView === 'vendorRanking' ? 'active' : ''}`}
+                    onClick={() => setActiveWorkspaceView('vendorRanking')}
+                    aria-pressed={activeWorkspaceView === 'vendorRanking'}
+                  >
+                    🏷️ Vendor Reply Ranking
+                  </button>
+                </div>
+                {activeWorkspaceView === 'savedLeads' ? (
+                  <button className="refresh-saved-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects}>
+                    {isLoadingSavedProjects ? 'Refreshing...' : 'Refresh'}
+                  </button>
                 ) : (
-                  <table className="businesses-table saved-projects-table">
-                    <thead>
-                      <tr>
-                        <th>List Name</th>
-                        <th>Query</th>
-                        <th>Leads</th>
-                        <th>Created</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {savedProjects.map((project) => (
-                        <tr key={project.id}>
-                          <td>{project.name}</td>
-                          <td>{project.query_used || 'N/A'}</td>
-                          <td>{project.lead_count}</td>
-                          <td>{project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</td>
-                          <td>
-                            <button className="open-row-btn" onClick={() => loadSavedProjectLeads(project.id)}>
-                              Open
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <button className="refresh-saved-btn" onClick={fetchCampaigns} disabled={isLoadingCampaigns}>
+                    {isLoadingCampaigns ? 'Refreshing...' : 'Refresh'}
+                  </button>
                 )}
               </div>
-            ) : (
-              <>
-                <div className="selected-saved-list-bar">
-                  <div>
-                    <h3>{selectedSavedProject?.name}</h3>
-                    <p>{selectedSavedProjectLeads.length} leads loaded from the saved list.</p>
-                  </div>
-                  <button
-                    className="back-to-lists-btn"
-                    onClick={() => {
-                      setSelectedSavedProject(null);
-                      setSelectedSavedProjectLeads([]);
-                    }}
+            </div>
+
+            {activeWorkspaceView === 'savedLeads' ? (
+              <div className="panel-body-shell">
+                <div className="saved-leads-controls">
+                  <select
+                    value={savedProjectSelection}
+                    onChange={(e) => setSavedProjectSelection(e.target.value)}
+                    className="saved-leads-select"
                   >
-                    Back to Lists
+                    <option value="">Select a saved leads list</option>
+                    {savedProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name} ({project.lead_count})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="open-saved-list-btn"
+                    onClick={() => loadSavedProjectLeads(savedProjectSelection)}
+                    disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
+                  >
+                    {isLoadingSavedProjectLeads ? 'Opening...' : 'Open List'}
                   </button>
                 </div>
 
-                <div className="saved-leads-table-scroll">
-                  <table className="businesses-table saved-leads-table">
-                    <thead>
-                      <tr>
-                        <th>Business Name</th>
-                        <th>Website</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                        <th>LinkedIn</th>
-                        <th>Summary</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSavedProjectLeads.map((lead, index) => (
-                        <tr key={`${lead.id || index}`}>
-                          <td>{lead.name || 'N/A'}</td>
-                          <td>{lead.website ? <a href={lead.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
-                          <td>{lead.phone || 'N/A'}</td>
-                          <td>{lead.email || (Array.isArray(lead.emails) && lead.emails[0]) || 'N/A'}</td>
-                          <td>{lead.linkedin ? <a href={lead.linkedin} target="_blank" rel="noopener noreferrer">View</a> : 'N/A'}</td>
-                          <td className="lead-summary-cell">{lead.summary || lead.description || 'N/A'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {!selectedSavedProject ? (
+                  <div className="saved-leads-table-scroll">
+                    {isLoadingSavedProjects ? (
+                      <div className="empty-saved-state">Loading saved lists...</div>
+                    ) : savedProjects.length === 0 ? (
+                      <div className="empty-saved-state">No saved leads lists found.</div>
+                    ) : (
+                      <table className="businesses-table saved-projects-table dashboard-table">
+                        <thead>
+                          <tr>
+                            <th>List Name</th>
+                            <th>Query</th>
+                            <th>Leads</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {savedProjects.map((project) => (
+                            <tr key={project.id}>
+                              <td>
+                                <div className="table-main-cell">{project.name}</div>
+                                <div className="table-subtext">Saved lead list</div>
+                              </td>
+                              <td className="table-muted">{project.query_used || 'N/A'}</td>
+                              <td><span className="inline-pill">{project.lead_count}</span></td>
+                              <td className="table-muted">{project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</td>
+                              <td>
+                                <button className="open-row-btn" onClick={() => loadSavedProjectLeads(project.id)}>
+                                  Open
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="selected-saved-list-bar">
+                      <div>
+                        <h3>{selectedSavedProject?.name}</h3>
+                        <p>{selectedSavedProjectLeads.length} leads loaded from the saved list.</p>
+                      </div>
+                      <button
+                        className="back-to-lists-btn"
+                        onClick={() => {
+                          setSelectedSavedProject(null);
+                          setSelectedSavedProjectLeads([]);
+                        }}
+                      >
+                        Back to Lists
+                      </button>
+                    </div>
+
+                    <div className="saved-leads-table-scroll">
+                      <table className="businesses-table saved-leads-table dashboard-table">
+                        <thead>
+                          <tr>
+                            <th>Business Name</th>
+                            <th>Website</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>LinkedIn</th>
+                            <th>Summary</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedSavedProjectLeads.map((lead, index) => (
+                            <tr key={`${lead.id || index}`}>
+                              <td>
+                                <div className="table-main-cell">{lead.name || 'N/A'}</div>
+                                <div className="table-subtext">Prospect profile</div>
+                              </td>
+                              <td>{lead.website ? <a href={lead.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
+                              <td className="table-mono">{lead.phone || 'N/A'}</td>
+                              <td className="table-mono">{lead.email || (Array.isArray(lead.emails) && lead.emails[0]) || 'N/A'}</td>
+                              <td>{lead.linkedin ? <a href={lead.linkedin} target="_blank" rel="noopener noreferrer">View</a> : 'N/A'}</td>
+                              <td className="lead-summary-cell">{lead.summary || lead.description || 'N/A'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="panel-body-shell ranking-shell">
+                <div className="ranking-form-card">
+                  <div className="ranking-form-grid">
+                    <label className="field-group">
+                      <span className="field-label">Campaign</span>
+                      <select
+                        value={selectedRankingCampaignId}
+                        onChange={(e) => {
+                          setSelectedRankingCampaignId(e.target.value);
+                          setRankedVendors([]);
+                        }}
+                        className="sales-input"
+                      >
+                        <option value="">Select a campaign with vendor replies</option>
+                        {campaigns.map((campaign) => (
+                          <option key={campaign.id} value={campaign.id}>
+                            {campaign.name} ({campaign.totalReplied || 0} replies)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="field-group field-group-full">
+                      <span className="field-label">Ranking criteria</span>
+                      <textarea
+                        value={rankingCriteria}
+                        onChange={(e) => setRankingCriteria(e.target.value)}
+                        rows={6}
+                        className="sales-textarea"
+                        placeholder="Enter ranking criteria"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="ranking-meta-row">
+                    <button
+                      type="button"
+                      className="upload-btn secondary ranking-action-btn"
+                      onClick={handleRankVendorReplies}
+                      disabled={!selectedRankingCampaignId || isRankingVendors || isLoadingCampaigns}
+                    >
+                      {isRankingVendors ? '🏁 Ranking vendors...' : '🏆 Rank Vendor Replies'}
+                    </button>
+                  </div>
                 </div>
-              </>
+
+                {/* Ranked replies removed as per UI revision */}
+              </div>
             )}
           </div>
 

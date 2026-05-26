@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -6,6 +6,57 @@ import Header from '../core/Header';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
+
+const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
+
+Greetings from [Your Company Name].
+
+We came across your company profile and would like to explore the possibility of working together for our ongoing and upcoming business requirements.
+
+We are currently looking for reliable vendors/suppliers for the supply of [Product/Service Category]. We request you to share your company profile and the following details for our evaluation process:
+
+* Product / Service Catalog
+* Pricing / Quotation
+* GST and Registration Details
+* Payment Terms
+* Delivery Timelines
+* Major Clients / References
+* Certifications (if applicable)
+
+Company Details:
+
+* Company Name: [Your Company Name]
+* Industry: [Industry Type]
+* Location: [Company Location]
+* Contact Person: [Your Name]
+* Contact Number: [Phone Number]
+* Email: [Email Address]
+
+Please feel free to contact us for any further clarification. We look forward to a mutually beneficial business relationship.
+
+Best Regards,
+[Your Company Name]
+[Company Website]`;
+
+const fillTemplate = (template, vars = {}) => {
+  let out = template;
+  const replacements = {
+    '\\[Vendor Name \\/ Sir \\/ Madam\\]': vars.vendorName || 'Sir / Madam',
+    '\\[Vendor Name\\]': vars.vendorName || 'Sir / Madam',
+    '\\[Your Company Name\\]': vars.companyName || '',
+    '\\[Industry Type\\]': vars.industry || '',
+    '\\[Company Location\\]': vars.location || '',
+    '\\[Your Name\\]': vars.contactName || '',
+    '\\[Phone Number\\]': vars.phoneNumber || '',
+    '\\[Email Address\\]': vars.emailAddress || '',
+    '\\[Product\\/Service Category\\]': vars.productCategory || '',
+    '\\[Company Website\\]': vars.companyWebsite || ''
+  };
+  Object.keys(replacements).forEach((pat) => {
+    out = out.replace(new RegExp(pat, 'gi'), replacements[pat]);
+  });
+  return out;
+};
 
 function RequirementsGathering() {
   const [overview, setOverview] = useState('');
@@ -166,6 +217,9 @@ function RequirementsGathering() {
 
   const getCurrentUsername = () => {
     return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
+  };
+  const getCurrentUserEmail = () => {
+    return localStorage.getItem('userEmail') || '';
   };
 
   const getResearchEntityMeta = () => {
@@ -1132,6 +1186,12 @@ function RequirementsGathering() {
     const handleGeneratePersonalizedEmail = async (business, index) => {
     setIsGeneratingEmail(prev => ({ ...prev, [index]: true }));
     try {
+      if (responseFormat === 'Supplier Research') {
+        prepareSupplierEmailDraft(business);
+        setShowEmailModal(true);
+        return;
+      }
+
       const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1156,17 +1216,52 @@ function RequirementsGathering() {
     } finally {
       setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
     }
-  }; const handleSendEmails = async () => {
+  };
+
+  const getSenderCompanyData = useCallback(() => {
+    return {
+      companyName: localStorage.getItem('companyName') || localStorage.getItem('company') || '',
+      companyWebsite: localStorage.getItem('companyWebsite') || '',
+      industry: localStorage.getItem('companyIndustry') || industries || '',
+      location: localStorage.getItem('companyLocation') || countries || '',
+      contactName: getCurrentUsername() || localStorage.getItem('firstName') || '',
+      phoneNumber: localStorage.getItem('phoneNumber') || '',
+      emailAddress: getCurrentUserEmail() || localStorage.getItem('userEmail') || ''
+    };
+  }, [countries, industries]);
+
+  const prepareSupplierEmailDraft = (business = null) => {
+    const vars = getSenderCompanyData();
+    vars.productCategory = industries || overview || '';
+    vars.vendorName = business?.name || business?.businessName || 'Sir / Madam';
+
+    setSelectedLead(business);
+    setEmailSubject(`Supplier Inquiry${vars.productCategory ? ' - ' + vars.productCategory : ''}`);
+    setEmailBody(fillTemplate(SUPPLIER_TEMPLATE, vars));
+  };
+
+  const handleSendEmails = async () => {
     if (!useAiBulk && (!emailSubject || !emailBody)) {
       alert("Subject and Body required unless using AI Personalization");
       return;
     }
-    
+    const registeredEmail = getCurrentUserEmail();
+    if (!registeredEmail) {
+      alert('Registered email not found. Please log in again so the campaign can be sent from your account.');
+      return;
+    }
+
     let validEmails = [];
     if (selectedLead) {
-      validEmails = [selectedLead];
+      validEmails = selectedLead.email && selectedLead.email !== 'N/A' && selectedLead.email.includes('@')
+        ? [{ ...selectedLead }]
+        : [];
     } else {
-      validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+      validEmails = (customerResearchResults?.businesses || [])
+        .filter(b => b)
+        .map(b => ({
+          ...b,
+        }));
     }
     
     if (validEmails.length === 0) {
@@ -1181,8 +1276,8 @@ function RequirementsGathering() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: localStorage.getItem("firstName") || "",
-          userEmail: localStorage.getItem("userEmail") || "",
-          campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
+          userEmail: registeredEmail,
+          campaignName: campaignName || (selectedLead ? 'Test Outreach - 1-on-1' : 'Test Outreach - Bulk'),
           subject: emailSubject,
           body: emailBody,
           businesses: validEmails,
@@ -1519,7 +1614,7 @@ function RequirementsGathering() {
                               </button>
                               <button 
                                 className="action-icon-button"
-                                onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
+                                onClick={() => { prepareSupplierEmailDraft(null); setShowEmailModal(true); }}
                                 title="Send Emails"
                                 aria-label="Send Emails"
                               >

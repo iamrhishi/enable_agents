@@ -118,6 +118,11 @@ import networkx as nx
 from agents.market_research.google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
+def _compact_text(value):
+    text = re.sub(r'\s+', ' ', str(value or '')).strip()
+    return text
 ENV_FILES = [
     os.path.join(PROJECT_ROOT, '.env'),
     os.path.join(PROJECT_ROOT, 'tools', '.env'),
@@ -244,7 +249,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-core_db.init_app(app)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -408,6 +412,9 @@ class EmailCampaignRecipient(db.Model):
     reply_status = db.Column(db.String(50), default='No Reply')
     message_id = db.Column(db.String(255), nullable=True) # For tracking Gmail threads
     thread_id = db.Column(db.String(255), nullable=True)
+    reply_subject = db.Column(db.String(512), nullable=True)
+    reply_snippet = db.Column(db.Text, nullable=True)
+    reply_body = db.Column(db.Text, nullable=True)
     sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     replied_at = db.Column(db.DateTime, nullable=True)
 
@@ -457,6 +464,12 @@ def _ensure_campaign_reply_tracking_columns():
             statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN message_id VARCHAR(255)")
         if 'thread_id' not in recipient_columns:
             statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN thread_id VARCHAR(255)")
+        if 'reply_subject' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_subject VARCHAR(512)")
+        if 'reply_snippet' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_snippet TEXT")
+        if 'reply_body' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_body TEXT")
         if 'sender_email' not in campaign_columns:
             statements.append("ALTER TABLE email_campaigns ADD COLUMN sender_email VARCHAR(255)")
 
@@ -469,6 +482,45 @@ def _ensure_campaign_reply_tracking_columns():
     except Exception as migration_error:
         db.session.rollback()
         print(f"[DB MIGRATION] Could not ensure reply-tracking columns: {migration_error}")
+
+
+def _extract_gmail_message_text(message):
+    """Best-effort extraction of plain text from a Gmail message payload."""
+    try:
+        payload = message.get('payload') or {}
+        if message.get('snippet'):
+            text_value = str(message.get('snippet')).strip()
+        else:
+            text_value = ''
+
+        def _walk_parts(part):
+            nonlocal text_value
+            if not isinstance(part, dict):
+                return
+            mime_type = (part.get('mimeType') or '').lower()
+            body = part.get('body') or {}
+            data = body.get('data')
+            if data and mime_type in {'text/plain', 'text/html'}:
+                try:
+                    decoded = base64.urlsafe_b64decode(data.encode('utf-8')).decode('utf-8', errors='ignore')
+                    decoded = re.sub(r'<[^>]+>', ' ', decoded)
+                    decoded = re.sub(r'\s+', ' ', decoded).strip()
+                    if decoded:
+                        text_value = f"{text_value} {decoded}".strip() if text_value else decoded
+                except Exception:
+                    pass
+            for child in part.get('parts', []) or []:
+                _walk_parts(child)
+
+        _walk_parts(payload)
+        return re.sub(r'\s+', ' ', text_value).strip()
+    except Exception:
+        return (message.get('snippet') or '').strip()
+
+
+def _extract_gmail_message_subject(message):
+    headers = (message.get('payload') or {}).get('headers', [])
+    return next((h['value'] for h in headers if h.get('name', '').lower() == 'subject'), '')
 
 
 def _resolve_google_token_for_campaign(campaign, fallback_email=None, fallback_username=None):
@@ -514,50 +566,181 @@ def _resolve_google_token_for_campaign(campaign, fallback_email=None, fallback_u
 def _sync_replies_for_campaign(campaign, fallback_email=None, fallback_username=None):
     """Best-effort Gmail reply sync for one campaign. Returns number of updates."""
     token_record = _resolve_google_token_for_campaign(campaign, fallback_email, fallback_username)
-    if not token_record:
-        return 0
-
-    from google.oauth2.credentials import Credentials
-    import googleapiclient.discovery
-
-    creds = Credentials(
-        token=token_record.token,
-        refresh_token=token_record.refresh_token,
-        token_uri=token_record.token_uri,
-        client_id=token_record.client_id,
-        client_secret=token_record.client_secret,
-        scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
-    )
-    service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
-
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
     updated_count = 0
 
-    for recipient in recipients:
-        if recipient.reply_status == 'Replied' or not recipient.thread_id:
-            continue
+    if token_record and token_record.token:
+        from google.oauth2.credentials import Credentials
+        import googleapiclient.discovery
 
         try:
-            thread = service.users().threads().get(userId='me', id=recipient.thread_id).execute()
-            messages = thread.get('messages', [])
+            creds = Credentials(
+                token=token_record.token,
+                refresh_token=token_record.refresh_token,
+                token_uri=token_record.token_uri,
+                client_id=token_record.client_id,
+                client_secret=token_record.client_secret,
+                scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
+            )
+            service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
 
-            for msg in messages:
-                headers = msg.get('payload', {}).get('headers', [])
-                from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+            for recipient in recipients:
+                if not recipient.thread_id:
+                    continue
 
-                if recipient.receiver_email and recipient.receiver_email.lower() in from_header.lower():
-                    recipient.reply_status = 'Replied'
-                    internal_date = int(msg.get('internalDate', 0)) / 1000.0
-                    recipient.replied_at = datetime.fromtimestamp(internal_date) if internal_date > 0 else datetime.utcnow()
-                    updated_count += 1
-                    break
-        except Exception as thread_err:
-            print(f"[REPLY SYNC] Error checking thread {recipient.thread_id}: {thread_err}")
+                needs_text_repair = not _compact_text(recipient.reply_body) and not _compact_text(recipient.reply_snippet) and not _compact_text(recipient.reply_subject)
+                if recipient.reply_status == 'Replied' and not needs_text_repair:
+                    continue
+
+                try:
+                    thread = service.users().threads().get(userId='me', id=recipient.thread_id).execute()
+                    messages = thread.get('messages', [])
+
+                    for msg in messages:
+                        headers = msg.get('payload', {}).get('headers', [])
+                        from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+
+                        if recipient.receiver_email and recipient.receiver_email.lower() in from_header.lower():
+                            reply_subject = _extract_gmail_message_subject(msg)
+                            reply_snippet = (msg.get('snippet') or '').strip()
+                            reply_body = _extract_gmail_message_text(msg)
+                            recipient.reply_status = 'Replied'
+                            internal_date = int(msg.get('internalDate', 0)) / 1000.0
+                            recipient.replied_at = datetime.fromtimestamp(internal_date) if internal_date > 0 else datetime.utcnow()
+                            recipient.reply_subject = reply_subject or recipient.reply_subject
+                            recipient.reply_snippet = reply_snippet or recipient.reply_snippet
+                            recipient.reply_body = reply_body or recipient.reply_body
+                            updated_count += 1
+                            break
+                except Exception as thread_err:
+                    print(f"[REPLY SYNC] Error checking thread {recipient.thread_id}: {thread_err}")
+        except Exception as gmail_sync_err:
+            print(f"[REPLY SYNC] Gmail sync unavailable for campaign {campaign.id}: {gmail_sync_err}")
+
+    try:
+        imap_updates = _sync_replies_via_imap(campaign)
+        updated_count += imap_updates
+    except Exception as imap_err:
+        print(f"[REPLY SYNC] IMAP sync unavailable for campaign {campaign.id}: {imap_err}")
 
     if updated_count > 0:
         db.session.commit()
 
     return updated_count
+
+
+def _sync_replies_via_imap(campaign):
+    """Fallback reply sync using the system mailbox via IMAP."""
+    import imaplib
+    import email as py_email
+    from email import policy
+
+    imap_host = (os.getenv('IMAP_HOST') or '').strip() or 'imap.gmail.com'
+    imap_port = int(os.getenv('IMAP_PORT', '993'))
+    imap_user = (os.getenv('EMAIL_USER') or '').strip()
+    imap_pass = (os.getenv('EMAIL_PASS') or '').strip()
+
+    if not imap_user or not imap_pass:
+        return 0
+
+    try:
+        mailbox = imaplib.IMAP4_SSL(imap_host, imap_port)
+        mailbox.login(imap_user, imap_pass)
+        mailbox.select('INBOX')
+
+        recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
+        pending = [
+            r for r in recipients
+            if r.reply_status != 'Replied'
+            or not _compact_text(r.reply_body)
+            or not _compact_text(r.reply_snippet)
+            or not _compact_text(r.reply_subject)
+        ]
+        if not pending:
+            mailbox.logout()
+            return 0
+
+        status, data = mailbox.search(None, 'ALL')
+        if status != 'OK':
+            mailbox.logout()
+            return 0
+
+        message_ids = (data[0] or b'').split()
+        updated_count = 0
+
+        # Check recent messages first.
+        for msg_id in reversed(message_ids[-100:]):
+            try:
+                _, msg_data = mailbox.fetch(msg_id, '(RFC822)')
+                if not msg_data or not msg_data[0]:
+                    continue
+                raw_email = msg_data[0][1]
+                message = py_email.message_from_bytes(raw_email, policy=policy.default)
+                from_header = (message.get('From') or '').lower()
+                subject = (message.get('Subject') or '').lower()
+                in_reply_to = (message.get('In-Reply-To') or '').strip()
+                references = (message.get('References') or '').strip()
+
+                def _extract_message_text(email_message):
+                    if email_message.is_multipart():
+                        parts = []
+                        for part in email_message.walk():
+                            content_type = (part.get_content_type() or '').lower()
+                            disposition = (part.get_content_disposition() or '').lower()
+                            if part.is_multipart() or disposition == 'attachment':
+                                continue
+                            if content_type in {'text/plain', 'text/html'}:
+                                try:
+                                    payload = part.get_content()
+                                except Exception:
+                                    raw_part = part.get_payload(decode=True) or b''
+                                    charset = part.get_content_charset() or 'utf-8'
+                                    payload = raw_part.decode(charset, errors='ignore')
+                                if payload:
+                                    parts.append(str(payload))
+                        return _compact_text('\n'.join(parts))
+
+                    try:
+                        payload = email_message.get_content()
+                    except Exception:
+                        raw_payload = email_message.get_payload(decode=True) or b''
+                        charset = email_message.get_content_charset() or 'utf-8'
+                        payload = raw_payload.decode(charset, errors='ignore')
+                    return _compact_text(payload or '')
+
+                for recipient in pending:
+                    recipient_email = (recipient.receiver_email or '').lower().strip()
+                    message_id = (recipient.message_id or '').strip()
+                    if not recipient_email:
+                        continue
+
+                    matches_sender = recipient_email in from_header
+                    matches_thread = bool(message_id) and (message_id in in_reply_to or message_id in references)
+                    is_reply_subject = subject.startswith('re:') or subject.startswith('fw:')
+
+                    if matches_sender and (matches_thread or is_reply_subject):
+                        reply_subject = (message.get('Subject') or '').strip()
+                        reply_snippet = _compact_text((message.get_body(preferencelist=('plain', 'html')).get_content() if message.get_body(preferencelist=('plain', 'html')) else '') or '')
+                        reply_body = _extract_message_text(message)
+                        recipient.reply_status = 'Replied'
+                        if not recipient.replied_at:
+                            recipient.replied_at = datetime.utcnow()
+                        recipient.reply_subject = reply_subject or recipient.reply_subject
+                        recipient.reply_snippet = reply_snippet or recipient.reply_snippet or reply_body[:220]
+                        recipient.reply_body = reply_body or recipient.reply_body or reply_snippet
+                        updated_count += 1
+                        break
+            except Exception as imap_msg_error:
+                print(f"[IMAP SYNC] Error parsing message {msg_id}: {imap_msg_error}")
+
+        if updated_count > 0:
+            db.session.commit()
+
+        mailbox.logout()
+        return updated_count
+    except Exception as imap_error:
+        print(f"[IMAP SYNC] Error checking inbox for campaign {campaign.id}: {imap_error}")
+        return 0
 
 
 def _normalize_username(value):
@@ -6887,6 +7070,7 @@ def generate_email():
 
 
 @app.route('/send-bulk-emails', methods=['POST'])
+@app.route('/api/send-bulk-emails', methods=['POST', 'OPTIONS'])
 @cross_origin()
 def send_bulk_emails():
     """
@@ -6906,6 +7090,9 @@ def send_bulk_emails():
         user_email = data.get('userEmail')
         campaign_name = data.get('campaignName', 'Untitled Campaign')
         username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
+
+        if not user_email or '@' not in str(user_email):
+            return jsonify({'success': False, 'error': 'Registered user email is required to send campaign mail.'}), 400
 
         use_ai_personalization = data.get('use_ai_personalization', False)
         if not use_ai_personalization and (not subject or not body):
@@ -6940,10 +7127,25 @@ def send_bulk_emails():
         
         service = None
         server = None
+        smtp_sender_email = os.getenv('EMAIL_USER') or user_email or ''
+
+        def _connect_smtp_server():
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', 587))
+            email_user = os.getenv('EMAIL_USER')
+            email_pass = os.getenv('EMAIL_PASS')
+            if not email_user or not email_pass:
+                return None, None, 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'
+
+            smtp_server = smtplib.SMTP(email_host, email_port)
+            smtp_server.starttls()
+            smtp_server.login(email_user, email_pass)
+            return smtp_server, email_user, None
         
         if token_record and token_record.token:
             # Use Gmail API
             from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
             import googleapiclient.discovery
             
             creds = Credentials(
@@ -6954,19 +7156,16 @@ def send_bulk_emails():
                 client_secret=token_record.client_secret,
                 scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
             )
+            if creds.refresh_token and (not creds.valid or creds.expired):
+                creds.refresh(Request())
+                token_record.token = creds.token
+                db.session.commit()
             service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
         else:
             # Fallback to system SMTP
-            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-            email_port = int(os.getenv('EMAIL_PORT', 587))
-            email_user = os.getenv('EMAIL_USER')
-            email_pass = os.getenv('EMAIL_PASS')
-            if not email_user or not email_pass:
-                return jsonify({'success': False, 'error': 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'}), 500
-                
-            server = smtplib.SMTP(email_host, email_port)
-            server.starttls()
-            server.login(email_user, email_pass)
+            server, email_user, smtp_err = _connect_smtp_server()
+            if smtp_err:
+                return jsonify({'success': False, 'error': smtp_err}), 500
 
         sent_count = 0
         for b in businesses:
@@ -6995,18 +7194,46 @@ def send_bulk_emails():
             msg.set_content(current_body)
             msg['Subject'] = current_subject
             msg['To'] = recipient
+
+            def _set_from_header(message, sender_value):
+                if 'From' in message:
+                    del message['From']
+                message['From'] = sender_value
+
+            def _set_reply_to_header(message, reply_to_value):
+                if 'Reply-To' in message:
+                    del message['Reply-To']
+                message['Reply-To'] = reply_to_value
             
             thread_id = None
             msg_id = None
+            generated_message_id = f"<{uuid.uuid4().hex}@enable-agents.local>"
+            _set_from_header(msg, user_email or smtp_sender_email or recipient)
+            _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
+            msg['Message-ID'] = generated_message_id
             if service:
-                msg['From'] = user_email
-                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-                create_message = {'raw': encoded_message}
-                sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
-                thread_id = sent_msg.get('threadId')
-                msg_id = sent_msg.get('id')
+                try:
+                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                    create_message = {'raw': encoded_message}
+                    sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
+                    thread_id = sent_msg.get('threadId')
+                    msg_id = sent_msg.get('id')
+                except Exception as send_error:
+                    send_error_text = str(send_error).lower()
+                    if 'invalid_grant' in send_error_text or 'invalid credentials' in send_error_text or 'unauthorized' in send_error_text:
+                        print(f"[SEND_EMAILS] Gmail API failed, falling back to SMTP: {send_error}")
+                        service = None
+                        server, smtp_sender_email, smtp_err = _connect_smtp_server()
+                        if smtp_err:
+                            return jsonify({'success': False, 'error': f'Gmail auth failed and SMTP fallback is unavailable: {smtp_err}'}), 500
+                        _set_from_header(msg, user_email or smtp_sender_email or recipient)
+                        _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
+                        server.send_message(msg)
+                    else:
+                        raise
             else:
-                msg['From'] = email_user
+                _set_from_header(msg, user_email or smtp_sender_email or recipient)
+                _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
                 server.send_message(msg)
                 
             sent_count += 1
@@ -7018,7 +7245,7 @@ def send_bulk_emails():
                 receiver_name=business_name,
                 status='SENT',
                 reply_status='No Reply',
-                message_id=msg_id,
+                message_id=msg_id or generated_message_id,
                 thread_id=thread_id
             )
             db.session.add(recipient_record)
@@ -7105,12 +7332,14 @@ def get_campaign_stats():
         else:
             campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
 
-        # Auto-sync replies in background for all visible campaigns.
-        for campaign in campaigns:
-            try:
-                _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=username)
-            except Exception as sync_err:
-                print(f"[AUTO SYNC] Skipping campaign {campaign.id}: {sync_err}")
+        # Keep the stats endpoint fast. Reply sync is available through the
+        # dedicated check-replies route so the dashboard does not block on inbox scans.
+        if (request.args.get('syncReplies') or '').strip().lower() in {'1', 'true', 'yes'}:
+            for campaign in campaigns:
+                try:
+                    _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=username)
+                except Exception as sync_err:
+                    print(f"[AUTO SYNC] Skipping campaign {campaign.id}: {sync_err}")
 
         results = []
         for c in campaigns:
@@ -7154,11 +7383,191 @@ def get_campaign_recipients(campaign_id):
             'name': r.receiver_name,
             'status': r.status,
             'replyStatus': r.reply_status,
+            'replySubject': r.reply_subject,
+            'replySnippet': r.reply_snippet,
+            'replyBody': r.reply_body,
             'sentAt': r.sent_at.isoformat() if r.sent_at else None,
             'repliedAt': r.replied_at.isoformat() if r.replied_at else None
         } for r in recipients]
         return jsonify({'success': True, 'recipients': results}), 200
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/<campaign_id>/rank-vendors', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def rank_campaign_vendors(campaign_id):
+    """Rank vendor email replies for a campaign using response content and the provided criteria."""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    def _compact_text(value):
+        if not value:
+            return ''
+        return re.sub(r'\s+', ' ', str(value)).strip()
+
+    def _heuristic_score(text, criteria_text):
+        text_lower = (text or '').lower()
+        criteria_lower = (criteria_text or '').lower()
+        score = 0
+        keyword_map = {
+            'cost': ['cost', 'price', 'pricing', 'quote', 'quotation', 'discount', 'rate'],
+            'quality': ['quality', 'grade', 'certified', 'certification', 'premium'],
+            'delivery': ['delivery', 'lead time', 'dispatch', 'shipping', 'logistics'],
+            'reliability': ['reliable', 'reliability', 'consistent', 'on time', 'on-time'],
+            'payment': ['payment', 'credit', 'terms', 'advance', 'net 30', 'net 45'],
+            'warranty': ['warranty', 'guarantee', 'return', 'replacement'],
+            'capacity': ['capacity', 'volume', 'scalable', 'production'],
+            'certification': ['iso', 'certified', 'compliance', 'license', 'registration'],
+            'location': ['location', 'near', 'local', 'site', 'warehouse'],
+        }
+        for terms in keyword_map.values():
+            for term in terms:
+                if term in text_lower:
+                    score += 4
+        # Slight bias if the reply mentions multiple numeric quote values
+        if re.search(r'\b\d+(?:\.\d+)?\b', text_lower):
+            score += 4
+        if 'quotation' in text_lower or 'quote' in text_lower:
+            score += 8
+        if 'best' in text_lower or 'lowest' in text_lower or 'competitive' in text_lower:
+            score += 6
+        # If the reply directly covers criteria wording, boost slightly.
+        for word in re.findall(r'[a-z]{4,}', criteria_lower):
+            if word in text_lower:
+                score += 1
+        return min(score, 100)
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        criteria = _compact_text(payload.get('criteria') or payload.get('question') or payload.get('rankingCriteria') or '')
+        user_email = payload.get('userEmail') or payload.get('senderEmail')
+
+        trusted_uid, uid_err = _resolve_session_user_id(payload.get('user_id') or payload.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
+
+        campaign = EmailCampaign.query.get_or_404(campaign_id)
+        try:
+            _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=trusted_uid)
+        except Exception as sync_err:
+            print(f"[RANK VENDORS] Reply sync skipped for {campaign_id}: {sync_err}")
+
+        recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
+        replied = [
+            r for r in recipients
+            if (r.reply_status or '').lower() == 'replied'
+            and (_compact_text(r.reply_body) or _compact_text(r.reply_snippet) or _compact_text(r.reply_subject))
+        ]
+
+        if not replied:
+            return jsonify({'success': False, 'error': 'No vendor replies found to rank yet.'}), 400
+
+        vendor_payload = []
+        for index, recipient in enumerate(replied):
+            reply_text = _compact_text(recipient.reply_body or recipient.reply_snippet or recipient.reply_subject)
+            if len(reply_text) > 3500:
+                reply_text = reply_text[:3500]
+            vendor_payload.append({
+                'index': index,
+                'vendor_name': recipient.receiver_name or recipient.receiver_email,
+                'email': recipient.receiver_email,
+                'reply_text': reply_text,
+                'sent_at': recipient.sent_at.isoformat() if recipient.sent_at else None,
+                'replied_at': recipient.replied_at.isoformat() if recipient.replied_at else None,
+                'reply_subject': _compact_text(recipient.reply_subject or ''),
+            })
+
+        openai_key = os.getenv('OPENAI_API_KEY')
+        if not openai_key:
+            ranked = []
+            for item in vendor_payload:
+                score = _heuristic_score(item['reply_text'], criteria)
+                ranked.append({
+                    'rank': 0,
+                    'score': score,
+                    'vendor_name': item['vendor_name'],
+                    'email': item['email'],
+                    'reply_summary': item['reply_text'][:220],
+                    'reason': 'Heuristic ranking used because OPENAI_API_KEY is not set.',
+                    'criteria_match': [],
+                    'reply_text': item['reply_text'],
+                })
+            ranked.sort(key=lambda x: x['score'], reverse=True)
+            for idx, item in enumerate(ranked, start=1):
+                item['rank'] = idx
+            return jsonify({
+                'success': True,
+                'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+                'criteria': criteria,
+                'vendors': ranked,
+            }), 200
+
+        client = openai.OpenAI(api_key=openai_key)
+        prompt = [
+            {
+                'role': 'system',
+                'content': (
+                    'You are a procurement analyst ranking vendor email replies like a human buyer would. '
+                    'Compare every vendor reply against the criteria and the quotations mentioned in the emails. '
+                    'Prioritize cost/pricing, quality, reliability, delivery performance, reputation, capacity, compliance, communication, location/logistics, technology, risk, sustainability, payment terms, lead time, after-sales support, customization, financial stability, scalability, warranty/return policies, inventory, contract flexibility, certifications, data security, ethics, client references, and supply-chain stability when relevant. '
+                    'Return only valid JSON in the format: {"vendors":[{"rank":1,"vendor_name":"...","email":"...","score":92,"reply_summary":"...","reason":"...","matched_criteria":["..."],"quote_comparison":"...","strengths":["..."],"risks":["..."]}]}.'
+                )
+            },
+            {
+                'role': 'user',
+                'content': json.dumps({
+                    'criteria': criteria,
+                    'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+                    'vendors': vendor_payload,
+                }, ensure_ascii=False)
+            }
+        ]
+
+        response = client.chat.completions.create(
+            model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
+            messages=prompt,
+            temperature=0.0,
+            max_tokens=int(os.getenv('OPENAI_VENDOR_RANK_MAX_TOKENS', '1400'))
+        )
+
+        response_text = (response.choices[0].message.content or '').strip().replace('```json', '').replace('```', '').strip()
+        parsed = json.loads(response_text)
+        vendors = parsed.get('vendors') if isinstance(parsed, dict) else None
+        if not isinstance(vendors, list):
+            raise ValueError('LLM did not return a vendors array')
+
+        cleaned = []
+        for idx, item in enumerate(vendors, start=1):
+            if not isinstance(item, dict):
+                continue
+            cleaned.append({
+                'rank': int(item.get('rank') or idx),
+                'score': int(item.get('score') or 0),
+                'vendor_name': _compact_text(item.get('vendor_name') or ''),
+                'email': _compact_text(item.get('email') or ''),
+                'reply_summary': _compact_text(item.get('reply_summary') or ''),
+                'reason': _compact_text(item.get('reason') or ''),
+                'matched_criteria': item.get('matched_criteria') if isinstance(item.get('matched_criteria'), list) else [],
+                'quote_comparison': _compact_text(item.get('quote_comparison') or ''),
+                'strengths': item.get('strengths') if isinstance(item.get('strengths'), list) else [],
+                'risks': item.get('risks') if isinstance(item.get('risks'), list) else [],
+            })
+
+        cleaned.sort(key=lambda x: x['rank'])
+        return jsonify({
+            'success': True,
+            'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+            'criteria': criteria,
+            'vendors': cleaned,
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/campaigns/<campaign_id>/check-replies', methods=['POST'])
@@ -7794,7 +8203,7 @@ def score_leads():
             })
 
         # LLM only touches the top matches to refine ranking and produce richer summaries.
-        top_k = min(int(os.getenv('LEAD_SCORE_LLM_TOP_K', '10')), len(base_results))
+        top_k = min(int(os.getenv('LEAD_SCORE_LLM_TOP_K', '100')), len(base_results))
         if top_k > 0:
             top_candidates = sorted(base_results, key=lambda item: item['match_score'], reverse=True)[:top_k]
             compact_candidates = [
@@ -8332,5 +8741,4 @@ def api_context_search():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        core_db.create_all()
     app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

@@ -9,6 +9,8 @@ function CampaignDashboard() {
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [recipients, setRecipients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [isRefreshingReplies, setIsRefreshingReplies] = useState(false);
 
   useEffect(() => {
     fetchCampaigns();
@@ -25,16 +27,47 @@ function CampaignDashboard() {
 
   const fetchCampaigns = async () => {
     setIsLoading(true);
+    setLoadError('');
     try {
       const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
       const data = await res.json();
       if (data.success) {
         setCampaigns(data.campaigns);
+        if (data.campaigns && data.campaigns.length > 0) {
+          refreshRepliesInBackground(data.campaigns);
+        }
+      } else {
+        setLoadError(data.error || 'Failed to load campaign stats.');
       }
     } catch (e) {
       console.error(e);
+      setLoadError('Unable to load campaign dashboard right now.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const refreshRepliesInBackground = async (campaignList) => {
+    setIsRefreshingReplies(true);
+    try {
+      await Promise.all(
+        campaignList.map((campaign) =>
+          fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaign.id), {
+            method: 'GET'
+          }).catch((error) => {
+            console.error('Reply refresh failed for campaign', campaign.id, error);
+          })
+        )
+      );
+      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
+      const data = await res.json();
+      if (data.success) {
+        setCampaigns(data.campaigns);
+      }
+    } catch (error) {
+      console.error('Background reply refresh failed:', error);
+    } finally {
+      setIsRefreshingReplies(false);
     }
   };
 
@@ -68,8 +101,11 @@ function CampaignDashboard() {
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1, minHeight: 0 }}>
                   <h2 style={{ color: '#1E3A5F', borderBottom: '2px solid #F1EAE4', paddingBottom: '5px', marginBottom: '4px', flexShrink: 0 }}>Campaign Performance</h2>
                   <p style={{ margin: '0 0 10px 0', color: '#4b5563', fontSize: '12px' }}>Reply data auto-refreshes every 30 seconds.</p>
-                  {isLoading ? <p>Loading...</p> : (
+                  {isLoading ? <p>Loading...</p> : loadError ? (
+                    <p style={{ color: '#b42318' }}>{loadError}</p>
+                  ) : (
                     <div className="table-wrapper">
+                      {isRefreshingReplies && <p style={{ margin: '0 0 8px 0', color: '#6b7280', fontSize: '12px' }}>Refreshing reply counts...</p>}
                       <table className="research-table" style={{ width: '100%' }}>  
                         <thead>
                           <tr>
