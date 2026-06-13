@@ -1,5 +1,6 @@
 import React from 'react';
 import Header from '../core/Header';
+import { BackButton, Input } from '../components';
 import '../styles/AgentsAssembly.css';
 
 // Placeholder for 11 parameters (to be defined later)
@@ -9,6 +10,7 @@ function InvestAgent() {
   return (
     <>
       <Header />
+      <BackButton />
       <div className="agent-dashboard invest-agent-dashboard">
         <h2 className="dashboard-title">Invest Agent Dashboard</h2>
         <div className="parameters-section">

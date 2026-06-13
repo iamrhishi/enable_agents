@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
+import { BackButton, Input, Textarea, ConfirmDialog } from '../components';
 import '../styles/CommunityNetworkAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { useAgentChat } from '../hooks/useAgentChat';
@@ -9,10 +10,12 @@ function CommunityNetworkAgent() {
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
-    addMessage, checkExistingFile, saveJSONToFile,
+    addMessage, clearChat, continueChat, showClearConfirm,
+    checkExistingFile, saveJSONToFile,
   } = useAgentChat(
     "Welcome to the Community Network Agent! Now I can help you enhance your network!",
-    'dataset'
+    'dataset',
+    'community_network'
   );
 
   const [csvData, setCsvData] = useState(null);
@@ -731,7 +734,8 @@ function CommunityNetworkAgent() {
   return (
     <div className="community-network-agent">
       <Header />
-      
+      <BackButton />
+
       <div className="main-container">
         {/* Left Section - File Uploads */}
         <div className="upload-section">
@@ -931,6 +935,18 @@ function CommunityNetworkAgent() {
           </div>
         </div>
       </div>
+
+      {/* Chat History Confirmation Dialog */}
+      <ConfirmDialog
+        open={showClearConfirm}
+        title="Continue Previous Chat?"
+        message="You have a previous conversation. Would you like to continue where you left off or start fresh?"
+        confirmLabel="Continue"
+        cancelLabel="Start Fresh"
+        onConfirm={continueChat}
+        onCancel={clearChat}
+        variant="info"
+      />
     </div>
   );
 }

@@ -1,0 +1,176 @@
+/**
+ * PageLayout Component Styles
+ *
+ * Uses design tokens from tokens.css
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PAGE LAYOUT
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.page-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background, #f8fafc);
+}
+
+.page-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PAGE HEADER
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.page-header {
+  background: var(--color-surface, #ffffff);
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  padding: var(--space-6, 24px) var(--space-6, 24px);
+}
+
+.page-header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4, 16px);
+}
+
+.page-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+  line-height: 1.3;
+}
+
+.page-subtitle {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 0.938rem;
+  color: var(--color-text-subtle, #64748b);
+  line-height: 1.5;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PAGE CONTENT
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.page-content {
+  flex: 1;
+  padding: var(--space-6, 24px);
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.page-content--narrow {
+  max-width: 800px;
+}
+
+.page-content--no-padding {
+  padding: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PAGE SECTION
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.page-section {
+  margin-bottom: var(--space-8, 32px);
+}
+
+.page-section:last-child {
+  margin-bottom: 0;
+}
+
+.page-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4, 16px);
+  margin-bottom: var(--space-4, 16px);
+}
+
+.page-section-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-section-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text, #1f2937);
+  line-height: 1.4;
+}
+
+.page-section-description {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle, #64748b);
+  line-height: 1.5;
+}
+
+.page-section-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-shrink: 0;
+}
+
+.page-section-content {
+  /* Content container - no special styling needed */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .page-header {
+    padding: var(--space-4, 16px);
+  }
+
+  .page-header-content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header-actions {
+    margin-top: var(--space-3, 12px);
+  }
+
+  .page-title {
+    font-size: 1.25rem;
+  }
+
+  .page-content {
+    padding: var(--space-4, 16px);
+  }
+
+  .page-section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-section-actions {
+    margin-top: var(--space-2, 8px);
+  }
+}

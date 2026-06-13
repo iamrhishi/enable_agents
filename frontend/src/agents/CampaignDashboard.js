@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import Header from '../core/Header';
+import BackButton from '../components/BackButton';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 
@@ -54,6 +55,7 @@ function CampaignDashboard() {
   return (
     <div className="requirements-page">
       <Header />
+      <BackButton />
       <div className="requirements-container">
         
         <div className="main-workspace-area">

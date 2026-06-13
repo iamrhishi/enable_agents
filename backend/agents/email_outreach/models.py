@@ -5,6 +5,7 @@ from core.database import db
 
 class EmailCampaign(db.Model):
     __tablename__ = "email_campaigns"
+    __table_args__ = {'extend_existing': True}
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     campaign_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
@@ -21,6 +22,7 @@ class EmailCampaign(db.Model):
 
 class EmailCampaignRecipient(db.Model):
     __tablename__ = "email_campaign_recipients"
+    __table_args__ = {'extend_existing': True}
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     campaign_id = db.Column(db.String(36), db.ForeignKey("email_campaigns.campaign_id"), nullable=False, index=True)
@@ -37,6 +39,7 @@ class EmailCampaignRecipient(db.Model):
 
 class EmailExtractionQuota(db.Model):
     __tablename__ = "email_extraction_quotas"
+    __table_args__ = {'extend_existing': True}
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(255), unique=True, nullable=False, index=True)

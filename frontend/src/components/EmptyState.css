@@ -1,0 +1,87 @@
+/**
+ * Empty State Styles
+ * Uses design tokens from tokens.css
+ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-muted);
+}
+
+/* Size variants */
+.empty-state-sm {
+  padding: var(--space-4);
+}
+
+.empty-state-sm .empty-state-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-sm .empty-state-title {
+  font-size: var(--text-body);
+}
+
+.empty-state-sm .empty-state-description {
+  font-size: var(--text-small);
+}
+
+.empty-state-md {
+  padding: var(--space-8);
+}
+
+.empty-state-lg {
+  padding: var(--space-12);
+}
+
+.empty-state-lg .empty-state-icon {
+  width: 80px;
+  height: 80px;
+}
+
+.empty-state-lg .empty-state-title {
+  font-size: var(--text-title);
+}
+
+/* Icon */
+.empty-state-icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-4);
+  color: var(--color-border);
+}
+
+.empty-state-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Title */
+.empty-state-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+/* Description */
+.empty-state-description {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  max-width: 320px;
+  line-height: var(--leading-relaxed);
+}
+
+/* Action button */
+.empty-state-action {
+  margin-top: var(--space-2);
+}

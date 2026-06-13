@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
+import { BackButton, Skeleton, EmptyState, Input, Textarea, Select, ConfirmDialog } from '../components';
 import '../styles/SalesHelperAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
@@ -10,10 +11,12 @@ function SalesHelperAgent() {
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
-    addMessage, checkExistingFile, saveJSONToFile,
+    addMessage, clearChat, continueChat, showClearConfirm,
+    checkExistingFile, saveJSONToFile,
   } = useAgentChat(
     "Welcome to the Sales Helper Agent! I can help you analyze prospects, track leads, and optimize your sales pipeline!",
-    'sales_data'
+    'sales_data',
+    'sales_helper'
   );
 
   const [csvData, setCsvData] = useState(null);
@@ -572,7 +575,8 @@ function SalesHelperAgent() {
   return (
     <div className="sales-helper-agent">
       <Header />
-      
+      <BackButton />
+
       <div className="main-container">
         {/* Left Section - Upload and Tools */}
         <div className="upload-section">
@@ -672,10 +676,10 @@ function SalesHelperAgent() {
             </div>
 
             <div className="saved-leads-controls">
-              <select
+              <Select
                 value={savedProjectSelection}
                 onChange={(e) => setSavedProjectSelection(e.target.value)}
-                className="saved-leads-select"
+                variant="outlined"
               >
                 <option value="">Select a saved leads list</option>
                 {savedProjects.map((project) => (
@@ -683,9 +687,9 @@ function SalesHelperAgent() {
                     {project.name} ({project.lead_count})
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
-                className="open-saved-list-btn"
+                className="btn btn-primary"
                 onClick={() => loadSavedProjectLeads(savedProjectSelection)}
                 disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
               >
@@ -696,9 +700,14 @@ function SalesHelperAgent() {
             {!selectedSavedProject ? (
               <div className="saved-leads-table-scroll">
                 {isLoadingSavedProjects ? (
-                  <div className="empty-saved-state">Loading saved lists...</div>
+                  <div style={{ padding: 'var(--space-4, 16px)' }}>
+                    <Skeleton.Table rows={3} cols={5} />
+                  </div>
                 ) : savedProjects.length === 0 ? (
-                  <div className="empty-saved-state">No saved leads lists found.</div>
+                  <EmptyState.NoData
+                    title="No saved leads lists"
+                    description="Save leads from the Market Research agent to see them here"
+                  />
                 ) : (
                   <table className="businesses-table saved-projects-table">
                     <thead>
@@ -825,6 +834,18 @@ function SalesHelperAgent() {
           </div>
         </div>
       </div>
+
+      {/* Chat History Confirmation Dialog */}
+      <ConfirmDialog
+        open={showClearConfirm}
+        title="Continue Previous Chat?"
+        message="You have a previous conversation. Would you like to continue where you left off or start fresh?"
+        confirmLabel="Continue"
+        cancelLabel="Start Fresh"
+        onConfirm={continueChat}
+        onCancel={clearChat}
+        variant="info"
+      />
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import React from 'react';
 import Header from '../core/Header';
+import BackButton from '../components/BackButton';
 import '../styles/AgentsAssembly.css';
 
 function SupplyChainAgent() {
   return (
     <>
       <Header />
+      <BackButton />
       <div className="agent-dashboard supply-chain-agent-dashboard">
         <h2 className="dashboard-title">Supply Chain Agent Dashboard</h2>
         <div className="supply-chain-visual-section">

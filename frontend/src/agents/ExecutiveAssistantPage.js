@@ -1,12 +1,11 @@
 import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
+import { Input, Textarea, Select } from '../components';
 
 function ExecutiveAssistantPage() {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('projects');
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -216,43 +215,33 @@ function ExecutiveAssistantPage() {
   return (
     <div className="executive-assistant-page">
       <Header />
-      
-      <div className="ea-container">
-        <div className="ea-header">
-          <div>
-            <h1>Executive Assistant Agent</h1>
-            <p>Manage your projects, tasks, and team communications</p>
-          </div>
-          <button className="back-button" onClick={() => navigate('/agents-assembly')}>
-            ← Back to Agents
-          </button>
-        </div>
 
+      <div className="ea-container">
         {/* Tab Navigation */}
-        <div className="ea-tabs">
+        <div className="module-tabs">
           <button
-            className={`ea-tab ${activeTab === 'projects' ? 'active' : ''}`}
+            className={`module-tab ${activeTab === 'projects' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('projects')}
           >
-            📋 Projects ({projects.length})
+            Projects ({projects.length})
           </button>
           <button
-            className={`ea-tab ${activeTab === 'tasks' ? 'active' : ''}`}
+            className={`module-tab ${activeTab === 'tasks' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('tasks')}
           >
-            ✓ Tasks ({tasks.length})
+            Tasks ({tasks.length})
           </button>
           <button
-            className={`ea-tab ${activeTab === 'people' ? 'active' : ''}`}
+            className={`module-tab ${activeTab === 'people' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('people')}
           >
-            👥 People ({people.length})
+            People ({people.length})
           </button>
           <button
-            className={`ea-tab ${activeTab === 'reminders' ? 'active' : ''}`}
+            className={`module-tab ${activeTab === 'reminders' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('reminders')}
           >
-            💬 WhatsApp Reminders
+            WhatsApp Reminders
           </button>
         </div>
 
@@ -269,33 +258,33 @@ function ExecutiveAssistantPage() {
             {showProjectForm && (
               <div className="form-card">
                 <h3>Create New Project</h3>
-                <input
-                  type="text"
+                <Input
                   placeholder="Project Name"
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                 />
-                <textarea
+                <Textarea
                   placeholder="Project Description"
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
                 />
-                <input
+                <Input
                   type="date"
                   value={newProject.dueDate}
                   onChange={(e) => setNewProject({ ...newProject, dueDate: e.target.value })}
                 />
-                <select
+                <Select
                   value={newProject.status}
                   onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
+                  variant="outlined"
                 >
                   <option value="Active">Active</option>
                   <option value="On Hold">On Hold</option>
                   <option value="Completed">Completed</option>
-                </select>
+                </Select>
                 <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddProject}>Save Project</button>
-                  <button className="btn-cancel" onClick={() => setShowProjectForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleAddProject}>Save Project</button>
+                  <button className="btn btn-secondary" onClick={() => setShowProjectForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -357,9 +346,10 @@ function ExecutiveAssistantPage() {
             {showTaskForm && (
               <div className="form-card">
                 <h3>Create New Task</h3>
-                <select
+                <Select
                   value={newTask.projectId}
                   onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
+                  variant="outlined"
                 >
                   <option value="">Select Project</option>
                   {projects.map((p) => (
@@ -367,21 +357,21 @@ function ExecutiveAssistantPage() {
                       {p.name}
                     </option>
                   ))}
-                </select>
-                <input
-                  type="text"
+                </Select>
+                <Input
                   placeholder="Task Title"
                   value={newTask.title}
                   onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
                 />
-                <textarea
+                <Textarea
                   placeholder="Task Description"
                   value={newTask.description}
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                 />
-                <select
+                <Select
                   value={newTask.assignedTo}
                   onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                  variant="outlined"
                 >
                   <option value="">Assign to Person</option>
                   {people.map((p) => (
@@ -389,31 +379,33 @@ function ExecutiveAssistantPage() {
                       {p.name}
                     </option>
                   ))}
-                </select>
-                <input
+                </Select>
+                <Input
                   type="date"
                   value={newTask.dueDate}
                   onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
                 />
-                <select
+                <Select
                   value={newTask.priority}
                   onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                  variant="outlined"
                 >
                   <option value="Low">Low Priority</option>
                   <option value="Medium">Medium Priority</option>
                   <option value="High">High Priority</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={newTask.status}
                   onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
+                  variant="outlined"
                 >
                   <option value="Pending">Pending</option>
                   <option value="In Progress">In Progress</option>
                   <option value="Completed">Completed</option>
-                </select>
+                </Select>
                 <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddTask}>Save Task</button>
-                  <button className="btn-cancel" onClick={() => setShowTaskForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleAddTask}>Save Task</button>
+                  <button className="btn btn-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -489,40 +481,37 @@ function ExecutiveAssistantPage() {
             {showPersonForm && (
               <div className="form-card">
                 <h3>Add Team Member</h3>
-                <input
-                  type="text"
+                <Input
                   placeholder="Full Name"
                   value={newPerson.name}
                   onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
                 />
-                <input
+                <Input
                   type="email"
                   placeholder="Email"
                   value={newPerson.email}
                   onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
                 />
-                <input
+                <Input
                   type="tel"
                   placeholder="Phone Number"
                   value={newPerson.phone}
                   onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
                 />
-                <input
+                <Input
                   type="tel"
                   placeholder="WhatsApp Number (with country code, e.g., +1234567890)"
                   value={newPerson.whatsappNumber}
                   onChange={(e) => setNewPerson({ ...newPerson, whatsappNumber: e.target.value })}
-                  required
                 />
-                <input
-                  type="text"
+                <Input
                   placeholder="Role/Position"
                   value={newPerson.role}
                   onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })}
                 />
                 <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddPerson}>Save Person</button>
-                  <button className="btn-cancel" onClick={() => setShowPersonForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleAddPerson}>Save Person</button>
+                  <button className="btn btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -580,28 +569,30 @@ function ExecutiveAssistantPage() {
             ) : (
               <div className="reminder-card">
                 <h3>Send WhatsApp Reminder</h3>
-                
+
                 <div className="reminder-form">
                   <div className="form-group">
                     <label>Select Person:</label>
-                    <select
+                    <Select
                       value={reminderDetails.person}
                       onChange={(e) => setReminderDetails({ ...reminderDetails, person: e.target.value })}
+                      variant="outlined"
                     >
                       <option value="">Choose a team member</option>
                       {people.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} (💬 {p.whatsappNumber})
+                          {p.name} ({p.whatsappNumber})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="form-group">
                     <label>Related Task (Optional):</label>
-                    <select
+                    <Select
                       value={reminderDetails.task}
                       onChange={(e) => setReminderDetails({ ...reminderDetails, task: e.target.value })}
+                      variant="outlined"
                     >
                       <option value="">Select a task</option>
                       {tasks.map((t) => (
@@ -609,14 +600,15 @@ function ExecutiveAssistantPage() {
                           {t.title}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="form-group">
                     <label>Related Project (Optional):</label>
-                    <select
+                    <Select
                       value={reminderDetails.project}
                       onChange={(e) => setReminderDetails({ ...reminderDetails, project: e.target.value })}
+                      variant="outlined"
                     >
                       <option value="">Select a project</option>
                       {projects.map((p) => (
@@ -624,34 +616,35 @@ function ExecutiveAssistantPage() {
                           {p.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="form-group">
                     <label>Message:</label>
-                    <textarea
+                    <Textarea
                       placeholder="Enter your reminder message"
                       value={reminderDetails.message}
                       onChange={(e) => setReminderDetails({ ...reminderDetails, message: e.target.value })}
-                      rows="4"
+                      rows={4}
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Send When:</label>
-                    <select
+                    <Select
                       value={reminderDetails.sendTime}
                       onChange={(e) => setReminderDetails({ ...reminderDetails, sendTime: e.target.value })}
+                      variant="outlined"
                     >
                       <option value="now">Send Now</option>
                       <option value="tomorrow">Tomorrow Morning</option>
                       <option value="next-day">Next Day</option>
                       <option value="weekly">Weekly</option>
-                    </select>
+                    </Select>
                   </div>
 
-                  <button className="btn-send-whatsapp" onClick={handleSendReminder}>
-                    💬 Send via WhatsApp
+                  <button className="btn btn-primary" onClick={handleSendReminder}>
+                    Send via WhatsApp
                   </button>
                 </div>
 

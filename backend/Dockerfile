@@ -6,6 +6,7 @@ FROM python:3.11-slim-bookworm
 WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV FLASK_APP=app.py
 
 # Install system dependencies
 RUN apt-get update -o Acquire::Retries=5 \

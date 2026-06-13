@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import procurementUsecases from '../procurement.json';
 import { FaLinkedin, FaEnvelope, FaWhatsapp, FaGlobe, FaBolt, FaChevronLeft, FaChevronRight, FaShareAlt } from 'react-icons/fa';
+import { BackButton, Input } from '../components';
 import '../styles/EventNetworkingAgent.css';
 
 
@@ -93,6 +94,7 @@ function EventNetworkingAgent() {
 
   return (
     <div className="event-networking-agent-chat" style={{ position: 'relative' }}>
+      <BackButton />
       <div className="chat-header enable-header">
         <div className="header-flex">
           <img src={process.env.PUBLIC_URL + '/assets/images/enable_logo.png'} alt="Enable Logo" className="header-logo" />

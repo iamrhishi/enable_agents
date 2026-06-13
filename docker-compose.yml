@@ -4,23 +4,22 @@ services:
 
   # --- Infrastructure (always-on, no profile)
 
-  mysql:
-    image: mysql:8.4
-    container_name: enable_agents_mysql
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: enable_agents_postgres
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: enable_agents
-      MYSQL_USER: enable_agents
-      MYSQL_PASSWORD: enable_agents
+      POSTGRES_DB: enable_agents
+      POSTGRES_USER: enable_agents
+      POSTGRES_PASSWORD: enable_agents
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - enable-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U enable_agents -d enable_agents"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -56,7 +55,7 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -72,7 +71,8 @@ services:
       PUBLIC_URL: "http://localhost:8000"
       GOOGLE_REDIRECT_URI: "http://localhost:5000/auth/google/callback"
       LINKEDIN_REDIRECT_URI: "http://localhost:5000/auth/linkedin/callback"
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      FRONTEND_URL: "http://localhost:3000"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     healthcheck:
@@ -116,13 +116,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend:/app
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -140,13 +140,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend:/app
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -200,7 +200,7 @@ services:
       PYTHONUNBUFFERED: 1
       ENVIRONMENT: production
       PUBLIC_URL: "http://localhost:8000"
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     ports:
@@ -209,7 +209,7 @@ services:
       - ./backend/instance:/app/instance
       - ./backend/data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -244,13 +244,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend/data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -268,13 +268,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - ./backend/data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -330,14 +330,14 @@ services:
       FLASK_ENV: production
       PYTHONUNBUFFERED: 1
       ENVIRONMENT: production
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - backend_instance:/app/instance
       - backend_data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -376,13 +376,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - backend_data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -400,13 +400,13 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URI: "mysql+mysqlconnector://enable_agents:enable_agents@mysql:3306/enable_agents"
+      DATABASE_URI: "postgresql+psycopg2://enable_agents:enable_agents@postgres:5432/enable_agents"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
     volumes:
       - backend_data:/app/data
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -476,7 +476,7 @@ services:
       - enable-network
 
 volumes:
-  mysql_data:
+  postgres_data:
   frontend_node_modules:
   backend_instance:
   backend_data:

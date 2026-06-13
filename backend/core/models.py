@@ -36,3 +36,29 @@ class AgentContext(db.Model):
         db.UniqueConstraint("user_id", "agent_id", "key", name="uq_agent_context"),
         db.Index("ix_agent_context_user_key", "user_id", "key"),
     )
+
+
+class UserSettingModel(db.Model):
+    """
+    Encrypted per-user settings storage.
+
+    Stores API keys, OAuth tokens, connector configurations, etc.
+    All sensitive values are encrypted at rest.
+
+    Use UserSettings (core/settings.py) to read/write — provides
+    encryption/decryption automatically.
+    """
+    __tablename__ = "user_settings"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(255), nullable=False, index=True)
+    category = db.Column(db.String(50), nullable=False)  # ai, connectors, scraping, oauth
+    key = db.Column(db.String(100), nullable=False)
+    value_encrypted = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "category", "key", name="uq_user_setting"),
+        db.Index("ix_user_settings_user_category", "user_id", "category"),
+    )

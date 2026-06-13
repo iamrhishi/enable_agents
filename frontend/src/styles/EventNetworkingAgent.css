@@ -77,11 +77,11 @@
 }
 
 .agent-name {
-  font-weight: 700;
-  color: #C2410C;
+  font-weight: var(--font-bold);
+  color: var(--color-accent);
   font-size: 1.08em;
   margin-bottom: 4px;
-  font-family: 'Fraunces', serif;
+  font-family: var(--font-body);
 }
 /* Header Flex and Logo Styling */
 .header-flex {
@@ -174,7 +174,7 @@
   .agent-details h3 {
     color: #C2410C;
     margin-bottom: 10px;
-    font-family: 'Fraunces', serif;
+    font-family: var(--font-body);
     display: flex;
     align-items: center;
     justify-content: left;
