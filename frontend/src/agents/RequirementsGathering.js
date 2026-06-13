@@ -211,8 +211,8 @@ function RequirementsGathering() {
   const [extractionUsage, setExtractionUsage] = useState(null);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
-    clientSecret: '',
-    redirectUri: ''
+    redirectUri: '',
+    hasCredentials: false
   });
 
   const getCurrentUsername = () => {
@@ -248,8 +248,8 @@ function RequirementsGathering() {
         if (data.success && data.credentials) {
           setGoogleBusinessForm({
             clientId: data.credentials.clientId || '',
-            clientSecret: data.credentials.clientSecret || '',
-            redirectUri: data.credentials.redirectUri || ''
+            redirectUri: data.credentials.redirectUri || '',
+            hasCredentials: data.credentials.hasCredentials || false
           });
           
           // If credentials are configured in .env, mark as connected
@@ -1124,23 +1124,23 @@ function RequirementsGathering() {
   };
 
   const handleGoogleBusinessConnect = async () => {
-    // If credentials are from .env and empty, just authorize without showing modal
-    const hasEnvCredentials = googleBusinessForm.clientId && 
-                              googleBusinessForm.clientSecret && 
-                              googleBusinessForm.redirectUri;
-    
-    if (!hasEnvCredentials) {
-      alert('Please fill in all fields');
+    // Check if server has credentials configured
+    if (!googleBusinessForm.hasCredentials && !googleBusinessForm.clientId) {
+      alert('Google credentials not configured. Contact administrator.');
       return;
     }
-    
+
     try {
+      // Server uses its own credentials from .env - don't send secrets from frontend
       const response = await fetch(API_CONFIG.CONNECT_GOOGLE_BUSINESS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(googleBusinessForm),
+        body: JSON.stringify({
+          clientId: googleBusinessForm.clientId,
+          redirectUri: googleBusinessForm.redirectUri
+        }),
       });
 
       const data = await response.json();
@@ -1767,16 +1767,7 @@ function RequirementsGathering() {
                       placeholder="Enter Client ID"
                     />
                   </div>
-                  <div className="form-group">
-                    <label>Client Secret</label>
-                    <input
-                      type="text"
-                      name="clientSecret"
-                      value={googleBusinessForm.clientSecret}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Client Secret"
-                    />
-                  </div>
+                  {/* Client Secret is configured server-side in .env for security */}
                   <div className="form-group">
                     <label>Redirect URI</label>
                     <input

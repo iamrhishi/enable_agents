@@ -6368,9 +6368,19 @@ def get_content_marketing_knowledge_graph(project_id):
 @cross_origin()
 def get_google_credentials():
     """
-    Get pre-configured Google OAuth credentials from environment
-    Returns empty values if not configured
+    Get pre-configured Google OAuth credentials status from environment.
+    Requires authentication. Never exposes client secret.
     """
+    # Require authenticated session
+    user_id, err = _resolve_session_user_id(None)
+    if err:
+        return err
+    if not user_id:
+        return jsonify({
+            'success': False,
+            'error': 'Authentication required'
+        }), 401
+
     try:
         env_file = os.path.join(os.path.dirname(__file__), '.env')
         load_dotenv(env_file, override=True)
@@ -6380,28 +6390,27 @@ def get_google_credentials():
             os.getenv('GOOGLE_REDIRECT_URI')
         ])
         has_places_api_key = bool(os.getenv('GOOGLE_PLACES_API_KEY'))
-        
+
+        # Only expose public info - NEVER expose clientSecret
         credentials = {
             'clientId': os.getenv('GOOGLE_CLIENT_ID', ''),
-            'clientSecret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
             'redirectUri': os.getenv('GOOGLE_REDIRECT_URI', ''),
             'hasCredentials': has_oauth_credentials or has_places_api_key,
             'hasPlacesApiKey': has_places_api_key
         }
-        
+
         return jsonify({
             'success': True,
             'credentials': credentials
         }), 200
-        
+
     except Exception as e:
         print(f"Error fetching Google credentials: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': 'Failed to fetch credentials status',
             'credentials': {
                 'clientId': '',
-                'clientSecret': '',
                 'redirectUri': '',
                 'hasCredentials': False
             }
