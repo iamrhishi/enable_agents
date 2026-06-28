@@ -102,6 +102,11 @@ function AgentsAssembly() {
 
   const navigate = useNavigate();
   const chatHistoryRef = useRef(null);
+  const carouselRef = useRef(null);
+
+  // Carousel state
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const cardsPerView = 4; // Number of cards visible at once
 
   // Load enabled agents from the backend registry on mount
   useEffect(() => {
@@ -136,16 +141,18 @@ function AgentsAssembly() {
       icon: '/assets/icons/networking.png',
       price: 'Free',
       status: 'in-progress',
+      description: 'Your AI-powered executive assistant for task management, reminders, and stakeholder coordination via WhatsApp.',
       keywords: ['executive assistant', 'task management', 'reminders', 'whatsapp', 'stakeholder updates'],
       businessContext: ['executive', 'management', 'personal productivity', 'team coordination'],
       industries: ['all industries'],
       useCases: ['task reminders', 'stakeholder follow-up', 'whatsapp integration', 'executive support']
     },
-    { 
-      name: 'Market Research', 
-      icon: '/assets/icons/search-analysis.png', 
+    {
+      name: 'Market Research',
+      icon: '/assets/icons/search-analysis.png',
       price: '$29/month',
       status: 'ready',
+      description: 'Discover market trends, analyze competitors, and gather customer insights to make data-driven decisions.',
       keywords: ['market analysis', 'competitor research', 'customer insights', 'business intelligence', 'market trends'],
       businessContext: ['retail', 'ecommerce', 'startup', 'product launch', 'competitive analysis'],
       industries: ['retail', 'technology', 'healthcare', 'finance', 'manufacturing'],
@@ -156,6 +163,7 @@ function AgentsAssembly() {
       icon: '/assets/icons/increase.png',
       price: '$45/month',
       status: 'in-progress',
+      description: 'Supercharge your sales with lead management, CRM integration, and intelligent sales strategy recommendations.',
       keywords: ['sales', 'sales enablement', 'CRM', 'lead management', 'sales strategy'],
       businessContext: ['sales', 'lead generation', 'customer acquisition', 'sales optimization', 'business growth'],
       industries: ['retail', 'technology', 'ecommerce', 'services', 'consulting'],
@@ -166,46 +174,51 @@ function AgentsAssembly() {
       icon: '/assets/icons/bullhorn.png',
       price: '$49/month',
       status: 'in-progress',
+      description: 'Create compelling content, manage campaigns, and boost your brand presence with AI-powered marketing.',
       keywords: ['content marketing', 'content creation', 'marketing strategy', 'brand content', 'SEO'],
       businessContext: ['content marketing', 'brand building', 'digital marketing', 'social media', 'marketing strategy'],
       industries: ['retail', 'technology', 'media', 'education', 'ecommerce'],
       useCases: ['creating marketing content', 'content strategy', 'brand engagement', 'digital marketing']
     },
-    { 
-      name: 'Hiring & Onboarding', 
-      icon: '/assets/icons/hr.png', 
+    {
+      name: 'Hiring & Onboarding',
+      icon: '/assets/icons/hr.png',
       price: '$45/month',
       status: 'in-progress',
+      description: 'Streamline recruitment, automate onboarding workflows, and build your dream team efficiently.',
       keywords: ['recruitment', 'hiring process', 'employee onboarding', 'HR management', 'talent acquisition'],
       businessContext: ['growing business', 'startup', 'scaling team', 'remote work', 'human resources'],
       industries: ['all industries', 'technology', 'consulting', 'healthcare', 'finance'],
       useCases: ['hiring employees', 'team expansion', 'recruitment process', 'employee management']
     },
-    { 
-      name: 'Documents', 
-      icon: '/assets/icons/document.png', 
+    {
+      name: 'Documents',
+      icon: '/assets/icons/document.png',
       price: '$22/month',
       status: 'in-progress',
+      description: 'Organize, search, and manage documents intelligently with AI-powered document understanding.',
       keywords: ['document management', 'file storage', 'document workflow', 'paperwork automation'],
       businessContext: ['office management', 'legal compliance', 'document processing', 'administrative tasks'],
       industries: ['all industries', 'legal', 'healthcare', 'finance', 'consulting'],
       useCases: ['managing documents', 'file organization', 'document workflow', 'compliance']
     },
-    { 
-      name: 'Supplier Tracking', 
-      icon: '/assets/icons/agreement.png', 
+    {
+      name: 'Supplier Tracking',
+      icon: '/assets/icons/agreement.png',
       price: '$32/month',
       status: 'in-progress',
+      description: 'Track vendors, manage procurement, and optimize supplier relationships for better supply chain efficiency.',
       keywords: ['supplier management', 'vendor tracking', 'procurement', 'supply chain', 'vendor relations'],
       businessContext: ['manufacturing', 'retail', 'food delivery', 'restaurant', 'supply chain management'],
       industries: ['manufacturing', 'retail', 'food service', 'construction', 'healthcare'],
       useCases: ['managing suppliers', 'vendor relationships', 'procurement process', 'supply chain']
     },
-    { 
-      name: 'Invoices', 
-      icon: '/assets/icons/invoices.png', 
+    {
+      name: 'Invoices',
+      icon: '/assets/icons/invoices.png',
       price: '$26/month',
       status: 'in-progress',
+      description: 'Automate billing, track payments, and manage accounts receivable with intelligent invoice processing.',
       keywords: ['invoice management', 'billing', 'accounts receivable', 'payment processing', 'financial management'],
       businessContext: ['food delivery', 'service business', 'freelancing', 'small business', 'accounting'],
       industries: ['all industries', 'professional services', 'retail', 'food service', 'consulting'],
@@ -216,46 +229,51 @@ function AgentsAssembly() {
       icon: '/assets/icons/supply-chain-management.png',
       price: 'Custom',
       status: 'in-progress',
+      description: 'Visualize supply chain impact, analyze disruptions, and optimize logistics with real-time dashboards.',
       keywords: ['supply chain', 'impact analysis', 'dashboard', 'visualization', 'logistics'],
       businessContext: ['supply chain', 'logistics', 'operations', 'risk management'],
       industries: ['manufacturing', 'retail', 'logistics', 'operations'],
       useCases: ['visualize supply chain impact', 'event impact analysis', 'dashboard visualization']
     },
-    { 
-      name: 'Inventory', 
-      icon: '/assets/icons/inventory.png', 
+    {
+      name: 'Inventory',
+      icon: '/assets/icons/inventory.png',
       price: '$25/month',
       status: 'in-progress',
+      description: 'Track stock levels, manage warehouses, and prevent stockouts with intelligent inventory management.',
       keywords: ['stock management', 'inventory tracking', 'warehouse management', 'stock levels', 'supply chain'],
       businessContext: ['food delivery', 'restaurant', 'retail', 'ecommerce', 'manufacturing', 'warehouse'],
       industries: ['food service', 'retail', 'manufacturing', 'wholesale', 'logistics'],
       useCases: ['tracking stock', 'inventory control', 'supply management', 'warehouse operations']
     },
-    { 
-      name: 'Orders', 
-      icon: '/assets/icons/orders.png', 
+    {
+      name: 'Orders',
+      icon: '/assets/icons/orders.png',
       price: '$35/month',
       status: 'in-progress',
+      description: 'Process orders efficiently, track deliveries, and manage fulfillment from a single dashboard.',
       keywords: ['order management', 'order processing', 'order tracking', 'sales orders', 'purchase orders'],
       businessContext: ['food delivery', 'ecommerce', 'retail', 'restaurant', 'online store', 'marketplace'],
       industries: ['food service', 'retail', 'ecommerce', 'manufacturing', 'wholesale'],
       useCases: ['managing orders', 'order fulfillment', 'delivery tracking', 'sales processing']
     },
-    { 
-      name: 'Travel Agent', 
-      icon: '/assets/icons/travel.png', 
+    {
+      name: 'Travel Agent',
+      icon: '/assets/icons/travel.png',
       price: '$42/month',
       status: 'in-progress',
+      description: 'Plan business trips, manage travel expenses, and coordinate team travel with AI assistance.',
       keywords: ['travel management', 'trip planning', 'travel booking', 'expense management', 'business travel'],
       businessContext: ['business travel', 'remote work', 'consulting', 'sales team', 'client meetings'],
       industries: ['consulting', 'sales', 'technology', 'professional services', 'field service'],
       useCases: ['managing business travel', 'trip planning', 'travel expenses', 'team travel']
     },
-    { 
-      name: 'Community Network', 
-      icon: '/assets/icons/community.png', 
+    {
+      name: 'Community Network',
+      icon: '/assets/icons/community.png',
       price: '$38/month',
       status: 'in-progress',
+      description: 'Build and engage your community, manage relationships, and grow customer loyalty organically.',
       keywords: ['community management', 'network building', 'customer engagement', 'social platform', 'relationship management'],
       businessContext: ['customer engagement', 'brand building', 'social media', 'community building', 'customer loyalty'],
       industries: ['retail', 'technology', 'media', 'nonprofit', 'education'],
@@ -266,26 +284,29 @@ function AgentsAssembly() {
       icon: '/assets/icons/save-money.png',
       price: 'Custom',
       status: 'in-progress',
+      description: 'Assess financial instruments, analyze investment opportunities, and track portfolio performance.',
       keywords: ['investment', 'financial instruments', 'assessment', 'parameters', 'finance'],
       businessContext: ['finance', 'investment', 'portfolio management', 'financial analysis'],
       industries: ['finance', 'investment', 'banking', 'wealth management'],
       useCases: ['assess financial instruments', 'investment analysis', 'parameter dashboard']
     },
-    { 
-      name: 'Reports', 
-      icon: '/assets/icons/reports.png', 
+    {
+      name: 'Reports',
+      icon: '/assets/icons/reports.png',
       price: '$28/month',
       status: 'in-progress',
+      description: 'Generate insightful reports, visualize KPIs, and make data-driven decisions with ease.',
       keywords: ['business reporting', 'analytics', 'data visualization', 'business intelligence', 'KPI tracking'],
       businessContext: ['business analysis', 'performance monitoring', 'decision making', 'data-driven insights'],
       industries: ['all industries', 'finance', 'retail', 'manufacturing', 'technology'],
       useCases: ['business reporting', 'performance analysis', 'data insights', 'decision support']
     },
-    { 
-      name: 'Team Performance', 
-      icon: '/assets/icons/performance.png', 
+    {
+      name: 'Team Performance',
+      icon: '/assets/icons/performance.png',
       price: '$39/month',
       status: 'in-progress',
+      description: 'Track team productivity, evaluate performance, and identify areas for improvement with analytics.',
       keywords: ['performance management', 'employee evaluation', 'productivity tracking', 'team analytics'],
       businessContext: ['management', 'team leadership', 'performance review', 'productivity improvement'],
       industries: ['all industries', 'consulting', 'technology', 'finance', 'healthcare'],
@@ -295,48 +316,50 @@ function AgentsAssembly() {
 
   // Enhanced technical modules with required fields
   const technicalModules = [
-    { 
-      name: 'Testing AI', 
-      icon: '/assets/icons/checklist.png', 
+    {
+      name: 'Testing AI',
+      icon: '/assets/icons/checklist.png',
       price: '$55/month',
       status: 'in-progress',
+      description: 'Automate your testing workflows with AI-powered test generation and intelligent bug detection.',
       keywords: ['automated testing', 'quality assurance', 'test automation', 'bug detection'],
       businessContext: ['software development', 'quality control', 'testing'],
       industries: ['technology', 'software', 'development'],
       useCases: ['automated testing', 'quality assurance', 'bug detection']
     },
-    { 
-      name: 'LLM Benchmarking', 
-      icon: '/assets/icons/bar-chart.png', 
+    {
+      name: 'LLM Benchmarking',
+      icon: '/assets/icons/bar-chart.png',
       price: '$65/month',
       status: 'in-progress',
+      description: 'Evaluate and compare LLM models with comprehensive benchmarking and performance metrics.',
       keywords: ['AI performance', 'model evaluation', 'benchmarking', 'AI testing'],
       businessContext: ['AI development', 'machine learning', 'model evaluation'],
       industries: ['technology', 'AI', 'research'],
       useCases: ['AI model evaluation', 'performance testing', 'benchmarking']
     },
-    { 
-      name: 'Data Discovery', 
-      icon: '/assets/icons/data-discovery.png', 
+    {
+      name: 'Data Discovery',
+      icon: '/assets/icons/data-discovery.png',
       price: '$48/month',
       status: 'ready',
+      description: 'Explore your data, uncover hidden patterns, and generate actionable business insights.',
       keywords: ['data analysis', 'data mining', 'insights', 'data exploration'],
       businessContext: ['data analysis', 'business intelligence', 'analytics'],
       industries: ['all industries', 'technology', 'finance'],
       useCases: ['data exploration', 'business insights', 'data analysis']
     },
-    // Simple modules without enhanced fields
-    { name: 'Users', icon: '/assets/icons/users.png', price: '$35/month', status: 'in-progress' },
-    { name: 'Data Security', icon: '/assets/icons/data-security.png', price: '$75/month', status: 'in-progress' },
-    { name: 'Alerts', icon: '/assets/icons/alerts.png', price: '$22/month', status: 'in-progress' },
-    { name: 'Notifications', icon: '/assets/icons/notifications.png', price: '$18/month', status: 'in-progress' },
-    { name: 'Dashboards', icon: '/assets/icons/dashboards.png', price: '$45/month', status: 'in-progress' },
-    { name: 'AI Chatbot', icon: '/assets/icons/ai-chatbots.png', price: '$52/month', status: 'in-progress' },
-    { name: 'Monitoring', icon: '/assets/icons/monitoring.png', price: '$38/month', status: 'in-progress' },
-    { name: 'Analytics', icon: '/assets/icons/analytics.png', price: '$58/month', status: 'in-progress' },
-    { name: 'Data Transformation', icon: '/assets/icons/data-transformation.png', price: '$68/month', status: 'in-progress' },
-    { name: 'Integration', icon: '/assets/icons/integration.png', price: '$62/month', status: 'in-progress' },
-    { name: 'Automation', icon: '/assets/icons/automation.png', price: '$55/month', status: 'in-progress' }
+    { name: 'Users', icon: '/assets/icons/users.png', price: '$35/month', status: 'in-progress', description: 'Manage user accounts, permissions, and access control across your organization.' },
+    { name: 'Data Security', icon: '/assets/icons/data-security.png', price: '$75/month', status: 'in-progress', description: 'Protect sensitive data with encryption, access controls, and compliance monitoring.' },
+    { name: 'Alerts', icon: '/assets/icons/alerts.png', price: '$22/month', status: 'in-progress', description: 'Set up intelligent alerts for critical events and stay informed in real-time.' },
+    { name: 'Notifications', icon: '/assets/icons/notifications.png', price: '$18/month', status: 'in-progress', description: 'Deliver timely notifications across email, SMS, and push channels.' },
+    { name: 'Dashboards', icon: '/assets/icons/dashboards.png', price: '$45/month', status: 'in-progress', description: 'Create custom dashboards to visualize metrics and track KPIs at a glance.' },
+    { name: 'AI Chatbot', icon: '/assets/icons/ai-chatbots.png', price: '$52/month', status: 'in-progress', description: 'Deploy intelligent chatbots for customer support and internal assistance.' },
+    { name: 'Monitoring', icon: '/assets/icons/monitoring.png', price: '$38/month', status: 'in-progress', description: 'Monitor systems, applications, and infrastructure with real-time observability.' },
+    { name: 'Analytics', icon: '/assets/icons/analytics.png', price: '$58/month', status: 'in-progress', description: 'Analyze business data with advanced analytics and machine learning insights.' },
+    { name: 'Data Transformation', icon: '/assets/icons/data-transformation.png', price: '$68/month', status: 'in-progress', description: 'Transform and prepare data for analysis with automated ETL pipelines.' },
+    { name: 'Integration', icon: '/assets/icons/integration.png', price: '$62/month', status: 'in-progress', description: 'Connect your tools and systems with pre-built integrations and APIs.' },
+    { name: 'Automation', icon: '/assets/icons/automation.png', price: '$55/month', status: 'in-progress', description: 'Automate repetitive tasks and workflows to boost productivity.' }
   ];
 
   // FIXED: Use useEffect to handle filtering instead of calling setState during render
@@ -1137,49 +1160,80 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         </div>
 
-        {/* Modules Section */}
-        <CardGrid columns="auto" gap="md" className="modules-container">
-          {filteredModules.length > 0 ? (
-            filteredModules
-              .filter(module => {
-                if (moduleTab === 'business') {
-                  return businessModules.some(b => b.name === module.name);
-                } else {
-                  return technicalModules.some(t => t.name === module.name);
-                }
-              })
-              .sort((a, b) => {
-                // Sort ready agents first, then in-progress
-                if (a.status === 'ready' && b.status !== 'ready') return -1;
-                if (a.status !== 'ready' && b.status === 'ready') return 1;
-                return 0;
-              })
-              .map((module, index) => (
+        {/* Modules Section - Carousel */}
+        {(() => {
+          const displayModules = filteredModules
+            .filter(module => {
+              if (moduleTab === 'business') {
+                return businessModules.some(b => b.name === module.name);
+              } else {
+                return technicalModules.some(t => t.name === module.name);
+              }
+            })
+            .sort((a, b) => {
+              // Sort ready agents first, then in-progress
+              if (a.status === 'ready' && b.status !== 'ready') return -1;
+              if (a.status !== 'ready' && b.status === 'ready') return 1;
+              return 0;
+            });
+
+          const maxIndex = Math.max(0, displayModules.length - cardsPerView);
+          const canScrollLeft = carouselIndex > 0;
+          const canScrollRight = carouselIndex < maxIndex;
+
+          const scrollCarousel = (direction) => {
+            if (direction === 'left' && canScrollLeft) {
+              setCarouselIndex(prev => Math.max(0, prev - 1));
+            } else if (direction === 'right' && canScrollRight) {
+              setCarouselIndex(prev => Math.min(maxIndex, prev + 1));
+            }
+          };
+
+          return displayModules.length > 0 ? (
+            <div className="carousel-container">
+              <button
+                className={`carousel-nav carousel-nav--left ${!canScrollLeft ? 'carousel-nav--disabled' : ''}`}
+                onClick={() => scrollCarousel('left')}
+                disabled={!canScrollLeft}
+                aria-label="Scroll left"
+              >
+                ‹
+              </button>
+
+              <div className="carousel-viewport" ref={carouselRef}>
                 <div
-                  key={index}
-                  className={`module-card ${
-                    businessModules.some((b) => b.name === module.name)
-                      ? 'business-module'
-                      : 'technical-module'
-                  }`}
-                  onClick={() => handleCardClick(module.name)}
-                  style={{ cursor: 'pointer' }}
+                  className="carousel-track"
+                  style={{
+                    transform: `translateX(-${carouselIndex * (100 / cardsPerView)}%)`,
+                    transition: 'transform 0.4s ease-out'
+                  }}
                 >
-                  {(() => {
-                    // In Live mode, non-ready modules are locked
+                  {displayModules.map((module, index) => {
                     const isReady = module.status === 'ready';
                     const isLocked = isLiveMode && !isReady;
 
                     return (
-                      <>
+                      <div
+                        key={index}
+                        className={`module-card module-card--carousel ${
+                          businessModules.some((b) => b.name === module.name)
+                            ? 'business-module'
+                            : 'technical-module'
+                        }`}
+                        onClick={() => handleCardClick(module.name)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <div className="card-header">
                           <img src={module.icon} alt={module.name} />
-                          <p>{module.name}</p>
                           <StatusIndicator
                             status={isLocked ? 'unavailable' : (isReady ? 'ready' : 'in-progress')}
                           />
                         </div>
-
+                        <p className="card-title">{module.name}</p>
+                        <p className="card-description">
+                          {module.description || 'AI-powered agent to help automate and optimize your workflows.'}
+                        </p>
+                        <div className="card-price">{module.price}</div>
                         <div className="card-buttons">
                           <button
                             className="try-button"
@@ -1190,7 +1244,7 @@ const handleEnterpriseChat = async (userInput) => {
                             disabled={isLocked}
                             title={isLocked ? 'Not available yet' : `Try ${module.name} for free`}
                           >
-                            Try
+                            Try Free
                           </button>
                           <button
                             className="buy-button"
@@ -1203,19 +1257,41 @@ const handleEnterpriseChat = async (userInput) => {
                             Buy
                           </button>
                         </div>
-                      </>
+                      </div>
                     );
-                  })()}
+                  })}
                 </div>
-              ))
+              </div>
+
+              <button
+                className={`carousel-nav carousel-nav--right ${!canScrollRight ? 'carousel-nav--disabled' : ''}`}
+                onClick={() => scrollCarousel('right')}
+                disabled={!canScrollRight}
+                aria-label="Scroll right"
+              >
+                ›
+              </button>
+
+              {/* Carousel dots/indicators */}
+              <div className="carousel-dots">
+                {Array.from({ length: Math.ceil(displayModules.length / cardsPerView) }).map((_, i) => (
+                  <button
+                    key={i}
+                    className={`carousel-dot ${Math.floor(carouselIndex / cardsPerView) === i ? 'carousel-dot--active' : ''}`}
+                    onClick={() => setCarouselIndex(i * cardsPerView)}
+                    aria-label={`Go to slide ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="no-results">
               <h3>No modules found</h3>
               <p>Try adjusting your search or browse all available modules.</p>
               <button onClick={() => setSearchTerm('')}>Clear Search</button>
             </div>
-          )}
-        </CardGrid>
+          );
+        })()}
       </div>
     </div>
   );

@@ -1383,6 +1383,246 @@
 .module-card:nth-child(7) { animation-delay: 0.7s; }
 .module-card:nth-child(8) { animation-delay: 0.8s; }
 
+/* ================================================
+   CAROUSEL STYLES
+   ================================================ */
+
+.carousel-container {
+  position: relative;
+  width: 100%;
+  padding: var(--space-4) 0;
+}
+
+.carousel-viewport {
+  overflow: hidden;
+  width: 100%;
+  padding: var(--space-2) 0;
+}
+
+.carousel-track {
+  display: flex;
+  gap: var(--space-5);
+  will-change: transform;
+}
+
+/* Carousel Navigation Arrows */
+.carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--color-text);
+  cursor: pointer;
+  z-index: 10;
+  transition: all var(--transition-fast);
+}
+
+.carousel-nav:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-lg);
+}
+
+.carousel-nav--left {
+  left: -24px;
+}
+
+.carousel-nav--right {
+  right: -24px;
+}
+
+.carousel-nav--disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Carousel Dots */
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.carousel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-border);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.carousel-dot:hover {
+  background: var(--color-text-muted);
+}
+
+.carousel-dot--active {
+  background: var(--color-accent);
+  transform: scale(1.2);
+}
+
+/* Enhanced Carousel Cards */
+.module-card--carousel {
+  flex: 0 0 calc(25% - 18px); /* 4 cards per view with gap */
+  min-width: 280px;
+  max-width: 320px;
+  min-height: 320px;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.module-card--carousel:hover {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-6px);
+}
+
+.module-card--carousel .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: var(--space-2);
+}
+
+.module-card--carousel .card-header img {
+  width: 56px;
+  height: 56px;
+  padding: 10px;
+  background: var(--gradient-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.module-card--carousel .card-title {
+  font-size: var(--text-title);
+  font-weight: var(--font-bold);
+  color: var(--color-text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.module-card--carousel .card-description {
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0;
+  flex-grow: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.module-card--carousel .card-price {
+  font-size: var(--text-heading);
+  font-weight: var(--font-semibold);
+  color: var(--color-accent);
+  margin: var(--space-2) 0;
+}
+
+.module-card--carousel .card-buttons {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: auto;
+}
+
+.module-card--carousel .try-button,
+.module-card--carousel .buy-button {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.module-card--carousel .try-button {
+  background: transparent;
+  color: var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+}
+
+.module-card--carousel .try-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+}
+
+.module-card--carousel .try-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.module-card--carousel .buy-button {
+  background: var(--gradient-accent);
+  color: var(--color-text-inverse);
+  border: none;
+}
+
+.module-card--carousel .buy-button:hover {
+  box-shadow: var(--shadow-accent-md);
+  transform: translateY(-1px);
+}
+
+/* Carousel Responsive */
+@media (max-width: 1400px) {
+  .module-card--carousel {
+    flex: 0 0 calc(33.33% - 16px);
+    min-width: 260px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .module-card--carousel {
+    flex: 0 0 calc(50% - 12px);
+    min-width: 240px;
+  }
+
+  .carousel-nav--left { left: -12px; }
+  .carousel-nav--right { right: -12px; }
+}
+
+@media (max-width: 768px) {
+  .module-card--carousel {
+    flex: 0 0 calc(100% - 8px);
+    min-width: 280px;
+    max-width: none;
+  }
+
+  .carousel-nav {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+  }
+
+  .carousel-nav--left { left: 0; }
+  .carousel-nav--right { right: 0; }
+}
+
 /* AI Assistant Toggle Switch */
 
 
