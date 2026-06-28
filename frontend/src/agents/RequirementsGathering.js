@@ -58,7 +58,7 @@ const fillTemplate = (template, vars = {}) => {
   return out;
 };
 
-// Demo mode mock data - realistic examples
+// Demo mode mock data - realistic examples (persisted in sessionStorage)
 const DEMO_MOCK_DATA = {
   overview: 'B2B SaaS platform for HR automation',
   industries: 'Technology',
@@ -66,14 +66,14 @@ const DEMO_MOCK_DATA = {
   responseFormat: 'Customer Research',
   results: {
     businesses: [
-      { name: 'TechFlow Solutions', industry: 'Technology', location: 'San Francisco, CA', website: 'techflow.io', rating: 4.8, reviews: 156, phone: '+1 (415) 555-0123', email: 'contact@techflow.io' },
-      { name: 'CloudHR Systems', industry: 'HR Technology', location: 'Austin, TX', website: 'cloudhr.com', rating: 4.6, reviews: 89, phone: '+1 (512) 555-0456', email: 'info@cloudhr.com' },
-      { name: 'PeopleFirst Inc', industry: 'HR Software', location: 'Seattle, WA', website: 'peoplefirst.io', rating: 4.7, reviews: 234, phone: '+1 (206) 555-0789', email: 'sales@peoplefirst.io' },
-      { name: 'WorkStream AI', industry: 'AI/HR Tech', location: 'New York, NY', website: 'workstream.ai', rating: 4.5, reviews: 67, phone: '+1 (212) 555-0321', email: 'hello@workstream.ai' },
-      { name: 'HRNova Solutions', industry: 'Enterprise HR', location: 'Boston, MA', website: 'hrnova.com', rating: 4.9, reviews: 312, phone: '+1 (617) 555-0654', email: 'contact@hrnova.com' },
-      { name: 'Talent Dynamics', industry: 'Recruiting Tech', location: 'Denver, CO', website: 'talentdynamics.co', rating: 4.4, reviews: 45, phone: '+1 (303) 555-0987', email: 'info@talentdynamics.co' },
-      { name: 'PayrollPro Systems', industry: 'Payroll/HR', location: 'Chicago, IL', website: 'payrollpro.io', rating: 4.6, reviews: 178, phone: '+1 (312) 555-0147', email: 'sales@payrollpro.io' },
-      { name: 'BenefitHub Corp', industry: 'Benefits Tech', location: 'Atlanta, GA', website: 'benefithub.com', rating: 4.3, reviews: 92, phone: '+1 (404) 555-0258', email: 'team@benefithub.com' },
+      { name: 'TechFlow Solutions', address: 'San Francisco, CA', website: 'https://techflow.io', phone: '+1 (415) 555-0123', email: 'contact@techflow.io', linkedin: 'https://linkedin.com/company/techflow', match_score: 92, summary: 'Leading HR automation platform' },
+      { name: 'CloudHR Systems', address: 'Austin, TX', website: 'https://cloudhr.com', phone: '+1 (512) 555-0456', email: 'info@cloudhr.com', linkedin: 'https://linkedin.com/company/cloudhr', match_score: 88, summary: 'Cloud-based HR solutions' },
+      { name: 'PeopleFirst Inc', address: 'Seattle, WA', website: 'https://peoplefirst.io', phone: '+1 (206) 555-0789', email: 'sales@peoplefirst.io', linkedin: 'https://linkedin.com/company/peoplefirst', match_score: 85, summary: 'Employee experience platform' },
+      { name: 'WorkStream AI', address: 'New York, NY', website: 'https://workstream.ai', phone: '+1 (212) 555-0321', email: 'hello@workstream.ai', linkedin: 'https://linkedin.com/company/workstream', match_score: 91, summary: 'AI-powered workforce management' },
+      { name: 'HRNova Solutions', address: 'Boston, MA', website: 'https://hrnova.com', phone: '+1 (617) 555-0654', email: 'contact@hrnova.com', linkedin: 'https://linkedin.com/company/hrnova', match_score: 94, summary: 'Enterprise HR transformation' },
+      { name: 'Talent Dynamics', address: 'Denver, CO', website: 'https://talentdynamics.co', phone: '+1 (303) 555-0987', email: 'info@talentdynamics.co', linkedin: 'https://linkedin.com/company/talentdynamics', match_score: 79, summary: 'Recruiting and talent acquisition' },
+      { name: 'PayrollPro Systems', address: 'Chicago, IL', website: 'https://payrollpro.io', phone: '+1 (312) 555-0147', email: 'sales@payrollpro.io', linkedin: 'https://linkedin.com/company/payrollpro', match_score: 82, summary: 'Payroll and benefits automation' },
+      { name: 'BenefitHub Corp', address: 'Atlanta, GA', website: 'https://benefithub.com', phone: '+1 (404) 555-0258', email: 'team@benefithub.com', linkedin: 'https://linkedin.com/company/benefithub', match_score: 77, summary: 'Employee benefits management' },
     ],
     summary: {
       totalLeads: 8,
@@ -81,7 +81,26 @@ const DEMO_MOCK_DATA = {
       avgRating: 4.6,
       region: 'North America'
     }
-  }
+  },
+  savedLists: [
+    { id: 'demo-1', name: 'Tech Startups Q1', created_at: '2026-06-15', lead_count: 24, status: 'active' },
+    { id: 'demo-2', name: 'Enterprise HR Leads', created_at: '2026-06-20', lead_count: 18, status: 'active' },
+    { id: 'demo-3', name: 'West Coast Prospects', created_at: '2026-06-25', lead_count: 32, status: 'active' },
+  ]
+};
+
+// Helper to load/save demo state from sessionStorage
+const loadDemoState = () => {
+  try {
+    const saved = sessionStorage.getItem('demoModeData');
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
+};
+
+const saveDemoState = (data) => {
+  try {
+    sessionStorage.setItem('demoModeData', JSON.stringify(data));
+  } catch { /* ignore */ }
 };
 
 function RequirementsGathering() {
@@ -104,6 +123,22 @@ function RequirementsGathering() {
       clearInterval(interval);
     };
   }, []);
+
+  // Restore demo state on mount if in demo mode
+  useEffect(() => {
+    if (isDemoMode) {
+      const savedDemo = loadDemoState();
+      if (savedDemo && savedDemo.isDemo) {
+        setOverview(savedDemo.overview || '');
+        setIndustries(savedDemo.industries || '');
+        setCountries(savedDemo.countries || '');
+        setResponseFormat(savedDemo.responseFormat || '');
+        if (savedDemo.results) {
+          setCustomerResearchResults(savedDemo.results);
+        }
+      }
+    }
+  }, [isDemoMode]);
 
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
@@ -1815,13 +1850,23 @@ function RequirementsGathering() {
                         <button
                           className="demo-example-btn"
                           onClick={() => {
-                            // Load demo data
+                            // Load demo data and persist to sessionStorage
                             setOverview(DEMO_MOCK_DATA.overview);
                             setIndustries(DEMO_MOCK_DATA.industries);
                             setCountries(DEMO_MOCK_DATA.countries);
                             setResponseFormat(DEMO_MOCK_DATA.responseFormat);
                             setCustomerResearchResults(DEMO_MOCK_DATA.results);
                             setShowCustomerResearchTable(true);
+                            // Persist demo state
+                            saveDemoState({
+                              overview: DEMO_MOCK_DATA.overview,
+                              industries: DEMO_MOCK_DATA.industries,
+                              countries: DEMO_MOCK_DATA.countries,
+                              responseFormat: DEMO_MOCK_DATA.responseFormat,
+                              results: DEMO_MOCK_DATA.results,
+                              savedLists: DEMO_MOCK_DATA.savedLists,
+                              isDemo: true
+                            });
                           }}
                         >
                           ✨ Try Example (Demo Mode)
