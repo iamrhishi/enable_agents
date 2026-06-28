@@ -413,6 +413,7 @@ function AgentsAssembly() {
       modules = [...businessModules, ...technicalModules];
     }
     setFilteredModules(modules);
+    setCarouselIndex(0); // Reset carousel to start when filters change
   }, [searchTerm, selectedIndustry, selectedProcess, businessPage]);
         {/* Businesses Pagination Section */}
         {allBusinesses.length > 0 && (
@@ -1115,7 +1116,7 @@ const handleEnterpriseChat = async (userInput) => {
               className={`module-tab module-tab--business ${moduleTab === 'business' ? 'module-tab--active' : ''}`}
               aria-selected={moduleTab === 'business'}
               aria-controls="business-modules-panel"
-              onClick={() => setModuleTab('business')}
+              onClick={() => { setModuleTab('business'); setCarouselIndex(0); }}
             >
               Business ({businessModules.length})
             </button>
@@ -1124,7 +1125,7 @@ const handleEnterpriseChat = async (userInput) => {
               className={`module-tab module-tab--technical ${moduleTab === 'technical' ? 'module-tab--active' : ''}`}
               aria-selected={moduleTab === 'technical'}
               aria-controls="technical-modules-panel"
-              onClick={() => setModuleTab('technical')}
+              onClick={() => { setModuleTab('technical'); setCarouselIndex(0); }}
             >
               Technical ({technicalModules.length})
             </button>
