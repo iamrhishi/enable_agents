@@ -779,10 +779,10 @@
 .agents-assembly {
   padding: var(--space-4) var(--space-5);
   text-align: left;
-  min-height: 100vh;
   background: var(--color-background);
   max-width: var(--content-max-width);
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 /* Page header row with title and badge */
@@ -1390,15 +1390,16 @@
 .carousel-3d-container {
   position: relative;
   width: 100%;
-  padding: var(--space-8) 0;
+  padding: var(--space-4) 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .carousel-3d-viewport {
   width: 100%;
-  height: clamp(420px, 50vh, 520px);
+  height: clamp(380px, 45vh, 480px);
   position: relative;
   perspective: 1200px;
   overflow: visible;
@@ -1416,8 +1417,8 @@
 /* 3D Card Styling - Bigger responsive cards */
 .carousel-3d-card {
   position: absolute;
-  width: clamp(300px, 22vw, 380px);
-  min-height: clamp(380px, 45vh, 460px);
+  width: clamp(280px, 20vw, 360px);
+  min-height: clamp(340px, 40vh, 420px);
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-xl);

@@ -1217,8 +1217,8 @@ const handleEnterpriseChat = async (userInput) => {
               return { visible: false };
             }
 
-            // Scale: center = 1, ±1 = 0.8, ±2 = 0.65
-            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.8 : 0.65;
+            // Scale: center = 1, ±1 = 0.85, ±2 = 0.7
+            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.85 : 0.7;
 
             // Opacity: center = 1, ±1 = 0.6, ±2 = 0.3
             const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.6 : 0.3;
@@ -1226,12 +1226,19 @@ const handleEnterpriseChat = async (userInput) => {
             // Z-index: center highest
             const zIndex = 100 - absOffset * 10;
 
-            // X translation: spread cards out from center (responsive)
-            const cardWidth = Math.min(380, window.innerWidth * 0.22);
-            const translateX = offset * (cardWidth + 20);
+            // X translation: consistent visual gap between scaled cards
+            const cardWidth = Math.min(360, window.innerWidth * 0.20);
+            const gap = 12; // Visual gap between cards
+            // Calculate position accounting for scaled widths
+            let translateX = 0;
+            if (absOffset === 1) {
+              translateX = offset * (cardWidth * 0.925 + gap);
+            } else if (absOffset === 2) {
+              translateX = offset * (cardWidth * 0.925 + gap) + offset * (cardWidth * 0.775 + gap);
+            }
 
             // Slight Y offset for depth
-            const translateY = absOffset * 10;
+            const translateY = absOffset * 8;
 
             return { visible: true, scale, opacity, zIndex, translateX, translateY, offset };
           };
