@@ -1242,9 +1242,7 @@ const handleEnterpriseChat = async (userInput) => {
                 className="carousel-nav carousel-nav--left"
                 onClick={() => scrollCarousel('left')}
                 aria-label="Previous agent"
-              >
-                ‹
-              </button>
+              />
 
               <div className="carousel-3d-viewport">
                 <div className="carousel-3d-stage">
@@ -1253,7 +1251,7 @@ const handleEnterpriseChat = async (userInput) => {
                     if (!style.visible) return null;
 
                     const isReady = module.status === 'ready';
-                    const isLocked = isLiveMode && !isReady;
+                    const isNotReady = !isReady; // Disable buttons for non-ready agents
                     const isActive = style.offset === 0;
 
                     return (
@@ -1277,7 +1275,7 @@ const handleEnterpriseChat = async (userInput) => {
                           <div className="card-header">
                             <img src={module.icon} alt={module.name} />
                             <StatusIndicator
-                              status={isLocked ? 'unavailable' : (isReady ? 'ready' : 'in-progress')}
+                              status={isReady ? 'ready' : 'in-progress'}
                             />
                           </div>
                           <p className="card-title">{module.name}</p>
@@ -1290,19 +1288,19 @@ const handleEnterpriseChat = async (userInput) => {
                               className="try-button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (!isLocked && isActive) handleTryModule(module.name);
+                                if (isReady && isActive) handleTryModule(module.name);
                               }}
-                              disabled={isLocked || !isActive}
+                              disabled={isNotReady || !isActive}
                             >
-                              Try Free
+                              {isNotReady ? 'Coming Soon' : 'Try Free'}
                             </button>
                             <button
                               className="buy-button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (isActive) handleBuyModule(module);
+                                if (isReady && isActive) handleBuyModule(module);
                               }}
-                              disabled={!isActive}
+                              disabled={isNotReady || !isActive}
                             >
                               Buy
                             </button>
@@ -1318,9 +1316,7 @@ const handleEnterpriseChat = async (userInput) => {
                 className="carousel-nav carousel-nav--right"
                 onClick={() => scrollCarousel('right')}
                 aria-label="Next agent"
-              >
-                ›
-              </button>
+              />
 
 {/* Dots removed - cleaner UI with just arrow navigation */}
             </div>

@@ -1627,42 +1627,72 @@
   box-shadow: var(--shadow-accent-md);
 }
 
-/* Carousel Navigation Arrows */
+/* Carousel Navigation Arrows - Transparent glassmorphism style */
 .carousel-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: var(--color-surface);
-  border: 2px solid var(--color-border);
-  box-shadow: var(--shadow-lg);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.1),
+    0 4px 16px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
-  font-weight: 300;
-  color: var(--color-text);
   cursor: pointer;
   z-index: 200;
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  overflow: hidden;
+}
+
+/* Arrow icon using CSS - Bold arrows */
+.carousel-nav::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-right: 3.5px solid var(--color-primary);
+  border-bottom: 3.5px solid var(--color-primary);
+  transform: rotate(-45deg);
+  margin-left: -5px;
+  transition: all 0.3s ease;
+}
+
+.carousel-nav--left::after {
+  transform: rotate(135deg);
+  margin-left: 5px;
+  margin-right: -5px;
 }
 
 .carousel-nav:hover {
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  border-color: var(--color-accent);
-  box-shadow: 0 0 20px rgba(191, 87, 0, 0.4);
-  transform: translateY(-50%) scale(1.1);
+  background: rgba(191, 87, 0, 0.9);
+  border-color: rgba(191, 87, 0, 0.9);
+  box-shadow:
+    0 12px 40px rgba(191, 87, 0, 0.3),
+    0 6px 20px rgba(191, 87, 0, 0.15);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.carousel-nav:hover::after {
+  border-color: #ffffff;
+}
+
+.carousel-nav:active {
+  transform: translateY(-50%) scale(0.95);
+  background: rgba(191, 87, 0, 1);
 }
 
 .carousel-3d-container .carousel-nav--left {
-  left: 20px;
+  left: 30px;
 }
 
 .carousel-3d-container .carousel-nav--right {
-  right: 20px;
+  right: 30px;
 }
 
 /* Carousel Dots */
