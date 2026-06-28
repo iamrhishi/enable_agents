@@ -401,6 +401,243 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   TABLE ACTION BUTTONS - Consistent theme styling
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Primary action button (Draft Email, etc.) */
+.table-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: var(--font-semibold);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.table-btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-dark);
+}
+
+.table-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Secondary action button (Extract LinkedIn, etc.) */
+.table-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: var(--font-semibold);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.table-btn-secondary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.table-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Tertiary/outline button */
+.table-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: var(--font-semibold);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.table-btn-outline:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+/* Table text styles */
+.table-link {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-weight: var(--font-medium);
+}
+
+.table-link:hover {
+  text-decoration: underline;
+}
+
+.table-muted {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+.table-na {
+  color: var(--color-grey-muted);
+  font-style: italic;
+  font-size: 0.85em;
+}
+
+/* Match score styling */
+.match-score {
+  font-weight: var(--font-bold);
+  font-size: var(--text-sm);
+}
+
+.match-score--high {
+  color: var(--color-success);
+}
+
+.match-score--medium {
+  color: #f59e0b;
+}
+
+.match-score--low {
+  color: var(--color-text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SUMMARY BADGES - Filter pills
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.summary-badge {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  gap: 2px;
+  font-family: var(--font-body);
+}
+
+.summary-badge .badge-label {
+  font-size: 0.65rem;
+  font-weight: var(--font-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-badge .badge-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+.summary-badge.results-badge {
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
+  border-color: var(--color-accent);
+}
+
+.summary-badge.results-badge .badge-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.summary-badge.results-badge .badge-value {
+  color: #ffffff;
+}
+
+.summary-badge.emails-badge {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.summary-badge.emails-badge .badge-label {
+  margin-bottom: 0;
+  color: var(--color-text-muted);
+}
+
+.summary-badge.emails-badge .badge-value {
+  color: var(--color-success);
+}
+
+/* Table cell specific styles */
+.match-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.summary-cell {
+  max-width: 260px;
+  white-space: normal;
+  line-height: 1.4;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Consistent table styling */
+.businesses-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.businesses-table thead {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.businesses-table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.businesses-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: middle;
+}
+
+.businesses-table tbody tr:hover {
+  background: var(--color-background);
+}
+
+.businesses-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    EMPTY STATE
    ═══════════════════════════════════════════════════════════════════════════════ */
 

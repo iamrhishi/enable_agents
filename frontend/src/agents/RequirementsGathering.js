@@ -1640,9 +1640,9 @@ function RequirementsGathering() {
                           </div>
                           
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
-                                <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
-                                <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                              <div className="summary-badge emails-badge">
+                                <span className="badge-label">Extracted</span>
+                                <span className="badge-value">
                                   {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
                                 </span>
                               </div>
@@ -1761,16 +1761,15 @@ function RequirementsGathering() {
                                       <td>
                                         {business.linkedin ? (
                                           business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="table-link">
                                               View Profile
                                             </a>
                                           ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                            <span className="table-na">Not Found</span>
                                           )
                                         ) : (
                                           <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                            className="table-btn-secondary"
                                             onClick={() => handleExtractLinkedInForBusiness(business, index)}
                                             disabled={!!extractingLinkedInRows[index]}
                                           >
@@ -1781,24 +1780,24 @@ function RequirementsGathering() {
                                       <td>
                                         {business.email && business.email !== 'N/A' ? (
                                           <button
+                                            className="table-btn-primary"
                                             onClick={() => handleGeneratePersonalizedEmail(business, index)}
                                             disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                                           >
                                             {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
                                           </button>
                                         ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                          <span className="table-muted">-</span>
                                         )}
                                       </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <td className="match-cell">
                                         {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
+                                          <span className={`match-score ${business.match_score >= 70 ? 'match-score--high' : business.match_score >= 40 ? 'match-score--medium' : 'match-score--low'}`}>
+                                            {business.match_score}%
+                                          </span>
+                                        ) : <span className="table-muted">-</span>}
                                       </td>
-                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.short_summary || business.summary || business.description || 'N/A'}>
+                                      <td className="summary-cell" title={business.short_summary || business.summary || business.description || 'N/A'}>
                                         {business.short_summary || business.summary || business.description || 'N/A'}
                                       </td>
                                     </tr>

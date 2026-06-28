@@ -10,13 +10,13 @@ def send_campaign_async(self, campaign_id: str) -> dict:
         from agents.email_outreach.models import EmailCampaign, EmailCampaignRecipient
         from core.database import db
 
-        campaign = EmailCampaign.query.filter_by(campaign_id=campaign_id).first()
+        campaign = EmailCampaign.query.filter_by(id=campaign_id).first()
         if not campaign:
             return {"status": "error", "error": "Campaign not found"}
 
         sent = 0
         for recipient in EmailCampaignRecipient.query.filter_by(
-            campaign_id=campaign_id, status="pending"
+            campaign_id=campaign_id, status="Sent"
         ).all():
             # TODO: integrate Gmail send here
             recipient.status = "sent"
