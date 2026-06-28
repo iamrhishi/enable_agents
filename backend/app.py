@@ -203,8 +203,10 @@ def _default_frontend_url():
 def _spa_redirect_base():
     """OAuth/callback redirects: same as _default_frontend_url, or Host/Proto from the edge proxy."""
     base = _default_frontend_url()
-    if base != 'http://localhost:3000':
+    # In dev mode (localhost:3000), always redirect to frontend, not to request.host (which could be backend port)
+    if base == 'http://localhost:3000':
         return base
+    # In production, use forwarded headers from edge proxy
     scheme = (request.headers.get('X-Forwarded-Proto') or request.scheme or 'https').split(',')[0].strip()
     host = (request.headers.get('X-Forwarded-Host') or request.host or '').split(',')[0].strip()
     if host:
