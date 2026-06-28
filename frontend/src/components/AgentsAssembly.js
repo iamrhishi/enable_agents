@@ -1226,8 +1226,9 @@ const handleEnterpriseChat = async (userInput) => {
             // Z-index: center highest
             const zIndex = 100 - absOffset * 10;
 
-            // X translation: spread cards out from center
-            const translateX = offset * 280;
+            // X translation: spread cards out from center (responsive)
+            const cardWidth = Math.min(380, window.innerWidth * 0.22);
+            const translateX = offset * (cardWidth + 40);
 
             // Slight Y offset for depth
             const translateY = absOffset * 10;
@@ -1321,16 +1322,44 @@ const handleEnterpriseChat = async (userInput) => {
                 ›
               </button>
 
-              {/* Carousel dots */}
+              {/* Carousel dots - show max 7 with smart pagination */}
               <div className="carousel-dots">
-                {displayModules.map((_, i) => (
-                  <button
-                    key={i}
-                    className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
-                    onClick={() => setCarouselIndex(i)}
-                    aria-label={`Go to agent ${i + 1}`}
-                  />
-                ))}
+                {(() => {
+                  const maxDots = 7;
+                  if (total <= maxDots) {
+                    return displayModules.map((_, i) => (
+                      <button
+                        key={i}
+                        className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
+                        onClick={() => setCarouselIndex(i)}
+                        aria-label={`Go to agent ${i + 1}`}
+                      />
+                    ));
+                  }
+                  // Show: first, ..., current-1, current, current+1, ..., last
+                  const dots = [];
+                  const current = carouselIndex;
+                  const showIndices = new Set([0, current - 1, current, current + 1, total - 1].filter(i => i >= 0 && i < total));
+                  let lastShown = -2;
+
+                  for (let i = 0; i < total; i++) {
+                    if (showIndices.has(i)) {
+                      if (lastShown < i - 1) {
+                        dots.push(<span key={`ellipsis-${i}`} className="carousel-dot-ellipsis">•••</span>);
+                      }
+                      dots.push(
+                        <button
+                          key={i}
+                          className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
+                          onClick={() => setCarouselIndex(i)}
+                          aria-label={`Go to agent ${i + 1}`}
+                        />
+                      );
+                      lastShown = i;
+                    }
+                  }
+                  return dots;
+                })()}
               </div>
             </div>
           );
