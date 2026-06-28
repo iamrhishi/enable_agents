@@ -440,7 +440,7 @@ function AgentsAssembly() {
       navigate('/datainsights');
     }
     else if (moduleName === 'Market Research') {
-      navigate('/requirements');
+      navigate('/market-research');
     }
     else if (moduleName === 'AI Chatbot') {
       navigate('/aichatbot');
@@ -478,7 +478,7 @@ function AgentsAssembly() {
       navigate('/datainsights');
     }
     else if (moduleName === 'Market Research') {
-      navigate('/requirements');
+      navigate('/market-research');
     }
     else if (moduleName === 'AI Chatbot') {
       navigate('/aichatbot');

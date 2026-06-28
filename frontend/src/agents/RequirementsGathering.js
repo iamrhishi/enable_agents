@@ -1386,7 +1386,7 @@ function RequirementsGathering() {
           <div className="tabs-container">
             <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>{responseFormat === 'Supplier Research' ? 'Vendors' : 'Leads'}</button>
             <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</button>
-            <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
+            <button className="workspace-tab" onClick={() => window.location.href='/market-research/campaigns'}>Campaign Dashboard</button>
           </div>
 
           <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>

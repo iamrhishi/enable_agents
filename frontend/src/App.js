@@ -42,8 +42,11 @@ function App() {
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
-          <Route path="/requirements" element={<RequirementsGathering />} />
-          <Route path="/campaign-dashboard" element={<CampaignDashboard />} />
+          <Route path="/market-research" element={<RequirementsGathering />} />
+          <Route path="/market-research/campaigns" element={<CampaignDashboard />} />
+          {/* Redirects for old paths */}
+          <Route path="/requirements" element={<Navigate to="/market-research" replace />} />
+          <Route path="/campaign-dashboard" element={<Navigate to="/market-research/campaigns" replace />} />
           <Route path="/agents" element={<AgentsAssembly />} />
           <Route path="/agents-assembly" element={<AgentsAssembly />} />
           <Route path="/datainsights" element={<DataInsights />} /> 

@@ -8,17 +8,21 @@ import { Modal, ModalTabs } from '../components/Modal';
 
 // Route to agent name mapping
 const ROUTE_TO_AGENT = {
-  '/requirements-gathering': 'Market Research',
-  '/requirements': 'Market Research',
+  '/market-research': 'Market Research',
+  '/market-research/campaigns': 'Market Research / Campaigns',
   '/sales-helper': 'Sales Helper',
   '/content-marketing': 'Content Marketing',
   '/community-network': 'Community Network',
   '/event-networking': 'Event Networking',
   '/executive-assistant': 'Executive Assistant',
   '/data-insights': 'Data Insights',
+  '/datainsights': 'Data Insights',
   '/supply-chain': 'Supply Chain',
+  '/supply-chain-agent': 'Supply Chain',
   '/invest': 'Investment',
-  '/chatbot': 'AI Chatbot',
+  '/invest-agent': 'Investment',
+  '/aichatbot': 'AI Chatbot',
+  '/event-networking-agent': 'Event Networking',
   '/settings': 'Settings',
 };
 

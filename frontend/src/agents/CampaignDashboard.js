@@ -93,7 +93,7 @@ function CampaignDashboard() {
         
         <div className="main-workspace-area">
           <div className="tabs-container">
-            <button className="workspace-tab" onClick={() => window.location.href='/requirements'}>Leads</button>
+            <button className="workspace-tab" onClick={() => window.location.href='/market-research'}>Leads</button>
             <button className="workspace-tab active-tab">Campaign Dashboard</button>
           </div>
 
