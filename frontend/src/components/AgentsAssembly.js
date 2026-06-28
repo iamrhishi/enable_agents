@@ -1228,7 +1228,7 @@ const handleEnterpriseChat = async (userInput) => {
 
             // X translation: spread cards out from center (responsive)
             const cardWidth = Math.min(380, window.innerWidth * 0.22);
-            const translateX = offset * (cardWidth + 40);
+            const translateX = offset * (cardWidth + 20);
 
             // Slight Y offset for depth
             const translateY = absOffset * 10;
