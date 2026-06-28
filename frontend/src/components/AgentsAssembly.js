@@ -1161,7 +1161,7 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         </div>
 
-        {/* Modules Section - Carousel */}
+        {/* Modules Section - Center-Focus Carousel */}
         {(() => {
           const displayModules = filteredModules
             .filter(module => {
@@ -1178,40 +1178,60 @@ const handleEnterpriseChat = async (userInput) => {
               return 0;
             });
 
-          const maxIndex = Math.max(0, displayModules.length - cardsPerView);
-          const canScrollLeft = carouselIndex > 0;
-          const canScrollRight = carouselIndex < maxIndex;
+          // Center-focus carousel: activeIndex is the centered card
+          const activeIndex = carouselIndex;
+          const maxIndex = displayModules.length - 1;
+          const canScrollLeft = activeIndex > 0;
+          const canScrollRight = activeIndex < maxIndex;
 
           const scrollCarousel = (direction) => {
             if (direction === 'left' && canScrollLeft) {
-              setCarouselIndex(prev => Math.max(0, prev - 1));
+              setCarouselIndex(prev => prev - 1);
             } else if (direction === 'right' && canScrollRight) {
-              setCarouselIndex(prev => Math.min(maxIndex, prev + 1));
+              setCarouselIndex(prev => prev + 1);
             }
           };
 
+          // Calculate card position relative to center
+          const getCardStyle = (index) => {
+            const offset = index - activeIndex;
+            const absOffset = Math.abs(offset);
+
+            // Scale: center = 1, adjacent = 0.85, further = 0.7
+            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.88 : 0.75;
+
+            // Opacity: center = 1, adjacent = 0.6, further = 0.3
+            const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.5 : 0.25;
+
+            // Z-index: center highest
+            const zIndex = 10 - absOffset;
+
+            return { scale, opacity, zIndex };
+          };
+
           return displayModules.length > 0 ? (
-            <div className="carousel-container">
+            <div className="carousel-container carousel-container--center">
               <button
                 className={`carousel-nav carousel-nav--left ${!canScrollLeft ? 'carousel-nav--disabled' : ''}`}
                 onClick={() => scrollCarousel('left')}
                 disabled={!canScrollLeft}
-                aria-label="Scroll left"
+                aria-label="Previous agent"
               >
                 ‹
               </button>
 
-              <div className="carousel-viewport" ref={carouselRef}>
+              <div className="carousel-viewport carousel-viewport--center" ref={carouselRef}>
                 <div
-                  className="carousel-track"
+                  className="carousel-track carousel-track--center"
                   style={{
-                    transform: `translateX(-${carouselIndex * (100 / cardsPerView)}%)`,
-                    transition: 'transform 0.4s ease-out'
+                    transform: `translateX(calc(50% - ${activeIndex * 340}px - 160px))`,
                   }}
                 >
                   {displayModules.map((module, index) => {
                     const isReady = module.status === 'ready';
                     const isLocked = isLiveMode && !isReady;
+                    const { scale, opacity, zIndex } = getCardStyle(index);
+                    const isActive = index === activeIndex;
 
                     return (
                       <div
@@ -1220,9 +1240,20 @@ const handleEnterpriseChat = async (userInput) => {
                           businessModules.some((b) => b.name === module.name)
                             ? 'business-module'
                             : 'technical-module'
-                        }`}
-                        onClick={() => handleCardClick(module.name)}
-                        style={{ cursor: 'pointer' }}
+                        } ${isActive ? 'module-card--active' : ''}`}
+                        onClick={() => {
+                          if (isActive) {
+                            handleCardClick(module.name);
+                          } else {
+                            setCarouselIndex(index);
+                          }
+                        }}
+                        style={{
+                          cursor: 'pointer',
+                          transform: `scale(${scale})`,
+                          opacity: opacity,
+                          zIndex: zIndex,
+                        }}
                       >
                         <div className="card-header">
                           <img src={module.icon} alt={module.name} />
@@ -1240,9 +1271,9 @@ const handleEnterpriseChat = async (userInput) => {
                             className="try-button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isLocked) handleTryModule(module.name);
+                              if (!isLocked && isActive) handleTryModule(module.name);
                             }}
-                            disabled={isLocked}
+                            disabled={isLocked || !isActive}
                             title={isLocked ? 'Not available yet' : `Try ${module.name} for free`}
                           >
                             Try Free
@@ -1251,8 +1282,9 @@ const handleEnterpriseChat = async (userInput) => {
                             className="buy-button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleBuyModule(module);
+                              if (isActive) handleBuyModule(module);
                             }}
+                            disabled={!isActive}
                             title={`Buy ${module.name} - ${module.price}`}
                           >
                             Buy
@@ -1268,19 +1300,19 @@ const handleEnterpriseChat = async (userInput) => {
                 className={`carousel-nav carousel-nav--right ${!canScrollRight ? 'carousel-nav--disabled' : ''}`}
                 onClick={() => scrollCarousel('right')}
                 disabled={!canScrollRight}
-                aria-label="Scroll right"
+                aria-label="Next agent"
               >
                 ›
               </button>
 
               {/* Carousel dots/indicators */}
               <div className="carousel-dots">
-                {Array.from({ length: Math.ceil(displayModules.length / cardsPerView) }).map((_, i) => (
+                {displayModules.map((_, i) => (
                   <button
                     key={i}
-                    className={`carousel-dot ${Math.floor(carouselIndex / cardsPerView) === i ? 'carousel-dot--active' : ''}`}
-                    onClick={() => setCarouselIndex(i * cardsPerView)}
-                    aria-label={`Go to slide ${i + 1}`}
+                    className={`carousel-dot ${i === activeIndex ? 'carousel-dot--active' : ''}`}
+                    onClick={() => setCarouselIndex(i)}
+                    aria-label={`Go to agent ${i + 1}`}
                   />
                 ))}
               </div>
