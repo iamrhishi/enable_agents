@@ -1,6 +1,7 @@
 import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
+import { BackButton, Input } from '../components';
 import '../styles/Chatbot.css';
 
 function Chatbot({ fileName }) {
@@ -63,6 +64,7 @@ function Chatbot({ fileName }) {
   return (
     <>
       <Header />
+      <BackButton />
       <div className="chatbot-page">
         <div className="chatbot-layout">
           {/* Left: Chatbot Properties */}

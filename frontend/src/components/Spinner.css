@@ -1,0 +1,119 @@
+/**
+ * Spinner Styles
+ * Uses design tokens from tokens.css
+ */
+
+/* Base spinner */
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Size variants */
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+}
+
+.spinner-md {
+  width: 24px;
+  height: 24px;
+}
+
+.spinner-lg {
+  width: 48px;
+  height: 48px;
+}
+
+.spinner-xl {
+  width: 64px;
+  height: 64px;
+}
+
+/* Track (background circle) */
+.spinner-track {
+  stroke: var(--color-border-light);
+}
+
+/* Fill (animated arc) */
+.spinner-fill {
+  stroke: currentColor;
+  stroke-dasharray: 60 200;
+  stroke-dashoffset: 0;
+}
+
+/* Color variants */
+.spinner-primary {
+  color: var(--color-primary);
+}
+
+.spinner-accent {
+  color: var(--color-accent);
+}
+
+.spinner-inherit {
+  color: inherit;
+}
+
+.spinner-white {
+  color: var(--color-text-inverse);
+}
+
+.spinner-white .spinner-track {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+/* Button spinner */
+.spinner-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.spinner-button-text {
+  color: inherit;
+}
+
+/* Overlay spinner */
+.spinner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  z-index: var(--z-modal);
+  animation: fade-in var(--transition-fast);
+}
+
+.spinner-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.spinner-overlay-message {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+}
+
+/* Inline spinner */
+.spinner-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}

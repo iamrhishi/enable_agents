@@ -2,6 +2,7 @@ import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
+import { BackButton, Input, Textarea, Select } from '../components';
 import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
 
@@ -239,11 +240,10 @@ function ContentMarketingAgent() {
   const renderProjectSetup = () => (
     <div className="content-marketing-container">
       <div className="setup-panel">
-        <h2>📋 Create New Project</h2>
+        <h2>Create New Project</h2>
         <div className="form-group">
           <label>Project Name *</label>
-          <input
-            type="text"
+          <Input
             placeholder="e.g., Q1 Marketing Campaign"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
@@ -252,7 +252,7 @@ function ContentMarketingAgent() {
 
         <div className="form-group">
           <label>Industry</label>
-          <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
+          <Select value={industry} onChange={(e) => setIndustry(e.target.value)} variant="outlined">
             <option value="">Select Industry</option>
             <option value="Technology">Technology</option>
             <option value="Healthcare">Healthcare</option>
@@ -261,20 +261,19 @@ function ContentMarketingAgent() {
             <option value="Manufacturing">Manufacturing</option>
             <option value="Real Estate">Real Estate</option>
             <option value="Education">Education</option>
-          </select>
+          </Select>
         </div>
 
         <div className="form-group">
           <label>Sector</label>
-          <input
-            type="text"
+          <Input
             placeholder="e.g., SaaS, B2B, D2C"
             value={sector}
             onChange={(e) => setSector(e.target.value)}
           />
         </div>
 
-        <button 
+        <button
           className="btn btn-primary"
           onClick={handleCreateProject}
           disabled={isLoading}
@@ -334,53 +333,55 @@ function ContentMarketingAgent() {
   const renderGenerateStep = () => (
     <div className="content-marketing-container">
       <div className="generate-panel">
-        <h2>✨ Generate Marketing Content</h2>
-        
+        <h2>Generate Marketing Content</h2>
+
         <div className="form-row">
           <div className="form-group">
             <label>Channel</label>
-            <select 
+            <Select
               value={selectedChannel}
               onChange={(e) => setSelectedChannel(e.target.value)}
+              variant="outlined"
             >
               <option value="linkedin">LinkedIn</option>
               <option value="email">Email</option>
               <option value="social">Social Media</option>
               <option value="google_ads">Google Ads</option>
-            </select>
+            </Select>
           </div>
 
           <div className="form-group">
             <label>Content Type</label>
-            <select 
+            <Select
               value={contentType}
               onChange={(e) => setContentType(e.target.value)}
+              variant="outlined"
             >
               <option value="post">Post</option>
               <option value="article">Article</option>
               <option value="ad">Ad Copy</option>
               <option value="email_campaign">Email Campaign</option>
               <option value="case_study">Case Study</option>
-            </select>
+            </Select>
           </div>
         </div>
 
         <div className="form-group">
           <label>Additional Context/Guidance</label>
-          <textarea
+          <Textarea
             placeholder="e.g., Focus on cost savings, target CTOs, emphasize ROI..."
             value={userContext}
             onChange={(e) => setUserContext(e.target.value)}
-            rows="3"
+            rows={3}
           />
         </div>
 
-        <button 
+        <button
           className="btn btn-primary"
           onClick={handleGenerateContent}
           disabled={isLoading}
         >
-          {isLoading ? 'Generating...' : '🚀 Generate Content'}
+          {isLoading ? 'Generating...' : 'Generate Content'}
         </button>
 
         {generatedContent && (
@@ -404,7 +405,8 @@ function ContentMarketingAgent() {
   return (
     <div className="content-marketing-agent">
       <Header />
-      
+      <BackButton />
+
       <div className="cma-main-content">
         <div className="cma-left-panel">
           {step === 'project' && renderProjectSetup()}

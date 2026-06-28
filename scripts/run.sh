@@ -15,7 +15,7 @@ OS="$(uname -s)"
 PORT_BACKEND=8000
 PORT_BACKEND_OAUTH=5000
 PORT_FRONTEND=3000
-PORT_MYSQL=3306
+PORT_POSTGRES=5432
 PORT_REDIS=6379
 PORT_FLOWER=5555
 PORT_REDIS_UI=8081
@@ -23,8 +23,8 @@ PORT_REDIS_UI=8081
 usage() {
   cat <<'EOF'
 Usage:
-  ./run.sh dev                    # Docker: mysql + redis + backend + frontend npm dev — flushes Redis DB 0 after stack is up (fresh broker/context cache)
-  ./run.sh prod                   # Docker: mysql + redis + backend (gunicorn) + frontend (nginx)
+  ./run.sh dev                    # Docker: postgres + redis + backend + frontend npm dev — flushes Redis DB 0 after stack is up (fresh broker/context cache)
+  ./run.sh prod                   # Docker: postgres + redis + backend (gunicorn) + frontend (nginx)
   ./run.sh remote                 # Docker: production + nginx (HTTPS if Let's Encrypt certs already exist)
   ./run.sh remote-rebuild         # Down all profiles, prune builder + unused images, then same as ./run.sh remote (volumes kept)
   ./run.sh remote-ssl             # Obtain/renew certs via certbot (needs DOMAIN + ADMIN_EMAIL); not required on every rebuild
@@ -51,12 +51,12 @@ First-time Docker (Linux — installs Engine + Compose; may prompt for sudo):
 EOF
 }
 
-DEV_PORTS=($PORT_BACKEND $PORT_BACKEND_OAUTH $PORT_FRONTEND $PORT_MYSQL $PORT_REDIS $PORT_FLOWER $PORT_REDIS_UI)
+DEV_PORTS=($PORT_BACKEND $PORT_BACKEND_OAUTH $PORT_FRONTEND $PORT_POSTGRES $PORT_REDIS $PORT_FLOWER $PORT_REDIS_UI)
 
 # container_name values from docker-compose.yml — keep in sync when adding services.
-# Used to force-remove orphans so host ports 80, 443, 3000, 3306, 5000, 5555, 6379, 8000, 8081 are free on re-run.
+# Used to force-remove orphans so host ports 80, 443, 3000, 5432, 5000, 5555, 6379, 8000, 8081 are free on re-run.
 ENABLE_AGENTS_CONTAINERS=(
-  enable_agents_mysql
+  enable_agents_postgres
   enable_agents_redis
   enable_agents_backend_dev
   enable_agents_frontend_dev
@@ -558,7 +558,7 @@ case "${1:-}" in
     echo "  Backend OAuth:  http://localhost:${PORT_BACKEND_OAUTH}"
     echo "  Flower (tasks): http://localhost:${PORT_FLOWER}"
     echo "  Redis UI:       http://localhost:${PORT_REDIS_UI}"
-    echo "  MySQL:          localhost:${PORT_MYSQL}"
+    echo "  PostgreSQL:          localhost:${PORT_POSTGRES}"
     compose_flush_redis_db
     echo "  (Redis DB 0 flushed after dev startup — stale ContextStore keys cleared; Celery queue on DB 0 reset.)"
     ;;
@@ -586,7 +586,7 @@ case "${1:-}" in
     echo "Prod stack ready:"
     echo "  Frontend: http://localhost"
     echo "  Backend:  http://localhost:${PORT_BACKEND}"
-    echo "  MySQL:    localhost:${PORT_MYSQL}"
+    echo "  PostgreSQL:    localhost:${PORT_POSTGRES}"
     ;;
   remote-rebuild)
     check_env_docker

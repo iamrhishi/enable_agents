@@ -1,0 +1,181 @@
+/**
+ * FormField Styles
+ * Uses design tokens from tokens.css
+ */
+
+/* Base form field */
+.form-field {
+  margin-bottom: var(--space-4);
+}
+
+/* Label */
+.form-field-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
+  color: var(--color-text);
+}
+
+/* Required indicator */
+.form-field-required::after {
+  content: ' *';
+  color: var(--color-error);
+}
+
+/* Input wrapper */
+.form-field-input {
+  position: relative;
+}
+
+/* Success icon inside input */
+.form-field-icon {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.form-field-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.form-field-icon-success {
+  color: var(--color-success);
+}
+
+/* Error state */
+.form-field-error .form-field-label {
+  color: var(--color-error);
+}
+
+/* Error message */
+.form-field-error-message {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  color: var(--color-error);
+}
+
+.form-field-error-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.form-field-error-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Success message */
+.form-field-success-message {
+  margin-top: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  color: var(--color-success);
+}
+
+/* Help text */
+.form-field-help {
+  margin-top: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+
+/* Inline variant (label + input on same row) */
+.form-field-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.form-field-inline .form-field-label {
+  flex-shrink: 0;
+  width: 120px;
+  margin-bottom: 0;
+  padding-top: var(--space-3);
+}
+
+.form-field-inline .form-field-input {
+  flex: 1;
+}
+
+/* Form group */
+.form-group {
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  border: none;
+}
+
+.form-group-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.form-group-description {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+}
+
+.form-group-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.form-group-fields .form-field {
+  margin-bottom: 0;
+}
+
+/* Form actions */
+.form-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.form-actions-left {
+  justify-content: flex-start;
+}
+
+.form-actions-center {
+  justify-content: center;
+}
+
+.form-actions-right {
+  justify-content: flex-end;
+}
+
+.form-actions-between {
+  justify-content: space-between;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .form-field-inline {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .form-field-inline .form-field-label {
+    width: auto;
+    padding-top: 0;
+  }
+}

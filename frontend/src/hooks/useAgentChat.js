@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { API_CONFIG } from '../config/apiConfig';
 
 /**
@@ -6,31 +6,74 @@ import { API_CONFIG } from '../config/apiConfig';
  *
  * @param {string} welcomeText   - First message shown when the agent loads.
  * @param {string} folderName    - Server-side folder used by saveJSONToFile.
+ * @param {string} agentId       - Unique ID for this agent (used for localStorage key).
  *
  * Returns:
  *   messages, inputMessage, setInputMessage, isLoading,
- *   messagesEndRef, addMessage, checkExistingFile, saveJSONToFile
+ *   messagesEndRef, addMessage, clearChat, checkExistingFile, saveJSONToFile
  */
-export function useAgentChat(welcomeText, folderName) {
-  const [messages, setMessages] = useState([
-    {
+export function useAgentChat(welcomeText, folderName, agentId = folderName) {
+  const storageKey = `enableAgents_chat_${agentId}`;
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Initialize messages from localStorage or with welcome message
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading chat history:', e);
+    }
+    // Default welcome message
+    return [{
       id: 1,
       text: welcomeText,
       sender: 'agent',
       timestamp: new Date().toLocaleTimeString(),
       format: 'markdown',
-    },
-  ]);
+    }];
+  });
+
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Check if there's existing chat history on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If there's more than just the welcome message, ask to continue or clear
+        if (Array.isArray(parsed) && parsed.length > 1) {
+          setShowClearConfirm(true);
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }, [storageKey]);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+    } catch (e) {
+      console.error('Error saving chat history:', e);
+    }
+  }, [messages, storageKey]);
 
   // Auto-scroll to the latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const addMessage = (text, sender, data = null, format = 'markdown') => {
+  const addMessage = useCallback((text, sender, data = null, format = 'markdown') => {
     setMessages((prev) => [
       ...prev,
       {
@@ -42,7 +85,22 @@ export function useAgentChat(welcomeText, folderName) {
         format,
       },
     ]);
-  };
+  }, []);
+
+  const clearChat = useCallback(() => {
+    setMessages([{
+      id: 1,
+      text: welcomeText,
+      sender: 'agent',
+      timestamp: new Date().toLocaleTimeString(),
+      format: 'markdown',
+    }]);
+    setShowClearConfirm(false);
+  }, [welcomeText]);
+
+  const continueChat = useCallback(() => {
+    setShowClearConfirm(false);
+  }, []);
 
   const checkExistingFile = async (fileName, newFileSize) => {
     try {
@@ -81,6 +139,9 @@ export function useAgentChat(welcomeText, folderName) {
     setIsLoading,
     messagesEndRef,
     addMessage,
+    clearChat,
+    continueChat,
+    showClearConfirm,
     checkExistingFile,
     saveJSONToFile,
   };

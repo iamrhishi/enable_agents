@@ -20,7 +20,8 @@ nltk
 pandas
 typing-extensions
 Werkzeug
-mysql-connector-python
+psycopg2-binary
+pgvector
 boto3
 python-docx
 networkx

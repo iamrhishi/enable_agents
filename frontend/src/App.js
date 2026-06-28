@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 
 // Shared UI
 import Login from './core/Login';
+import SkipLink from './components/SkipLink';
 import RegisterUser from './core/RegisterUser';
+import Settings from './settings/Settings';
 
 // Agent components
 import AgentsAssembly from './components/AgentsAssembly';
@@ -20,12 +22,24 @@ import SupplyChainAgent from './agents/SupplyChainAgent';
 import ExecutiveAssistantPage from './agents/ExecutiveAssistantPage';
 
 
+// Check if user is logged in (has session token)
+function isLoggedIn() {
+  return Boolean(localStorage.getItem('sessionToken') || localStorage.getItem('userEmail'));
+}
+
+// Root redirect - go to /agents if logged in, /login otherwise
+function RootRedirect() {
+  return <Navigate to={isLoggedIn() ? '/agents' : '/login'} replace />;
+}
+
 function App() {
   return (
     <Router>
+      <SkipLink />
       <div className="App">
+        <main id="main-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
           <Route path="/requirements" element={<RequirementsGathering />} />
@@ -41,7 +55,9 @@ function App() {
           <Route path="/invest-agent" element={<InvestAgent />} />
           <Route path="/supply-chain-agent" element={<SupplyChainAgent />} />
           <Route path="/executive-assistant" element={<ExecutiveAssistantPage />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
+        </main>
       </div>
     </Router>
   );

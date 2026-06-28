@@ -1,0 +1,109 @@
+/**
+ * Skeleton Loader Styles
+ * Uses design tokens from tokens.css
+ */
+
+/* Base skeleton - animation defined in tokens.css */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-skeleton) 0%,
+    var(--color-skeleton-shine) 50%,
+    var(--color-skeleton) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Text skeleton */
+.skeleton-text {
+  display: block;
+}
+
+/* Paragraph skeleton */
+.skeleton-paragraph {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Avatar skeleton */
+.skeleton-avatar {
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* Card skeleton */
+.skeleton-card {
+  width: 100%;
+  border-radius: var(--radius-lg);
+}
+
+/* Table skeleton */
+.skeleton-table {
+  width: 100%;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.skeleton-table-row {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.skeleton-table-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-table-header {
+  background: var(--color-background);
+}
+
+.skeleton-table-header .skeleton-table-cell {
+  height: 1.2em;
+}
+
+.skeleton-table-cell {
+  flex: 1;
+  height: 1em;
+  border-radius: var(--radius-sm);
+}
+
+/* Button skeleton */
+.skeleton-button {
+  height: 40px;
+  border-radius: var(--radius-md);
+}
+
+/* Input skeleton */
+.skeleton-input {
+  width: 100%;
+  max-width: var(--input-max-width);
+  height: 44px;
+  border-radius: var(--radius-md);
+}
+
+/* Card with content skeleton */
+.skeleton-card-content {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.skeleton-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.skeleton-card-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

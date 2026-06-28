@@ -1,159 +1,313 @@
-/* General styling for the Data Insights page */
+/**
+ * Data Insights Page Styles
+ * Uses design tokens from tokens.css
+ */
+
+/* ── Page container ─────────────────────────────────────────────────────── */
 .data-insights-page {
-  font-family: 'IBM Plex Sans', sans-serif;
-  padding: 20px;
-  background: linear-gradient(135deg, #F1EAE4 0%, #D6C7B8 100%);
+  min-height: 100vh;
+  background: var(--gradient-surface);
+  font-family: var(--font-body);
 }
 
 .data-insights-container {
-  display: flex;
-  gap: 20px;
-  height: calc(100vh - 80px);
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: var(--space-5);
+  padding: 0 var(--space-5) var(--space-5);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
 }
 
-/* Left Section Styling */
-.left-section {
-  flex: 1;
-  background-color: #FFFFFF;
-  padding: 20px;
-  border-radius: 8px;
-  border: 2px solid #D6C7B8;
-  box-shadow: 0 4px 6px rgba(30, 58, 95, 0.1);
+/* ── Config Panel (Left) ────────────────────────────────────────────────── */
+.config-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: var(--text-page-title);
+  font-weight: var(--font-semibold);
+  color: var(--color-primary);
+}
+
+.settings-link {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: var(--text-body);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.settings-link:hover {
+  color: var(--color-accent-dark);
+}
+
+/* ── Config Sections ────────────────────────────────────────────────────── */
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: var(--font-semibold);
+  color: var(--color-primary);
+  font-size: var(--text-heading);
+}
+
+/* ── Bulk Toggle ────────────────────────────────────────────────────────── */
+.bulk-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--font-normal);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.bulk-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+/* ── File Upload ────────────────────────────────────────────────────────── */
+.file-input-hidden {
+  display: none;
+}
+
+.file-upload-area {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  text-align: center;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.file-upload-area:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface-alt);
+}
+
+.file-upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.upload-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-page-title);
+  font-weight: var(--font-bold);
+}
+
+/* ── File List ──────────────────────────────────────────────────────────── */
+.file-list {
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: var(--text-body);
+}
+
+.file-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+  font-weight: var(--font-medium);
+  color: var(--color-primary);
+}
+
+.clear-btn {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: var(--text-body);
+  cursor: pointer;
+  padding: 0;
+}
+
+.file-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 100px;
   overflow-y: auto;
 }
 
-.left-section h2 {
-  margin-bottom: 20px;
-  color: #1E3A5F;
-  font-family: 'Fraunces', serif;
-  font-size: 24px;
-  font-weight: 600;
+.file-list li {
+  padding: var(--space-1) 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.input-group {
-  margin-bottom: 20px;
-}
-
-.input-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-  color: #1E3A5F;
-  font-family: 'IBM Plex Sans', sans-serif;
-}
-
-.input-group input,
-.data-source-select {
+/* ── Generate Button ────────────────────────────────────────────────────── */
+.generate-btn {
   width: 100%;
-  padding: 10px;
-  border: 1.5px solid #D6C7B8;
-  border-radius: 5px;
-  background: #FFFFFF;
-  color: #1E3A5F;
-  font-family: 'IBM Plex Sans', sans-serif;
-}
-
-.input-group input:focus,
-.data-source-select:focus {
-  outline: none;
-  border-color: #C2410C;
-  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.1);
-}
-
-.connect-button {
-  margin-top: 10px;
-  padding: 10px 20px;
-  background-color: #C2410C;
-  color: #F1EAE4;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary);
+  color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-heading);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 600;
-  transition: background-color 0.2s ease;
+  transition: background var(--transition-fast);
 }
 
-.connect-button:hover {
-  background-color: #B45309;
+.generate-btn:hover:not(:disabled) {
+  background: var(--color-accent);
 }
 
-.get-insights-button {
-  padding: 10px 20px;
-  background-color: #1E3A5F;
-  color: #F1EAE4;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 600;
-  transition: background-color 0.2s ease;
+.generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.get-insights-button:hover {
-  background-color: #C2410C;
+/* ── Metrics ────────────────────────────────────────────────────────────── */
+.metrics {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  padding: var(--space-2) 0;
 }
 
-.previous-prompts h3 {
-  margin-bottom: 10px;
-  color: #1E3A5F;
-  font-family: 'Fraunces', serif;
-  font-weight: 600;
+.metrics span {
+  background: var(--color-surface-alt);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+/* ── Previous Prompts ───────────────────────────────────────────────────── */
+.previous-prompts {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.previous-prompts h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-heading);
+  font-weight: var(--font-semibold);
+  color: var(--color-primary);
 }
 
 .previous-prompts ul {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
 .previous-prompts li {
-  padding: 10px;
-  border-bottom: 1px solid #D6C7B8;
-  color: #475569;
-  font-family: 'IBM Plex Sans', sans-serif;
+  padding: var(--space-2);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--transition-fast);
 }
 
-/* Right Section Styling */
-.right-section {
+.previous-prompts li:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-primary);
+}
+
+/* ── Results Panel (Right) ──────────────────────────────────────────────── */
+.results-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+}
+
+.results-panel h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-page-title);
+  font-weight: var(--font-semibold);
+  color: var(--color-primary);
+}
+
+.insights-output {
   flex: 1;
-  background-color: #FFFFFF;
-  padding: 20px;
-  border-radius: 8px;
-  border: 2px solid #D6C7B8;
-  box-shadow: 0 4px 6px rgba(30, 58, 95, 0.1);
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-height: 400px;
   overflow-y: auto;
 }
 
-.right-section h2 {
-  margin-bottom: 20px;
-  color: #1E3A5F;
-  font-family: 'Fraunces', serif;
-  font-size: 24px;
-  font-weight: 600;
+.insights-content {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: var(--color-text);
 }
 
-.right-section textarea {
-  width: 100%;
+.insights-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  resize: none;
+  text-align: center;
+  color: var(--color-text-muted);
 }
 
-/* Styling for the Insights Engine dropdown */
-.insights-engine-select {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  margin-top: 5px;
+.insights-placeholder p {
+  margin: var(--space-1) 0;
 }
 
-.operation-summary {
-  margin-top: 10px;
-  font-size: 14px;
-  color: #333;
+.insights-placeholder .hint {
+  font-size: var(--text-body);
+  opacity: 0.7;
 }
-.operation-summary strong {
-  color: #007bff;
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .data-insights-container {
+    grid-template-columns: 1fr;
+  }
+
+  .insights-output {
+    min-height: 300px;
+  }
 }

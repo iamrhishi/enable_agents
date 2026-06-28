@@ -5,6 +5,10 @@ import Header from '../core/Header';
 import '../styles/AgentsAssembly.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { fetchAgents } from '../agents/agentRegistry';
+import { showConfirm, showAlert } from './ConfirmDialog';
+import { Modal, ModalTabs } from './Modal';
+import { CardGrid, StatusIndicator } from './Card';
+import Select from './Select';
 
 
 
@@ -74,6 +78,27 @@ function AgentsAssembly() {
   const [moduleTab, setModuleTab] = useState('business'); // 'business' or 'technical'
   const [showChatbot, setShowChatbot] = useState(false);
   const [registryAgents, setRegistryAgents] = useState([]);
+
+  // Live/Demo mode - read from localStorage (synced with Header and Settings)
+  const [isLiveMode, setIsLiveMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored === 'live';
+  });
+
+  // Listen for mode changes from Header toggle
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsLiveMode(stored === 'live');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // Also poll for changes (for same-tab updates)
+    const interval = setInterval(handleStorageChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
 
   const navigate = useNavigate();
   const chatHistoryRef = useRef(null);
@@ -465,14 +490,19 @@ function AgentsAssembly() {
     }
   };
 
-  const handleBuyModule = (module) => {
+  const handleBuyModule = async (module) => {
     console.log('Buying module:', module.name);
-    const confirmPurchase = window.confirm(
-      `Purchase ${module.name}?\n\nPrice: ${module.price}\nBilling: Monthly subscription\n\nClick OK to proceed to checkout.`
-    );
-    
+    const confirmPurchase = await showConfirm({
+      title: `Purchase ${module.name}?`,
+      message: `Price: ${module.price}\nBilling: Monthly subscription`,
+      confirmLabel: 'Proceed to Checkout',
+      cancelLabel: 'Cancel',
+      variant: 'primary',
+    });
+
     if (confirmPurchase) {
-      alert(`Redirecting to checkout for ${module.name}...`);
+      await showAlert(`Redirecting to checkout for ${module.name}...`, 'Processing');
+      // TODO: Implement actual checkout redirect
     }
   };
 
@@ -641,66 +671,81 @@ const handleEnterpriseChat = async (userInput) => {
     <div className="agents-page">
       <Header onProcessClick={handleProcessClick} />
       <div className="agents-assembly">
-        {/* Process Map Popup */}
-        {showProcessMap && (
-          <div className="modal-overlay">
-            <div className="modal-content" style={{ width: '650px', maxWidth: '98vw', minHeight: '420px', borderRadius: '18px', zIndex: 999 }}>
-              <div className="detailed-report-tool-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ fontSize: '1.25em', fontWeight: 600 }}>Process Map</h2>
-                <div>
-                  <button className={processMapTab === 'visual' ? 'active-tab' : ''} onClick={() => setProcessMapTab('visual')}>Visual</button>
-                  <button className={processMapTab === 'json' ? 'active-tab' : ''} onClick={() => setProcessMapTab('json')}>JSON</button>
-                  <button className="modal-close" onClick={handleCloseProcessMap} style={{ marginLeft: '18px', fontSize: '1.5em' }}>×</button>
-                </div>
-              </div>
-              <div className="process-map-content" style={{ marginTop: '18px' }}>
-                {processMapTab === 'visual' ? (
-                  <div style={{ padding: '12px' }}>
-                    <div><strong>Industry:</strong> {processMapData.industry}</div>
-                    <div><strong>Department:</strong> {processMapData.department}</div>
-                    <div><strong>Responsibilities:</strong> {Array.isArray(processMapData.responsibilities) ? processMapData.responsibilities.join(', ') : processMapData.responsibilities}</div>
-                    <div style={{ marginTop: '18px' }}>
+        {/* Process Map Modal */}
+        <Modal
+          open={showProcessMap}
+          onClose={handleCloseProcessMap}
+          title="Process Map"
+          size="lg"
+        >
+          <ModalTabs
+            tabs={[
+              {
+                id: 'visual',
+                label: 'Visual',
+                content: processMapData && (
+                  <div className="process-map-visual">
+                    <div className="process-map-info">
+                      <p><strong>Industry:</strong> {processMapData.industry}</p>
+                      <p><strong>Department:</strong> {processMapData.department}</p>
+                      <p><strong>Responsibilities:</strong> {Array.isArray(processMapData.responsibilities) ? processMapData.responsibilities.join(', ') : processMapData.responsibilities}</p>
+                    </div>
+                    <div className="process-map-steps">
                       <h4>Process Steps</h4>
-                      <ol style={{ paddingLeft: '18px' }}>
+                      <ol>
                         {processMapData.steps.map((step, idx) => (
-                          <li key={idx} style={{ marginBottom: '8px' }}>
-                            <strong>{step.name}</strong>: {step.description} <span style={{ color: '#64748b', fontSize: '0.95em' }}>({step.owner})</span>
+                          <li key={idx}>
+                            <strong>{step.name}</strong>: {step.description}
+                            <span className="process-step-owner">({step.owner})</span>
                           </li>
                         ))}
                       </ol>
                     </div>
                   </div>
-                ) : (
-                  <pre style={{ background: '#f8fafc', borderRadius: '8px', padding: '18px', fontSize: '1em', color: '#334155', border: '1px solid #e2e8f0', maxHeight: '320px', overflow: 'auto' }}>{JSON.stringify(processMapData, null, 2)}</pre>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        <h2>Agents Assembly</h2>
-        
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', gap: '12px' }}>
-          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1f2937', letterSpacing: '0.01em' }}>Agent Stage</span>
+                )
+              },
+              {
+                id: 'json',
+                label: 'JSON',
+                content: (
+                  <pre className="process-map-json">{JSON.stringify(processMapData, null, 2)}</pre>
+                )
+              }
+            ]}
+            activeTab={processMapTab}
+            onTabChange={setProcessMapTab}
+          />
+        </Modal>
+        <div className="page-header-row">
+          <h2>Agents Assembly</h2>
           <button
-            className={`modern-toggle-button ${showChatbot ? 'active' : 'inactive'}`}
+            className={`stage-badge ${showChatbot ? 'stage-badge--active' : 'stage-badge--inactive'}`}
             onClick={() => setShowChatbot(!showChatbot)}
-            title={showChatbot ? 'Agent Stage: Active' : 'Agent Stage: Inactive'}
+            title={showChatbot ? 'AI Assistant: Active - Click to hide' : 'AI Assistant: Inactive - Click to activate'}
+            aria-pressed={showChatbot}
+            aria-label={`AI Assistant ${showChatbot ? 'Active' : 'Inactive'}`}
           >
-            <span className="toggle-circle"></span>
-            <span className="toggle-label">{showChatbot ? 'Active' : 'Inactive'}</span>
+            <span className="stage-badge-icon">{showChatbot ? '🤖' : '💤'}</span>
+            <span className="stage-badge-label">{showChatbot ? 'AI Active' : 'AI Off'}</span>
           </button>
         </div>
 
-        {showChatbot && (
-        <div className="chatbot-section">
+        <div className={`chatbot-section ${showChatbot ? 'chatbot-section--open' : 'chatbot-section--closed'}`}>
           <div className="chatbot-container enhanced-chatbot unified-chat">
-            <div style={{ background: 'linear-gradient(135deg, #1E3A5F 0%, #2c5282 100%)', padding: '16px 28px', borderBottom: '2px solid rgba(194, 65, 12, 0.2)', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-              <div>
-                <h3 style={{ color: '#ffffff', fontSize: '1rem', fontWeight: '600', margin: 0, letterSpacing: '0.01em' }}>Business Intelligence Assistant</h3>
-                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.82rem', fontWeight: '400', margin: '4px 0 0 0', letterSpacing: '0.02em' }}>Answer a few questions to get tailored recommendations</p>
+            <div className="chat-header">
+              <div className="chat-header-content">
+                <span className="chat-header-icon">✨</span>
+                <span className="chat-header-title">AI Assistant</span>
               </div>
+              <button
+                className="chat-minimize-btn"
+                onClick={() => setShowChatbot(false)}
+                aria-label="Minimize chat"
+              >
+                −
+              </button>
             </div>
-            <div ref={chatHistoryRef} className="chat-history" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '12px', scrollBehavior: 'smooth' }}>
+            <div ref={chatHistoryRef} className="chat-history" role="log" aria-live="polite" aria-label="Chat messages" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '12px', scrollBehavior: 'smooth' }}>
               {chatHistory.length === 0 && (
                 <>
                   <div className="chat-row system">
@@ -798,7 +843,7 @@ const handleEnterpriseChat = async (userInput) => {
                 </div>
               )}
             </div>
-            <div className="chatbot-input-card enhanced-input unified-input" style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px' }}>
+            <div className="enhanced-input">
               <input
                 id="chat-file-input"
                 type="file"
@@ -806,20 +851,18 @@ const handleEnterpriseChat = async (userInput) => {
                 accept="image/*,.pdf,.doc,.docx,.xlsx,.ppt,.pptx"
                 onChange={handleFileChange}
               />
-              <img
-                src="/assets/icons/plus.png"
-                alt="Attach file"
-                className="chat-plus-btn"
+              <button
+                className="chat-attach-btn"
                 onClick={() => document.getElementById('chat-file-input').click()}
                 title="Attach file"
-                tabIndex={0}
-                role="button"
-                style={{ cursor: 'pointer', width: '18px', height: '18px', flexShrink: 0, opacity: 0.6, transition: 'opacity 0.2s' }}
-              />
+                aria-label="Attach file"
+              >
+                +
+              </button>
               <input
                 type="text"
                 className={`chat-input enhanced${inputHighlighted ? ' highlighted' : ''}`}
-                placeholder={completed ? "Business context complete!" : isBuffering ? "Waiting for response..." : "Talk to us!"}
+                placeholder={completed ? "Conversation complete" : isBuffering ? "Thinking..." : "Message AI Assistant..."}
                 value={inputValue}
                 onChange={e => {
                   setInputValue(e.target.value);
@@ -836,7 +879,6 @@ const handleEnterpriseChat = async (userInput) => {
                 disabled={completed || isBuffering}
                 autoFocus
                 aria-label="Type your message"
-                style={{ flex: '1 1 auto', minWidth: 0, minHeight: '32px', padding: '10px 14px', fontSize: '0.88rem', maxWidth: 'calc(100% - 90px)' }}
               />
               <button
                 onClick={() => {
@@ -846,37 +888,15 @@ const handleEnterpriseChat = async (userInput) => {
                   }
                 }}
                 disabled={completed || isBuffering || !inputValue.trim()}
-                className="chat-send-btn"
-                title="Send message (Enter key)"
+                className={`chat-send-btn ${inputValue.trim() && !completed && !isBuffering ? 'chat-send-btn--active' : ''}`}
+                title="Send message"
                 aria-label="Send message"
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  minWidth: '40px',
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: (inputValue.trim() && !completed && !isBuffering) ? 'linear-gradient(135deg, #C2410C 0%, #B45309 100%)' : '#e5e7eb',
-                  color: (inputValue.trim() && !completed && !isBuffering) ? '#ffffff' : '#999',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: (inputValue.trim() && !completed && !isBuffering) ? 'pointer' : 'not-allowed',
-                  fontSize: '1.1rem',
-                  lineHeight: '1',
-                  transition: 'all 0.2s ease',
-                  fontWeight: '600',
-                  boxShadow: (inputValue.trim() && !completed && !isBuffering) ? '0 4px 12px rgba(194, 65, 12, 0.2)' : 'none',
-                  transform: (inputValue.trim() && !completed && !isBuffering) ? 'translateY(0)' : 'translateY(0)',
-                  padding: '0'
-                }}
               >
                 ↑
               </button>
             </div>
           </div>
         </div>
-        )}
 
         {/* Show recommended modules as cards matching business/technical modules, with a 'Recommended' tag and Detailed Report */}
         {recommendedModules.length > 0 && (
@@ -894,7 +914,7 @@ const handleEnterpriseChat = async (userInput) => {
                 Detailed Report
               </span>
             </h3>
-            <div className="modules-container recommended">
+            <CardGrid columns="auto" gap="md" className="modules-container recommended">
               {recommendedModules.map((name, idx) => {
                 // Find module details from businessModules or technicalModules
                 const module = businessModules.find(m => m.name === name) || technicalModules.find(m => m.name === name);
@@ -909,7 +929,7 @@ const handleEnterpriseChat = async (userInput) => {
                     <p>{module.name}</p>
                     <span className="recommended-tag">Recommended</span>
                     <div className="card-buttons">
-                      <button 
+                      <button
                         className="try-button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -919,7 +939,7 @@ const handleEnterpriseChat = async (userInput) => {
                       >
                         Try
                       </button>
-                      <button 
+                      <button
                         className="buy-button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -933,13 +953,13 @@ const handleEnterpriseChat = async (userInput) => {
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
             {/* Detailed Report Popup - Visual Tabular Format */}
             {showDetailedReport && detailedReportData && (
-              <div className="detailed-report-popup">
+              <div className="detailed-report-popup" role="dialog" aria-modal="true" aria-labelledby="detailed-report-title">
                 <div className="detailed-report-modal">
-                  <button className="detailed-report-close" onClick={() => setShowDetailedReport(false)}>Close</button>
-                  <h2 className="detailed-report-title">Detailed Recommendation Report</h2>
+                  <button className="detailed-report-close" onClick={() => setShowDetailedReport(false)} aria-label="Close detailed report">Close</button>
+                  <h2 id="detailed-report-title" className="detailed-report-title">Detailed Recommendation Report</h2>
                   {/* Recommended Tools Section - Card Style */}
                   <div className="detailed-report-section corporate-section">
                     <div className="corporate-header">
@@ -1064,75 +1084,61 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         )}
 
-        <div className="dropdown-container">
-          <select
-            value={selectedIndustry}
-            onChange={(e) => setSelectedIndustry(e.target.value)}
-            className="dropdown"
-          >
-            <option value="">Select Industry</option>
-            <option value="Retail">Retail</option>
-            <option value="Food Service">Food Service</option>
-            <option value="Manufacturing">Manufacturing</option>
-            <option value="Healthcare">Healthcare</option>
-            <option value="Finance">Finance</option>
-            <option value="Technology">Technology</option>
-            <option value="Consulting">Consulting</option>
-          </select>
-          <select
-            value={selectedProcess}
-            onChange={(e) => setSelectedProcess(e.target.value)}
-            className="dropdown"
-          >
-            <option value="">Select Process</option>
-            <option value="Sales">Sales</option>
-            <option value="Procurement">Procurement</option>
-            <option value="HR">HR</option>
-            <option value="Operations">Operations</option>
-            <option value="Finance">Finance</option>
-            <option value="Customer Service">Customer Service</option>
-          </select>
-        </div>
-
-        {/* Module Tabs - Modern Professional */}
-        <div className="module-tabs" style={{ display: 'flex', gap: '0', marginBottom: '32px', borderBottom: '1px solid #e8ecf1', paddingBottom: '0' }}>
-          <button
-            onClick={() => setModuleTab('business')}
-            style={{
-              padding: '14px 28px',
-              borderBottom: moduleTab === 'business' ? '3px solid #c2410c' : '3px solid transparent',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              fontWeight: moduleTab === 'business' ? '700' : '600',
-              color: moduleTab === 'business' ? '#c2410c' : '#475569',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              letterSpacing: '-0.2px',
-              marginRight: '24px'
-            }}
-          >
-            Business Modules ({businessModules.length})
-          </button>
-          <button
-            onClick={() => setModuleTab('technical')}
-            style={{
-              padding: '14px 28px',
-              borderBottom: moduleTab === 'technical' ? '3px solid #475569' : '3px solid transparent',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              fontWeight: moduleTab === 'technical' ? '700' : '600',
-              color: moduleTab === 'technical' ? '#475569' : '#1e3a5f',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              letterSpacing: '-0.2px'
-            }}
-          >
-            Technical Modules ({technicalModules.length})
-          </button>
+        {/* Module Tabs + Filter Chips Row */}
+        <div className="tabs-filters-row">
+          <div className="module-tabs" role="tablist" aria-label="Module categories">
+            <button
+              role="tab"
+              className={`module-tab module-tab--business ${moduleTab === 'business' ? 'module-tab--active' : ''}`}
+              aria-selected={moduleTab === 'business'}
+              aria-controls="business-modules-panel"
+              onClick={() => setModuleTab('business')}
+            >
+              Business ({businessModules.length})
+            </button>
+            <button
+              role="tab"
+              className={`module-tab module-tab--technical ${moduleTab === 'technical' ? 'module-tab--active' : ''}`}
+              aria-selected={moduleTab === 'technical'}
+              aria-controls="technical-modules-panel"
+              onClick={() => setModuleTab('technical')}
+            >
+              Technical ({technicalModules.length})
+            </button>
+          </div>
+          <div className="filter-chips" role="group" aria-label="Filter modules">
+            <Select
+              value={selectedIndustry}
+              onChange={(e) => setSelectedIndustry(e.target.value)}
+              aria-label="Select industry"
+            >
+              <option value="">All Industries</option>
+              <option value="Retail">Retail</option>
+              <option value="Food Service">Food Service</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Finance">Finance</option>
+              <option value="Technology">Technology</option>
+              <option value="Consulting">Consulting</option>
+            </Select>
+            <Select
+              value={selectedProcess}
+              onChange={(e) => setSelectedProcess(e.target.value)}
+              aria-label="Select process"
+            >
+              <option value="">All Processes</option>
+              <option value="Sales">Sales</option>
+              <option value="Procurement">Procurement</option>
+              <option value="HR">HR</option>
+              <option value="Operations">Operations</option>
+              <option value="Finance">Finance</option>
+              <option value="Customer Service">Customer Service</option>
+            </Select>
+          </div>
         </div>
 
         {/* Modules Section */}
-        <div className="modules-container">
+        <CardGrid columns="auto" gap="md" className="modules-container">
           {filteredModules.length > 0 ? (
             filteredModules
               .filter(module => {
@@ -1159,55 +1165,47 @@ const handleEnterpriseChat = async (userInput) => {
                   onClick={() => handleCardClick(module.name)}
                   style={{ cursor: 'pointer' }}
                 >
-                  {module.status && (
-                    <div className="status-badge" style={{
-                      position: 'absolute',
-                      top: '12px',
-                      right: '12px',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      fontSize: '0.7rem',
-                      fontWeight: '700',
-                      backgroundColor: module.status === 'ready' ? '#10b981' : '#f97316',
-                      color: '#ffffff',
-                      boxShadow: module.status === 'ready' ? 
-                        '0 4px 12px rgba(16, 185, 129, 0.25)' : 
-                        '0 4px 12px rgba(249, 115, 22, 0.25)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      border: 'none',
-                      zIndex: 3
-                    }}>
-                      {module.status === 'ready' ? '✓ Ready' : '⚡ In Progress'}
-                    </div>
-                  )}
-                  <div className="card-header">
-                    <img src={module.icon} alt={module.name} />
-                    <p>{module.name}</p>
-                  </div>
-                  
-                  <div className="card-buttons">
-                    <button 
-                      className="try-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTryModule(module.name);
-                      }}
-                      title={`Try ${module.name} for free`}
-                    >
-                      Try
-                    </button>
-                    <button 
-                      className="buy-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleBuyModule(module);
-                      }}
-                      title={`Buy ${module.name} - ${module.price}`}
-                    >
-                      Buy
-                    </button>
-                  </div>
+                  {(() => {
+                    // In Live mode, non-ready modules are locked
+                    const isReady = module.status === 'ready';
+                    const isLocked = isLiveMode && !isReady;
+
+                    return (
+                      <>
+                        <div className="card-header">
+                          <img src={module.icon} alt={module.name} />
+                          <p>{module.name}</p>
+                          <StatusIndicator
+                            status={isLocked ? 'unavailable' : (isReady ? 'ready' : 'in-progress')}
+                          />
+                        </div>
+
+                        <div className="card-buttons">
+                          <button
+                            className="try-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isLocked) handleTryModule(module.name);
+                            }}
+                            disabled={isLocked}
+                            title={isLocked ? 'Not available yet' : `Try ${module.name} for free`}
+                          >
+                            Try
+                          </button>
+                          <button
+                            className="buy-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleBuyModule(module);
+                            }}
+                            title={`Buy ${module.name} - ${module.price}`}
+                          >
+                            Buy
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))
           ) : (
@@ -1217,7 +1215,7 @@ const handleEnterpriseChat = async (userInput) => {
               <button onClick={() => setSearchTerm('')}>Clear Search</button>
             </div>
           )}
-        </div>
+        </CardGrid>
       </div>
     </div>
   );

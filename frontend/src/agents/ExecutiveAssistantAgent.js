@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../core/Header';
 import { showToast } from '../core/toast';
+import { Input, Textarea } from '../components';
 
 // Path to the JSON file for persistent task storage
 const TASKS_FILE = '/data/user_data/user_001/executive_tasks.json';

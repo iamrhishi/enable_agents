@@ -1,0 +1,33 @@
+{
+  "id": "document_intelligence",
+  "name": "Document Intelligence Agent",
+  "description": "Upload documents, extract text, generate embeddings, and chat with your data using RAG.",
+  "enabled": true,
+  "routes_prefix": "/api/document-intelligence",
+  "required_env": [
+    "OPENAI_API_KEY"
+  ],
+  "provides": {
+    "document_analysis": {
+      "document_id": "string",
+      "status": "string",
+      "chunk_count": "integer",
+      "entity_count": "integer"
+    },
+    "extracted_entities": {
+      "document_id": "string",
+      "entities": "array"
+    },
+    "available_documents": {
+      "documents": "array"
+    }
+  },
+  "consumes": [
+    "user_profile"
+  ],
+  "input_schema": {
+    "file": "file",
+    "document_type": "string"
+  },
+  "version": "1.0.0"
+}

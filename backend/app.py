@@ -32,7 +32,6 @@ import googleapiclient.discovery
 from email.message import EmailMessage
 import base64
 from flask_cors import CORS, cross_origin
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -41,7 +40,7 @@ import openpyxl
 from urllib.parse import urlencode, urlparse
 import logging
 
-from core.database import db as core_db
+from core.database import db
 from core.context import ContextStore
 
 # LangChain imports with fallbacks for version compatibility
@@ -115,7 +114,7 @@ import time
 import re
 from docx import Document as DocxDocument
 import networkx as nx
-from agents.market_research.google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
+# NOTE: GoogleBusinessHelper imports moved to functions to avoid circular import
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -201,17 +200,22 @@ def _default_frontend_url():
 
 
 def _spa_redirect_base():
-    """OAuth/callback redirects: same as _default_frontend_url, or Host/Proto from the edge proxy."""
-    base = _default_frontend_url()
+    """OAuth/callback redirects: use FRONTEND_URL if set, otherwise derive from proxy headers."""
+    # If FRONTEND_URL is explicitly set, use it
+    fe = (os.getenv('FRONTEND_URL') or '').strip().rstrip('/')
+    if fe:
+        return fe
     # In dev mode (localhost:3000), always redirect to frontend, not to request.host (which could be backend port)
+    base = _default_frontend_url()
     if base == 'http://localhost:3000':
         return base
-    # In production, use forwarded headers from edge proxy
+    # Otherwise try to derive from reverse proxy headers (for remote deployments)
     scheme = (request.headers.get('X-Forwarded-Proto') or request.scheme or 'https').split(',')[0].strip()
-    host = (request.headers.get('X-Forwarded-Host') or request.host or '').split(',')[0].strip()
+    host = (request.headers.get('X-Forwarded-Host') or '').split(',')[0].strip()
     if host:
         return f'{scheme}://{host}'.rstrip('/')
-    return base
+    # Fallback to default frontend URL
+    return _default_frontend_url()
 
 
 app = Flask(__name__)
@@ -249,8 +253,29 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+# Initialize shared db instance from core.database
+db.init_app(app)
 migrate = Migrate(app, db)
+
+# Initialize Celery
+from core.celery_app import make_celery
+celery = make_celery(app)
+
+# Enable pgvector extension for PostgreSQL
+db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+if 'postgresql' in db_uri:
+    with app.app_context():
+        try:
+            db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+# Register SSE notification routes
+from core.notifications import register_sse_routes
+register_sse_routes(app)
+
+# NOTE: Agent registration moved to end of file to avoid circular imports
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -346,6 +371,7 @@ init_content_marketing_db()
 
 class User(db.Model):
     __tablename__ = 'users'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(512), nullable=False)
@@ -359,6 +385,7 @@ class User(db.Model):
 
 class GoogleOAuthToken(db.Model):
     __tablename__ = 'google_oauth_tokens'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), db.ForeignKey('users.username'), nullable=False)
     token = db.Column(db.Text, nullable=False)
@@ -373,18 +400,20 @@ EMAIL_EXTRACTION_UNIT_COST = float(os.getenv('EMAIL_EXTRACTION_UNIT_COST', '0.20
 DEFAULT_EMAIL_EXTRACTION_LIMIT = int(os.getenv('EMAIL_EXTRACTION_DEFAULT_LIMIT', '500'))
 
 
-class EmailExtractionQuota(db.Model):
-    __tablename__ = 'email_extraction_quotas'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    total_allowed = db.Column(db.Integer, nullable=False, default=DEFAULT_EMAIL_EXTRACTION_LIMIT)
-    used_count = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+# Note: Email models have been migrated to agents/email_outreach/models.py
+# Keeping these for backwards compatibility with existing app.py code
+# that hasn't been migrated yet
+
+from agents.email_outreach.models import (
+    EmailCampaign,
+    EmailCampaignRecipient,
+    EmailExtractionQuota,
+)
 
 
 class EmailExtractionUsageLog(db.Model):
     __tablename__ = 'email_extraction_usage_logs'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     request_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
     username = db.Column(db.String(120), nullable=False, index=True)
@@ -422,6 +451,7 @@ class EmailCampaignRecipient(db.Model):
 
 class SavedProject(db.Model):
     __tablename__ = 'saved_projects'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(120), nullable=False, index=True)
     name = db.Column(db.String(255), nullable=False)
@@ -430,6 +460,7 @@ class SavedProject(db.Model):
 
 class SavedLead(db.Model):
     __tablename__ = 'saved_leads'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('saved_projects.id', ondelete='CASCADE'), nullable=False)
     
@@ -3857,7 +3888,21 @@ def scrape_product_info():
 @cross_origin()
 def universal_scraper():
     """
-    Universal scraping API - now includes enhanced product scraping
+    Universal scraping API - now includes enhanced product scraping.
+
+    DEPRECATION NOTICE: This endpoint is maintained for backwards compatibility.
+    New code should use the Connector API instead:
+
+        POST /api/connectors/web_scraper/fetch
+        {
+            "resource": "page|text|tables|product|json_ld|links|custom",
+            "params": {"url": "https://example.com", ...}
+        }
+
+    The Connector API provides:
+    - Automatic context storage (retrieved data is available to all agents)
+    - User-specific proxy/rate-limit settings from Settings UI
+    - Unified error handling
     """
     try:
         data = request.get_json()
@@ -6426,16 +6471,17 @@ def connect_google_business():
     Step 1: Save OAuth credentials and generate authorization URL
     Returns URL where user should go to authorize the app
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         data = request.get_json()
-        
+
         required_fields = ['clientId', 'clientSecret', 'redirectUri']
         if not all(field in data for field in required_fields):
             return jsonify({
                 'success': False,
                 'error': 'Missing required fields'
             }), 400
-        
+
         # Save credentials
         helper = GoogleBusinessHelper()
         if not helper.save_credentials(data):
@@ -6587,6 +6633,7 @@ def get_google_business_data():
     Fetch Google Business information using saved credentials
     Returns business profile, reviews, and metrics
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         helper = GoogleBusinessHelper()
         
@@ -6618,9 +6665,10 @@ def get_requirements_with_google_data():
     Combined endpoint to get user requirements along with Google Business data
     Returns both requirement inputs and business insights for context
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         data = request.get_json()
-        
+
         # Extract user requirements from request
         user_requirements = {
             'overview': data.get('overview', ''),
@@ -6672,9 +6720,10 @@ def search_google_businesses():
     Searches by business name and location with pagination support
     Supports up to 200 listings with configurable page size
     """
+    from agents.market_research.google_business_helper import GoogleBusinessSearcher
     try:
         data = request.get_json()
-        
+
         query = data.get('query', '')
         location = data.get('location', '')
         page = data.get('page', 1)
@@ -8747,6 +8796,19 @@ def api_context_search():
     except Exception as ex:
         logging.getLogger(__name__).exception('api_context_search failed')
         return jsonify({'success': False, 'error': str(ex)}), 500
+
+
+# Register all enabled agents from backend/agents/ (must be after all models defined)
+from agents.registry import register_agents
+register_agents(app)
+
+# Register connector API routes
+from core.connectors.routes import bp as connectors_bp
+app.register_blueprint(connectors_bp)
+
+# Register settings API routes
+from core.settings_routes import bp as settings_bp
+app.register_blueprint(settings_bp)
 
 
 if __name__ == '__main__':
