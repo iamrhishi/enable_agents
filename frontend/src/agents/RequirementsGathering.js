@@ -58,7 +58,53 @@ const fillTemplate = (template, vars = {}) => {
   return out;
 };
 
+// Demo mode mock data - realistic examples
+const DEMO_MOCK_DATA = {
+  overview: 'B2B SaaS platform for HR automation',
+  industries: 'Technology',
+  countries: 'North America',
+  responseFormat: 'Customer Research',
+  results: {
+    businesses: [
+      { name: 'TechFlow Solutions', industry: 'Technology', location: 'San Francisco, CA', website: 'techflow.io', rating: 4.8, reviews: 156, phone: '+1 (415) 555-0123', email: 'contact@techflow.io' },
+      { name: 'CloudHR Systems', industry: 'HR Technology', location: 'Austin, TX', website: 'cloudhr.com', rating: 4.6, reviews: 89, phone: '+1 (512) 555-0456', email: 'info@cloudhr.com' },
+      { name: 'PeopleFirst Inc', industry: 'HR Software', location: 'Seattle, WA', website: 'peoplefirst.io', rating: 4.7, reviews: 234, phone: '+1 (206) 555-0789', email: 'sales@peoplefirst.io' },
+      { name: 'WorkStream AI', industry: 'AI/HR Tech', location: 'New York, NY', website: 'workstream.ai', rating: 4.5, reviews: 67, phone: '+1 (212) 555-0321', email: 'hello@workstream.ai' },
+      { name: 'HRNova Solutions', industry: 'Enterprise HR', location: 'Boston, MA', website: 'hrnova.com', rating: 4.9, reviews: 312, phone: '+1 (617) 555-0654', email: 'contact@hrnova.com' },
+      { name: 'Talent Dynamics', industry: 'Recruiting Tech', location: 'Denver, CO', website: 'talentdynamics.co', rating: 4.4, reviews: 45, phone: '+1 (303) 555-0987', email: 'info@talentdynamics.co' },
+      { name: 'PayrollPro Systems', industry: 'Payroll/HR', location: 'Chicago, IL', website: 'payrollpro.io', rating: 4.6, reviews: 178, phone: '+1 (312) 555-0147', email: 'sales@payrollpro.io' },
+      { name: 'BenefitHub Corp', industry: 'Benefits Tech', location: 'Atlanta, GA', website: 'benefithub.com', rating: 4.3, reviews: 92, phone: '+1 (404) 555-0258', email: 'team@benefithub.com' },
+    ],
+    summary: {
+      totalLeads: 8,
+      topIndustries: ['HR Technology', 'Enterprise Software', 'AI/ML'],
+      avgRating: 4.6,
+      region: 'North America'
+    }
+  }
+};
+
 function RequirementsGathering() {
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  // Listen for mode changes
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsDemoMode(stored !== 'live');
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
   const [countries, setCountries] = useState('');
@@ -1765,6 +1811,22 @@ function RequirementsGathering() {
                           <span className="step-text">Get AI-powered insights</span>
                         </div>
                       </div>
+                      {isDemoMode && (
+                        <button
+                          className="demo-example-btn"
+                          onClick={() => {
+                            // Load demo data
+                            setOverview(DEMO_MOCK_DATA.overview);
+                            setIndustries(DEMO_MOCK_DATA.industries);
+                            setCountries(DEMO_MOCK_DATA.countries);
+                            setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+                            setCustomerResearchResults(DEMO_MOCK_DATA.results);
+                            setShowCustomerResearchTable(true);
+                          }}
+                        >
+                          ✨ Try Example (Demo Mode)
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
