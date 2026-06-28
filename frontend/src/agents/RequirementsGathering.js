@@ -1386,7 +1386,9 @@ function RequirementsGathering() {
           <div className="tabs-container">
             <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>{responseFormat === 'Supplier Research' ? 'Vendors' : 'Leads'}</button>
             <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</button>
-            <button className="workspace-tab" onClick={() => window.location.href='/market-research/campaigns'}>Campaign Dashboard</button>
+            <a href="/market-research/campaigns" className="workspace-link">
+              Campaign Dashboard →
+            </a>
           </div>
 
           <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>
@@ -1743,7 +1745,27 @@ function RequirementsGathering() {
                   )}
 
                   {aiRequirements.length === 0 && !customerResearchResults && (
-                    <p className="empty-message">Generate requirements to see results here...</p>
+                    <div className="empty-state-container">
+                      <div className="empty-state-icon">🔍</div>
+                      <h3 className="empty-state-title">Ready to Research</h3>
+                      <p className="empty-state-description">
+                        Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.
+                      </p>
+                      <div className="empty-state-steps">
+                        <div className="empty-state-step">
+                          <span className="step-number">1</span>
+                          <span className="step-text">Enter project context</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">2</span>
+                          <span className="step-text">Select industry & region</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">3</span>
+                          <span className="step-text">Get AI-powered insights</span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </>
               )}

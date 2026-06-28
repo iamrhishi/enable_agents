@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
 import '../styles/AgentsAssembly.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { getRouteByModuleName } from '../config/agentsConfig';
 import { fetchAgents } from '../agents/agentRegistry';
 import { showConfirm, showAlert } from './ConfirmDialog';
 import { Modal, ModalTabs } from './Modal';
