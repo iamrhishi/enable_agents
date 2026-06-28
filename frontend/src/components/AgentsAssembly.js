@@ -1161,7 +1161,7 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         </div>
 
-        {/* Modules Section - Center-Focus Carousel */}
+        {/* Modules Section - Infinite 3D Carousel */}
         {(() => {
           const displayModules = filteredModules
             .filter(module => {
@@ -1172,75 +1172,93 @@ const handleEnterpriseChat = async (userInput) => {
               }
             })
             .sort((a, b) => {
-              // Sort ready agents first, then in-progress
               if (a.status === 'ready' && b.status !== 'ready') return -1;
               if (a.status !== 'ready' && b.status === 'ready') return 1;
               return 0;
             });
 
-          // Center-focus carousel: activeIndex is the centered card
-          const activeIndex = carouselIndex;
-          const maxIndex = displayModules.length - 1;
-          const canScrollLeft = activeIndex > 0;
-          const canScrollRight = activeIndex < maxIndex;
+          const total = displayModules.length;
+          if (total === 0) {
+            return (
+              <div className="no-results">
+                <h3>No modules found</h3>
+                <p>Try adjusting your search or browse all available modules.</p>
+                <button onClick={() => setSearchTerm('')}>Clear Search</button>
+              </div>
+            );
+          }
 
+          // Infinite circular navigation
           const scrollCarousel = (direction) => {
-            if (direction === 'left' && canScrollLeft) {
-              setCarouselIndex(prev => prev - 1);
-            } else if (direction === 'right' && canScrollRight) {
-              setCarouselIndex(prev => prev + 1);
+            if (direction === 'left') {
+              setCarouselIndex(prev => (prev - 1 + total) % total);
+            } else {
+              setCarouselIndex(prev => (prev + 1) % total);
             }
           };
 
-          // Calculate card position relative to center
-          const getCardStyle = (index) => {
-            const offset = index - activeIndex;
-            const absOffset = Math.abs(offset);
-
-            // Scale: center = 1, adjacent = 0.85, further = 0.7
-            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.88 : 0.75;
-
-            // Opacity: center = 1, adjacent = 0.6, further = 0.3
-            const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.5 : 0.25;
-
-            // Z-index: center highest
-            const zIndex = 10 - absOffset;
-
-            return { scale, opacity, zIndex };
+          // Get circular offset from center (-2, -1, 0, 1, 2)
+          const getCircularOffset = (index) => {
+            const activeIndex = carouselIndex;
+            let offset = index - activeIndex;
+            // Wrap around for circular effect
+            if (offset > total / 2) offset -= total;
+            if (offset < -total / 2) offset += total;
+            return offset;
           };
 
-          return displayModules.length > 0 ? (
-            <div className="carousel-container carousel-container--center">
+          // Calculate 3D card style based on offset from center
+          const getCardStyle = (index) => {
+            const offset = getCircularOffset(index);
+            const absOffset = Math.abs(offset);
+
+            // Only show 5 cards: -2, -1, 0, 1, 2
+            if (absOffset > 2) {
+              return { visible: false };
+            }
+
+            // Scale: center = 1, ±1 = 0.8, ±2 = 0.65
+            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.8 : 0.65;
+
+            // Opacity: center = 1, ±1 = 0.6, ±2 = 0.3
+            const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.6 : 0.3;
+
+            // Z-index: center highest
+            const zIndex = 100 - absOffset * 10;
+
+            // X translation: spread cards out from center
+            const translateX = offset * 280;
+
+            // Slight Y offset for depth
+            const translateY = absOffset * 10;
+
+            return { visible: true, scale, opacity, zIndex, translateX, translateY, offset };
+          };
+
+          return (
+            <div className="carousel-3d-container">
               <button
-                className={`carousel-nav carousel-nav--left ${!canScrollLeft ? 'carousel-nav--disabled' : ''}`}
+                className="carousel-nav carousel-nav--left"
                 onClick={() => scrollCarousel('left')}
-                disabled={!canScrollLeft}
                 aria-label="Previous agent"
               >
                 ‹
               </button>
 
-              <div className="carousel-viewport carousel-viewport--center" ref={carouselRef}>
-                <div
-                  className="carousel-track carousel-track--center"
-                  style={{
-                    transform: `translateX(calc(50% - ${activeIndex * 340}px - 160px))`,
-                  }}
-                >
+              <div className="carousel-3d-viewport">
+                <div className="carousel-3d-stage">
                   {displayModules.map((module, index) => {
+                    const style = getCardStyle(index);
+                    if (!style.visible) return null;
+
                     const isReady = module.status === 'ready';
                     const isLocked = isLiveMode && !isReady;
-                    const { scale, opacity, zIndex } = getCardStyle(index);
-                    const isActive = index === activeIndex;
+                    const isActive = style.offset === 0;
 
                     return (
                       <div
-                        key={index}
-                        className={`module-card module-card--carousel ${
-                          businessModules.some((b) => b.name === module.name)
-                            ? 'business-module'
-                            : 'technical-module'
-                        } ${isActive ? 'module-card--active' : ''}`}
+                        key={module.name}
+                        className={`carousel-3d-card ${isActive ? 'carousel-3d-card--active' : ''}`}
                         onClick={() => {
                           if (isActive) {
                             handleCardClick(module.name);
@@ -1249,46 +1267,45 @@ const handleEnterpriseChat = async (userInput) => {
                           }
                         }}
                         style={{
-                          cursor: 'pointer',
-                          transform: `scale(${scale})`,
-                          opacity: opacity,
-                          zIndex: zIndex,
+                          transform: `translateX(${style.translateX}px) translateY(${style.translateY}px) scale(${style.scale})`,
+                          opacity: style.opacity,
+                          zIndex: style.zIndex,
                         }}
                       >
-                        <div className="card-header">
-                          <img src={module.icon} alt={module.name} />
-                          <StatusIndicator
-                            status={isLocked ? 'unavailable' : (isReady ? 'ready' : 'in-progress')}
-                          />
-                        </div>
-                        <p className="card-title">{module.name}</p>
-                        <p className="card-description">
-                          {module.description || 'AI-powered agent to help automate and optimize your workflows.'}
-                        </p>
-                        <div className="card-price">{module.price}</div>
-                        <div className="card-buttons">
-                          <button
-                            className="try-button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!isLocked && isActive) handleTryModule(module.name);
-                            }}
-                            disabled={isLocked || !isActive}
-                            title={isLocked ? 'Not available yet' : `Try ${module.name} for free`}
-                          >
-                            Try Free
-                          </button>
-                          <button
-                            className="buy-button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isActive) handleBuyModule(module);
-                            }}
-                            disabled={!isActive}
-                            title={`Buy ${module.name} - ${module.price}`}
-                          >
-                            Buy
-                          </button>
+                        <div className="card-inner">
+                          <div className="card-header">
+                            <img src={module.icon} alt={module.name} />
+                            <StatusIndicator
+                              status={isLocked ? 'unavailable' : (isReady ? 'ready' : 'in-progress')}
+                            />
+                          </div>
+                          <p className="card-title">{module.name}</p>
+                          <p className="card-description">
+                            {module.description || 'AI-powered agent to help automate and optimize your workflows.'}
+                          </p>
+                          <div className="card-price">{module.price}</div>
+                          <div className="card-buttons">
+                            <button
+                              className="try-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!isLocked && isActive) handleTryModule(module.name);
+                              }}
+                              disabled={isLocked || !isActive}
+                            >
+                              Try Free
+                            </button>
+                            <button
+                              className="buy-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isActive) handleBuyModule(module);
+                              }}
+                              disabled={!isActive}
+                            >
+                              Buy
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1297,31 +1314,24 @@ const handleEnterpriseChat = async (userInput) => {
               </div>
 
               <button
-                className={`carousel-nav carousel-nav--right ${!canScrollRight ? 'carousel-nav--disabled' : ''}`}
+                className="carousel-nav carousel-nav--right"
                 onClick={() => scrollCarousel('right')}
-                disabled={!canScrollRight}
                 aria-label="Next agent"
               >
                 ›
               </button>
 
-              {/* Carousel dots/indicators */}
+              {/* Carousel dots */}
               <div className="carousel-dots">
                 {displayModules.map((_, i) => (
                   <button
                     key={i}
-                    className={`carousel-dot ${i === activeIndex ? 'carousel-dot--active' : ''}`}
+                    className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
                     onClick={() => setCarouselIndex(i)}
                     aria-label={`Go to agent ${i + 1}`}
                   />
                 ))}
               </div>
-            </div>
-          ) : (
-            <div className="no-results">
-              <h3>No modules found</h3>
-              <p>Try adjusting your search or browse all available modules.</p>
-              <button onClick={() => setSearchTerm('')}>Clear Search</button>
             </div>
           );
         })()}
