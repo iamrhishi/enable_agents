@@ -426,6 +426,7 @@ class EmailExtractionUsageLog(db.Model):
 
 class EmailCampaign(db.Model):
     __tablename__ = 'email_campaigns'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.String(36), primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
@@ -435,6 +436,7 @@ class EmailCampaign(db.Model):
 
 class EmailCampaignRecipient(db.Model):
     __tablename__ = 'email_campaign_recipients'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     campaign_id = db.Column(db.String(36), db.ForeignKey('email_campaigns.id'), nullable=False)
     receiver_email = db.Column(db.String(255), nullable=False, index=True)
