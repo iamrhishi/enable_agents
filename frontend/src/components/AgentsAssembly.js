@@ -1322,45 +1322,7 @@ const handleEnterpriseChat = async (userInput) => {
                 ›
               </button>
 
-              {/* Carousel dots - show max 7 with smart pagination */}
-              <div className="carousel-dots">
-                {(() => {
-                  const maxDots = 7;
-                  if (total <= maxDots) {
-                    return displayModules.map((_, i) => (
-                      <button
-                        key={i}
-                        className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
-                        onClick={() => setCarouselIndex(i)}
-                        aria-label={`Go to agent ${i + 1}`}
-                      />
-                    ));
-                  }
-                  // Show: first, ..., current-1, current, current+1, ..., last
-                  const dots = [];
-                  const current = carouselIndex;
-                  const showIndices = new Set([0, current - 1, current, current + 1, total - 1].filter(i => i >= 0 && i < total));
-                  let lastShown = -2;
-
-                  for (let i = 0; i < total; i++) {
-                    if (showIndices.has(i)) {
-                      if (lastShown < i - 1) {
-                        dots.push(<span key={`ellipsis-${i}`} className="carousel-dot-ellipsis">•••</span>);
-                      }
-                      dots.push(
-                        <button
-                          key={i}
-                          className={`carousel-dot ${i === carouselIndex ? 'carousel-dot--active' : ''}`}
-                          onClick={() => setCarouselIndex(i)}
-                          aria-label={`Go to agent ${i + 1}`}
-                        />
-                      );
-                      lastShown = i;
-                    }
-                  }
-                  return dots;
-                })()}
-              </div>
+{/* Dots removed - cleaner UI with just arrow navigation */}
             </div>
           );
         })()}
