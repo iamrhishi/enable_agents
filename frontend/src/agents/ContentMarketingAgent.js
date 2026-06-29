@@ -63,8 +63,10 @@ Best regards,
 };
 
 function ContentMarketingAgent() {
-  // Demo mode detection
-  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const [step, setStep] = useState('project'); // project, upload, generate, chat
   const [projectId, setProjectId] = useState(null);
   const [projectName, setProjectName] = useState('');
@@ -103,6 +105,31 @@ function ContentMarketingAgent() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Listen for mode changes and clear demo data when switching to live
+  useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: reset content
+        setGeneratedContent(null);
+        setMessages([{
+          id: 1,
+          text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
+          sender: 'agent',
+          timestamp: new Date().toLocaleTimeString(),
+          format: 'markdown'
+        }]);
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
 
   // ============= PROJECT CREATION =============
   const handleCreateProject = async () => {

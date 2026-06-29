@@ -25,8 +25,10 @@ const DEMO_PEOPLE = [
 ];
 
 function ExecutiveAssistantPage() {
-  // Demo mode detection
-  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const [activeTab, setActiveTab] = useState('projects');
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -77,6 +79,29 @@ function ExecutiveAssistantPage() {
     message: '',
     sendTime: 'now'
   });
+
+  // Listen for mode changes and clear demo data when switching to live
+  useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: clear demo data, load saved
+        const savedProjects = JSON.parse(localStorage.getItem('ea_projects') || '[]');
+        const savedTasks = JSON.parse(localStorage.getItem('ea_tasks') || '[]');
+        const savedPeople = JSON.parse(localStorage.getItem('ea_people') || '[]');
+        setProjects(savedProjects);
+        setTasks(savedTasks);
+        setPeople(savedPeople);
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
 
   // Load data from localStorage on mount (with demo data fallback)
   useEffect(() => {

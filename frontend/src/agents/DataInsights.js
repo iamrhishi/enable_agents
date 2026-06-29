@@ -46,8 +46,10 @@ Based on the analysis of your uploaded document, here are the main findings:
 
 function DataInsights() {
   const navigate = useNavigate();
-  // Demo mode detection
-  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const [files, setFiles] = useState([]);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [inputPrompt, setInputPrompt] = useState('');
@@ -57,6 +59,27 @@ function DataInsights() {
   const [operationCost, setOperationCost] = useState(null);
   const [operationTime, setOperationTime] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Listen for mode changes and clear demo data when switching to live
+  React.useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: clear demo data
+        setInsights('');
+        setPreviousPrompts([]);
+        setOperationCost(null);
+        setOperationTime(null);
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
 
   const handleFileUpload = (e) => {
     let selectedFiles = Array.from(e.target.files);

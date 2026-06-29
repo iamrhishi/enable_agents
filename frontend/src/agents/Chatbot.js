@@ -14,8 +14,10 @@ const DEMO_RESPONSES = [
 ];
 
 function Chatbot({ fileName }) {
-  // Demo mode detection
-  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const [messages, setMessages] = useState([
     { sender: 'ai', text: 'Hi! Ask me anything about your document.' }
   ]);
@@ -25,6 +27,25 @@ function Chatbot({ fileName }) {
     { subject: 'Welcome', summary: 'Introduction to the chatbot.' }
   ]);
   const chatEndRef = useRef(null);
+
+  // Listen for mode changes and clear demo data when switching to live
+  useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: reset chat
+        setMessages([{ sender: 'ai', text: 'Hi! Ask me anything about your document.' }]);
+        setChatHistory([{ subject: 'Welcome', summary: 'Introduction to the chatbot.' }]);
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
 
   // Example chatbot properties
   const botProps = {

@@ -16,8 +16,10 @@ const DEMO_NETWORK_DATA = [
 ];
 
 function CommunityNetworkAgent() {
-  // Demo mode detection
-  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = React.useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -37,6 +39,24 @@ function CommunityNetworkAgent() {
   const [existingFiles, setExistingFiles] = useState(new Map());
   const [currentUserId] = useState('user_001');
   const [userFavorites, setUserFavorites] = useState([]);
+
+  // Listen for mode changes and clear demo data when switching to live
+  useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: clear chat
+        clearChat();
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode, clearChat]);
 
   // Function to save JSON data to file
   // Enhanced handleSearch function with better user feedback
