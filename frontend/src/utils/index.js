@@ -6,6 +6,17 @@
  */
 
 export {
+  // Mode storage (demo/live data segregation)
+  isDemoMode,
+  getAgentData,
+  setAgentData,
+  updateAgentData,
+  clearAgentData,
+  useModeStorage,
+  AGENT_KEYS,
+} from './modeStorage';
+
+export {
   // ID generation
   generateId,
   resetIdCounter,

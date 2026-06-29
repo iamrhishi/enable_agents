@@ -6,6 +6,7 @@ import Header from '../core/Header';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
+import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
 
 const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
 
@@ -175,24 +176,10 @@ function RequirementsGathering() {
   const [showPromptsPopup, setShowPromptsPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [googleBusinessConnected, setGoogleBusinessConnected] = useState(false);
-  const [customerResearchResults, setCustomerResearchResults] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('customerResearchResults');
-      return item ? JSON.parse(item) : null;
-    } catch { return null; }
-  });
-  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('showCustomerResearchTable');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
-  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('minimizedCustomerResearch');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
+  // Note: These are initialized to null/false and loaded by useEffect based on mode
+  const [customerResearchResults, setCustomerResearchResults] = useState(null);
+  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(false);
+  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
 
   // Email Modal State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -208,21 +195,52 @@ function RequirementsGathering() {
   const [isAddingNewCampaign, setIsAddingNewCampaign] = useState(false);
   const [emailImages, setEmailImages] = useState([]);
 
+  // Save market research data to centralized mode storage
   useEffect(() => {
-    if (customerResearchResults !== null) {
-      sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
-    } else {
-      sessionStorage.removeItem('customerResearchResults');
+    if (customerResearchResults !== null || showCustomerResearchTable || minimizedCustomerResearch) {
+      setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
+        results: customerResearchResults,
+        showTable: showCustomerResearchTable,
+        minimized: minimizedCustomerResearch,
+        overview,
+        industries,
+        countries,
+        responseFormat,
+      }, isDemoMode);
     }
-  }, [customerResearchResults]);
+  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
 
+  // Load data when mode changes
   useEffect(() => {
-    sessionStorage.setItem('showCustomerResearchTable', JSON.stringify(showCustomerResearchTable));
-  }, [showCustomerResearchTable]);
+    const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, isDemoMode);
 
-  useEffect(() => {
-    sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
-  }, [minimizedCustomerResearch]);
+    if (isDemoMode && !savedData?.results) {
+      // Demo mode with no saved data - load demo defaults
+      setCustomerResearchResults(DEMO_MOCK_DATA.results);
+      setShowCustomerResearchTable(true);
+      setOverview(DEMO_MOCK_DATA.overview);
+      setIndustries(DEMO_MOCK_DATA.industries);
+      setCountries(DEMO_MOCK_DATA.countries);
+      setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+    } else if (savedData) {
+      setCustomerResearchResults(savedData.results || null);
+      setShowCustomerResearchTable(savedData.showTable || false);
+      setMinimizedCustomerResearch(savedData.minimized || false);
+      if (savedData.overview) setOverview(savedData.overview);
+      if (savedData.industries) setIndustries(savedData.industries);
+      if (savedData.countries) setCountries(savedData.countries);
+      if (savedData.responseFormat) setResponseFormat(savedData.responseFormat);
+    } else {
+      // Live mode with no data - clear everything
+      setCustomerResearchResults(null);
+      setShowCustomerResearchTable(false);
+      setMinimizedCustomerResearch(false);
+      setOverview('');
+      setIndustries('');
+      setCountries('');
+      setResponseFormat('');
+    }
+  }, [isDemoMode]);
 
   // Fetch existing campaigns when email modal opens
   useEffect(() => {
