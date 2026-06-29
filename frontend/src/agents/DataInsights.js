@@ -7,8 +7,47 @@ import { PDFDocument } from 'pdf-lib';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from '../core/toast';
 
+// Demo insights responses
+const DEMO_INSIGHTS = {
+  default: `## Key Insights from Your Document
+
+**Summary:**
+Based on the analysis of your uploaded document, here are the main findings:
+
+1. **Revenue Trends**: Q3 showed a 15% increase compared to Q2, driven primarily by the enterprise segment.
+
+2. **Customer Acquisition**: New customer acquisition cost decreased by 8% while lifetime value increased by 12%.
+
+3. **Market Position**: The document indicates strong competitive positioning in the mid-market segment.
+
+4. **Risk Factors**: Supply chain dependencies and market volatility are highlighted as primary concerns.
+
+**Recommendations:**
+- Focus on enterprise customer retention programs
+- Diversify supplier relationships
+- Invest in automation to reduce operational costs
+
+*This is demo data. Connect to live mode for real RAG-based insights.*`,
+
+  financial: `## Financial Analysis Results
+
+**Key Metrics Identified:**
+- Total Revenue: $4.2M (YTD)
+- Gross Margin: 68%
+- Operating Expenses: $1.8M
+- Net Profit Margin: 24%
+
+**Trends:**
+- Revenue growth: +18% YoY
+- Cost reduction: -5% compared to budget
+
+*Demo mode - actual analysis requires live connection.*`,
+};
+
 function DataInsights() {
   const navigate = useNavigate();
+  // Demo mode detection
+  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
   const [files, setFiles] = useState([]);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [inputPrompt, setInputPrompt] = useState('');
@@ -49,6 +88,25 @@ function DataInsights() {
 
     if (inputPrompt.trim() === '') {
       showToast('Please enter a prompt to get insights.', 'warning');
+      return;
+    }
+
+    // Demo mode: return mock insights
+    if (isDemoMode) {
+      setIsLoading(true);
+      // Simulate processing delay
+      setTimeout(() => {
+        const demoInsight = inputPrompt.toLowerCase().includes('financ') || inputPrompt.toLowerCase().includes('revenue')
+          ? DEMO_INSIGHTS.financial
+          : DEMO_INSIGHTS.default;
+        setInsights(demoInsight);
+        setPreviousPrompts((prev) => [inputPrompt, ...prev]);
+        setInputPrompt('');
+        setOperationTime('1.25');
+        setOperationCost('0.01');
+        setIsLoading(false);
+        showToast('Insights generated (Demo Mode)', 'info');
+      }, 1500);
       return;
     }
 
