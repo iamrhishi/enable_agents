@@ -6,7 +6,49 @@ import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 
+// Demo mock data for Sales Helper
+const DEMO_SAVED_PROJECTS = [
+  { id: 'demo-1', name: 'Enterprise Prospects Q2', query_used: 'Enterprise software buyers', lead_count: 45, created_at: '2026-06-10' },
+  { id: 'demo-2', name: 'SMB Tech Companies', query_used: 'Small business technology', lead_count: 32, created_at: '2026-06-15' },
+  { id: 'demo-3', name: 'Healthcare Leads', query_used: 'Healthcare technology', lead_count: 28, created_at: '2026-06-20' },
+];
+
+const DEMO_PROJECT_LEADS = [
+  { name: 'Acme Corp', website: 'https://acme.com', phone: '+1 (555) 123-4567', address: 'San Francisco, CA', email: 'sales@acme.com', summary: 'Enterprise software company' },
+  { name: 'TechStart Inc', website: 'https://techstart.io', phone: '+1 (555) 234-5678', address: 'Austin, TX', email: 'info@techstart.io', summary: 'B2B SaaS platform' },
+  { name: 'DataFlow Systems', website: 'https://dataflow.com', phone: '+1 (555) 345-6789', address: 'Seattle, WA', email: 'contact@dataflow.com', summary: 'Data analytics provider' },
+];
+
+const DEMO_CAMPAIGNS = [
+  { id: 'demo-camp-1', name: 'Q2 Outreach Campaign', subject: 'Partnership Opportunity', totalSent: 45, totalReplied: 12, replyRate: 27, createdAt: '2026-06-12' },
+  { id: 'demo-camp-2', name: 'Product Launch Follow-up', subject: 'New Features Available', totalSent: 32, totalReplied: 8, replyRate: 25, createdAt: '2026-06-18' },
+];
+
+const DEMO_RANKED_VENDORS = [
+  { name: 'Premium Supplies Co', overall_score: 92, ranking: 1, summary: 'Top-rated supplier with excellent delivery' },
+  { name: 'Quality Parts Ltd', overall_score: 88, ranking: 2, summary: 'Reliable quality and competitive pricing' },
+  { name: 'FastShip Industries', overall_score: 85, ranking: 3, summary: 'Quick turnaround and good support' },
+];
+
 function SalesHelperAgent() {
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsDemoMode(stored !== 'live');
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, []);
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -149,6 +191,15 @@ function SalesHelperAgent() {
   };
 
   const fetchCampaigns = async () => {
+    // Demo mode: use mock campaigns
+    if (isDemoMode) {
+      setCampaigns(DEMO_CAMPAIGNS);
+      if (!selectedRankingCampaignId && DEMO_CAMPAIGNS.length > 0) {
+        setSelectedRankingCampaignId(String(DEMO_CAMPAIGNS[0].id));
+      }
+      return;
+    }
+
     try {
       setIsLoadingCampaigns(true);
       const userId = getCurrentUserIdentifier();
@@ -499,6 +550,15 @@ function SalesHelperAgent() {
   };
 
   const fetchSavedProjects = async () => {
+    // Demo mode: use mock projects
+    if (isDemoMode) {
+      setSavedProjects(DEMO_SAVED_PROJECTS);
+      if (DEMO_SAVED_PROJECTS.length > 0 && !savedProjectSelection) {
+        setSavedProjectSelection(String(DEMO_SAVED_PROJECTS[0].id));
+      }
+      return;
+    }
+
     try {
       setIsLoadingSavedProjects(true);
       const userId = getCurrentUserIdentifier();
@@ -525,6 +585,21 @@ function SalesHelperAgent() {
 
   const loadSavedProjectLeads = async (projectId) => {
     if (!projectId) return;
+
+    // Demo mode: use mock leads
+    if (isDemoMode) {
+      const demoProject = DEMO_SAVED_PROJECTS.find(p => p.id === projectId);
+      setSelectedSavedProject(demoProject);
+      setSelectedSavedProjectLeads(DEMO_PROJECT_LEADS);
+      setSavedProjectSelection(String(projectId));
+      addMessage(
+        `📂 **Loaded saved leads list:** ${demoProject?.name || 'Demo List'}\n\nI can now answer questions about these ${DEMO_PROJECT_LEADS.length} leads. (Demo Mode)`,
+        'agent',
+        null,
+        'markdown'
+      );
+      return;
+    }
 
     try {
       setIsLoadingSavedProjectLeads(true);

@@ -6,7 +6,65 @@ import { BackButton, Input, Textarea, Select } from '../components';
 import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
 
+// Demo content templates
+const DEMO_GENERATED_CONTENT = {
+  linkedin: {
+    post: `🚀 Excited to share our latest innovation in AI-powered business automation!
+
+At Enable Agents, we're transforming how businesses operate with intelligent automation that adapts to your needs.
+
+Key highlights:
+✅ 50% reduction in manual tasks
+✅ Real-time insights and analytics
+✅ Seamless integration with existing tools
+
+The future of work is here. Are you ready?
+
+#AI #Automation #BusinessInnovation #FutureOfWork`,
+    article: `# The Future of Business Automation: A Deep Dive
+
+In today's rapidly evolving business landscape, automation isn't just a luxury—it's a necessity. Here's how AI-powered automation is reshaping industries...
+
+## Key Benefits
+1. **Increased Efficiency**: Reduce manual tasks by up to 50%
+2. **Better Decision Making**: Real-time analytics and insights
+3. **Cost Savings**: Lower operational overhead
+
+## Getting Started
+The journey to automation begins with understanding your processes...`
+  },
+  twitter: {
+    post: `🤖 AI automation is changing the game for businesses.
+
+Our latest update brings:
+• 50% faster workflows
+• Smart task prioritization
+• Real-time collaboration
+
+The future is automated. #AI #BusinessTech`
+  },
+  email: {
+    post: `Subject: Transform Your Business with AI Automation
+
+Dear [Name],
+
+I hope this email finds you well. I wanted to share some exciting developments in business automation that could benefit your organization.
+
+Our AI-powered platform has helped companies achieve:
+- 50% reduction in manual tasks
+- 30% faster decision-making
+- Significant cost savings
+
+Would you be open to a brief call to explore how this could work for your team?
+
+Best regards,
+[Your Name]`
+  }
+};
+
 function ContentMarketingAgent() {
+  // Demo mode detection
+  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
   const [step, setStep] = useState('project'); // project, upload, generate, chat
   const [projectId, setProjectId] = useState(null);
   const [projectName, setProjectName] = useState('');
@@ -50,6 +108,17 @@ function ContentMarketingAgent() {
   const handleCreateProject = async () => {
     if (!projectName.trim()) {
       showToast('Please enter a project name', 'warning');
+      return;
+    }
+
+    // Demo mode: simulate project creation
+    if (isDemoMode) {
+      setProjectId('demo-project-1');
+      addMessage(
+        `✅ Project "${projectName}" created successfully! (Demo Mode)\n\nYou can skip document upload and go directly to content generation, or upload sample documents.`,
+        'agent'
+      );
+      setStep('upload');
       return;
     }
 
@@ -139,6 +208,33 @@ function ContentMarketingAgent() {
   const handleGenerateContent = async () => {
     if (!selectedChannel || !contentType) {
       showToast('Please select channel and content type', 'warning');
+      return;
+    }
+
+    // Demo mode: use pre-generated content
+    if (isDemoMode) {
+      const demoContent = DEMO_GENERATED_CONTENT[selectedChannel]?.[contentType] ||
+        DEMO_GENERATED_CONTENT[selectedChannel]?.post ||
+        DEMO_GENERATED_CONTENT.linkedin.post;
+
+      const demoData = {
+        content: demoContent,
+        variations: [
+          'Variation 1: A more casual tone version',
+          'Variation 2: A formal business version',
+          'Variation 3: A storytelling approach'
+        ]
+      };
+
+      setGeneratedContent(demoData);
+      addMessage(
+        `✅ Content generated for **${selectedChannel}** (${contentType})! (Demo Mode)\n\n` +
+        `---\n\n` +
+        `${demoData.content}\n\n` +
+        `---\n\n` +
+        `✨ I also generated ${demoData.variations.length} variations. Type 'show variations' to see them.`,
+        'agent'
+      );
       return;
     }
 

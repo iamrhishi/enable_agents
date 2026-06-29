@@ -65,6 +65,11 @@ const DEMO_MOCK_DATA = {
   countries: 'North America',
   responseFormat: 'Customer Research',
   results: {
+    query: 'B2B SaaS platform for HR automation',
+    location: 'North America',
+    industry: 'Technology',
+    totalResults: 8,
+    researchType: 'Customer Research',
     businesses: [
       { name: 'TechFlow Solutions', address: 'San Francisco, CA', website: 'https://techflow.io', phone: '+1 (415) 555-0123', email: 'contact@techflow.io', linkedin: 'https://linkedin.com/company/techflow', match_score: 92, summary: 'Leading HR automation platform' },
       { name: 'CloudHR Systems', address: 'Austin, TX', website: 'https://cloudhr.com', phone: '+1 (512) 555-0456', email: 'info@cloudhr.com', linkedin: 'https://linkedin.com/company/cloudhr', match_score: 88, summary: 'Cloud-based HR solutions' },
@@ -83,9 +88,9 @@ const DEMO_MOCK_DATA = {
     }
   },
   savedLists: [
-    { id: 'demo-1', name: 'Tech Startups Q1', created_at: '2026-06-15', lead_count: 24, status: 'active' },
-    { id: 'demo-2', name: 'Enterprise HR Leads', created_at: '2026-06-20', lead_count: 18, status: 'active' },
-    { id: 'demo-3', name: 'West Coast Prospects', created_at: '2026-06-25', lead_count: 32, status: 'active' },
+    { id: 'demo-1', name: 'Tech Startups Q1', query_used: 'B2B SaaS startups', created_at: '2026-06-15', lead_count: 24, status: 'active' },
+    { id: 'demo-2', name: 'Enterprise HR Leads', query_used: 'Enterprise HR software', created_at: '2026-06-20', lead_count: 18, status: 'active' },
+    { id: 'demo-3', name: 'West Coast Prospects', query_used: 'Tech companies California', created_at: '2026-06-25', lead_count: 32, status: 'active' },
   ]
 };
 
@@ -124,7 +129,7 @@ function RequirementsGathering() {
     };
   }, []);
 
-  // Restore demo state on mount if in demo mode
+  // Restore demo state on mount if in demo mode (auto-load if no saved state)
   useEffect(() => {
     if (isDemoMode) {
       const savedDemo = loadDemoState();
@@ -136,6 +141,23 @@ function RequirementsGathering() {
         if (savedDemo.results) {
           setCustomerResearchResults(savedDemo.results);
         }
+      } else {
+        // Auto-load demo data if no saved state exists
+        setOverview(DEMO_MOCK_DATA.overview);
+        setIndustries(DEMO_MOCK_DATA.industries);
+        setCountries(DEMO_MOCK_DATA.countries);
+        setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+        setCustomerResearchResults(DEMO_MOCK_DATA.results);
+        // Persist for tab switches
+        saveDemoState({
+          overview: DEMO_MOCK_DATA.overview,
+          industries: DEMO_MOCK_DATA.industries,
+          countries: DEMO_MOCK_DATA.countries,
+          responseFormat: DEMO_MOCK_DATA.responseFormat,
+          results: DEMO_MOCK_DATA.results,
+          savedLists: DEMO_MOCK_DATA.savedLists,
+          isDemo: true
+        });
       }
     }
   }, [isDemoMode]);
@@ -310,9 +332,18 @@ function RequirementsGathering() {
       : { singular: 'lead', plural: 'leads', title: 'Leads' };
   };
 
-  // Check if user just returned from Google OAuth authorization
+  // Check URL params for tab and Google OAuth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Handle tab param from Campaign Dashboard navigation
+    if (params.get('tab') === 'saved') {
+      setShowSavedListsView(true);
+      fetchSavedLists();
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (params.get('google_connected') === 'true') {
       setGoogleBusinessConnected(true);
       alert('Google Business Account connected successfully!');
@@ -382,6 +413,37 @@ function RequirementsGathering() {
         // Validate required inputs for research
         if (!overview || !industries || !countries) {
           alert('Please fill in Overview, Industries, and Region/Countries for research');
+          return;
+        }
+
+        // In demo mode, use mock data instead of API call
+        if (isDemoMode) {
+          setCustomerResearchResults({
+            query: overview,
+            location: countries,
+            industry: industries,
+            totalResults: DEMO_MOCK_DATA.results.businesses.length,
+            researchType: responseFormat,
+            businesses: DEMO_MOCK_DATA.results.businesses
+          });
+          setShowCustomerResearchTable(true);
+          // Persist demo state
+          saveDemoState({
+            overview,
+            industries,
+            countries,
+            responseFormat,
+            results: {
+              query: overview,
+              location: countries,
+              industry: industries,
+              totalResults: DEMO_MOCK_DATA.results.businesses.length,
+              researchType: responseFormat,
+              businesses: DEMO_MOCK_DATA.results.businesses
+            },
+            savedLists: DEMO_MOCK_DATA.savedLists,
+            isDemo: true
+          });
           return;
         }
 
@@ -495,6 +557,12 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
+      return;
+    }
+
     setIsLoadingEmails(true);
 
     try {
@@ -542,6 +610,13 @@ function RequirementsGathering() {
 
   const handleExtractLinkedInForBusiness = async (business, index) => {
     if (!business) return;
+
+    // In demo mode, data already has LinkedIn
+    if (isDemoMode) {
+      alert('Demo mode: LinkedIn data is already populated in the sample data.');
+      return;
+    }
+
     setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
     console.log(`[LINKEDIN_EXTRACTION] Starting extraction for ${business.name}`);
 
@@ -625,6 +700,12 @@ function RequirementsGathering() {
   const handleExtractEmailForBusiness = async (business, index) => {
     if (!business || !business.website) {
       alert('Website not available for this business.');
+      return;
+    }
+
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
       return;
     }
 
@@ -824,6 +905,27 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, simulate saving
+    if (isDemoMode) {
+      if (!saveListName.trim() && saveListMode !== 'append') {
+        alert('Please provide a name for the list.');
+        return;
+      }
+      const newList = {
+        id: `demo-${Date.now()}`,
+        name: saveListName || 'New Demo List',
+        query_used: customerResearchResults?.query || '',
+        created_at: new Date().toISOString(),
+        lead_count: rows.length,
+        status: 'active'
+      };
+      setSavedLists(prev => [newList, ...prev]);
+      setShowSaveListModal(false);
+      setSaveListName('');
+      alert('Demo mode: List saved to local view.');
+      return;
+    }
+
     const payloadLeads = (customerResearchResults?.businesses || []).map((business) => ({
       name: business.name || 'N/A',
       website: business.website || '',
@@ -928,6 +1030,13 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, scores are already populated
+    if (isDemoMode) {
+      alert('Demo mode: Match scores are already visible in the demo data. In live mode, AI would re-score based on your criteria.');
+      setShowScoreModal(false);
+      return;
+    }
+
     setIsScoring(true);
     try {
       const payload = sourceBusinesses.map(b => ({
@@ -1006,6 +1115,17 @@ function RequirementsGathering() {
     const confirmed = window.confirm('Delete this saved list permanently?');
     if (!confirmed) return;
 
+    // In demo mode, just remove from local state
+    if (isDemoMode) {
+      setSavedLists(prev => prev.filter(l => l.id !== projectId));
+      if (activeSavedList && activeSavedList.id === projectId) {
+        setActiveSavedList(null);
+        setActiveSavedListLeads([]);
+      }
+      alert('Demo mode: List removed from view.');
+      return;
+    }
+
     setDeletingListId(projectId);
     try {
       const response = await fetch(`${API_CONFIG.DELETE_SAVED_PROJECT}/${projectId}?username=${encodeURIComponent(getCurrentUsername())}`, {
@@ -1034,6 +1154,19 @@ function RequirementsGathering() {
 
   const fetchSavedLists = async () => {
      setIsLoadingSavedLists(true);
+
+     // In demo mode, use mock data
+     if (isDemoMode) {
+       const savedDemo = loadDemoState();
+       if (savedDemo && savedDemo.savedLists) {
+         setSavedLists(savedDemo.savedLists);
+       } else {
+         setSavedLists(DEMO_MOCK_DATA.savedLists);
+       }
+       setIsLoadingSavedLists(false);
+       return;
+     }
+
      try {
        const userIdentifier = getCurrentUsername();
        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`, {
@@ -1061,6 +1194,31 @@ function RequirementsGathering() {
   }, [showSaveListModal]);
 
   const loadSavedListDetails = async (projectId) => {
+     // In demo mode, use mock leads
+     if (isDemoMode) {
+       const demoList = DEMO_MOCK_DATA.savedLists.find(l => l.id === projectId);
+       if (demoList) {
+         // Use the main demo businesses as the leads for any demo list
+         const leads = DEMO_MOCK_DATA.results.businesses;
+
+         setCustomerResearchResults({
+           query: demoList.query_used || demoList.name,
+           location: 'North America',
+           industry: 'Technology',
+           totalResults: leads.length,
+           researchType: 'Customer Research',
+           businesses: leads
+         });
+
+         setActiveSavedList(demoList);
+         setActiveSavedListLeads(leads);
+         setShowSavedListsView(false);
+         setShowCustomerResearchTable(true);
+         setMinimizedCustomerResearch(false);
+       }
+       return;
+     }
+
      try {
         const userIdentifier = getCurrentUsername();
         const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`, {
@@ -1081,7 +1239,7 @@ function RequirementsGathering() {
             summary: l.summary || l.description || 'N/A',
             has_extracted: l.has_extracted
            }));
-           
+
            // Set customer research results to display in regular leads view
            setCustomerResearchResults({
              query: data.project.query_used || data.project.name,
@@ -1095,11 +1253,11 @@ function RequirementsGathering() {
                businesses: leads
              }));
            } catch (e) { /* ignore */ }
-           
+
            // Store saved list info for context
            setActiveSavedList(data.project);
            setActiveSavedListLeads(leads);
-           
+
            // Switch to leads view (not saved lists view)
            setShowSavedListsView(false);
            setShowCustomerResearchTable(true);
@@ -1273,6 +1431,26 @@ function RequirementsGathering() {
         return;
       }
 
+      // In demo mode, use sample email content
+      if (isDemoMode) {
+        setEmailSubject(`Partnership Opportunity - ${business.name || 'Your Company'}`);
+        setEmailBody(`Hi ${business.name ? business.name.split(' ')[0] : 'there'},
+
+I came across ${business.name || 'your company'} and was impressed by your work in ${business.summary || 'your industry'}.
+
+We at Enable Agents specialize in AI-powered business automation, and I believe there's potential for a valuable partnership.
+
+Would you be open to a brief call this week to explore how we might work together?
+
+Best regards,
+${getCurrentUsername() || 'Your Name'}`);
+        setCampaignName('Personalized: ' + (business.name || 'Company'));
+        setSelectedLead(business);
+        setShowEmailModal(true);
+        setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
+        return;
+      }
+
       const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1326,6 +1504,17 @@ function RequirementsGathering() {
       alert("Subject and Body required unless using AI Personalization");
       return;
     }
+
+    // In demo mode, simulate sending
+    if (isDemoMode) {
+      alert('Demo mode: Email sending simulated. In live mode, emails would be sent via your connected account.');
+      setShowEmailModal(false);
+      setEmailSubject('');
+      setEmailBody('');
+      setSelectedLead(null);
+      return;
+    }
+
     const registeredEmail = getCurrentUserEmail();
     if (!registeredEmail) {
       alert('Registered email not found. Please log in again so the campaign can be sent from your account.');
@@ -1483,11 +1672,11 @@ function RequirementsGathering() {
                        ← Back to All Lists
                     </button>
                  )}
-                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1E3A5F' }}>
-                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : (responseFormat === 'Supplier Research' ? 'Saved Vendors Lists' : 'Saved Leads Lists')}
-                    </h2>
-                 </div>
+                 {activeSavedList && (
+                   <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
+                     {activeSavedList.name}
+                   </h2>
+                 )}
                  {isLoadingSavedLists ? (
                     <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
                  ) : !activeSavedList ? (

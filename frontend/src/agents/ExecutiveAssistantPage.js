@@ -5,7 +5,28 @@ import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
 import { Input, Textarea, Select } from '../components';
 
+// Demo data for Executive Assistant
+const DEMO_PROJECTS = [
+  { id: 'demo-p1', name: 'Q3 Product Launch', description: 'Launch new product features', status: 'Active', dueDate: '2026-09-15' },
+  { id: 'demo-p2', name: 'Marketing Campaign', description: 'Summer marketing initiative', status: 'Active', dueDate: '2026-08-01' },
+  { id: 'demo-p3', name: 'Team Expansion', description: 'Hire 5 new engineers', status: 'Active', dueDate: '2026-07-30' },
+];
+
+const DEMO_TASKS = [
+  { id: 'demo-t1', projectId: 'demo-p1', title: 'Finalize feature specs', description: 'Complete technical specifications', assignedTo: 'John Smith', dueDate: '2026-07-15', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t2', projectId: 'demo-p1', title: 'Design review', description: 'Review UI/UX designs', assignedTo: 'Sarah Johnson', dueDate: '2026-07-20', priority: 'Medium', status: 'Pending' },
+  { id: 'demo-t3', projectId: 'demo-p2', title: 'Create ad copy', description: 'Write marketing copy for ads', assignedTo: 'Mike Wilson', dueDate: '2026-07-10', priority: 'High', status: 'Completed' },
+];
+
+const DEMO_PEOPLE = [
+  { id: 'demo-pe1', name: 'John Smith', email: 'john@company.com', phone: '+1 555-0101', whatsappNumber: '+1 555-0101', role: 'Product Manager', projects: ['demo-p1'] },
+  { id: 'demo-pe2', name: 'Sarah Johnson', email: 'sarah@company.com', phone: '+1 555-0102', whatsappNumber: '+1 555-0102', role: 'Designer', projects: ['demo-p1', 'demo-p2'] },
+  { id: 'demo-pe3', name: 'Mike Wilson', email: 'mike@company.com', phone: '+1 555-0103', whatsappNumber: '+1 555-0103', role: 'Marketing Lead', projects: ['demo-p2'] },
+];
+
 function ExecutiveAssistantPage() {
+  // Demo mode detection
+  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
   const [activeTab, setActiveTab] = useState('projects');
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -57,16 +78,23 @@ function ExecutiveAssistantPage() {
     sendTime: 'now'
   });
 
-  // Load data from localStorage on mount
+  // Load data from localStorage on mount (with demo data fallback)
   useEffect(() => {
     const savedProjects = JSON.parse(localStorage.getItem('ea_projects') || '[]');
     const savedTasks = JSON.parse(localStorage.getItem('ea_tasks') || '[]');
     const savedPeople = JSON.parse(localStorage.getItem('ea_people') || '[]');
-    
-    setProjects(savedProjects);
-    setTasks(savedTasks);
-    setPeople(savedPeople);
-  }, []);
+
+    // In demo mode, use demo data if no saved data exists
+    if (isDemoMode && savedProjects.length === 0) {
+      setProjects(DEMO_PROJECTS);
+      setTasks(DEMO_TASKS);
+      setPeople(DEMO_PEOPLE);
+    } else {
+      setProjects(savedProjects);
+      setTasks(savedTasks);
+      setPeople(savedPeople);
+    }
+  }, [isDemoMode]);
 
   // Save to localStorage whenever data changes
   useEffect(() => {

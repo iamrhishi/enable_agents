@@ -808,15 +808,6 @@
   color: var(--color-text);
 }
 
-.summary-badge.results-badge {
-  background: var(--color-success-bg);
-  border-color: var(--color-success);
-}
-
-.summary-badge.results-badge .badge-value {
-  color: var(--color-success);
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════════
    DATA TABLES
    ═══════════════════════════════════════════════════════════════════════════════ */

@@ -6,7 +6,18 @@ import { API_CONFIG } from '../config/apiConfig';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 
+// Demo network data
+const DEMO_NETWORK_DATA = [
+  { name: 'Alex Chen', company: 'TechCorp', role: 'CTO', industry: 'Technology', location: 'San Francisco', email: 'alex@techcorp.com', linkedin: 'linkedin.com/in/alexchen', skills: ['AI', 'Cloud', 'Leadership'] },
+  { name: 'Maria Garcia', company: 'HealthFirst', role: 'VP Marketing', industry: 'Healthcare', location: 'Boston', email: 'maria@healthfirst.com', linkedin: 'linkedin.com/in/mariagarcia', skills: ['Marketing', 'Strategy', 'Healthcare'] },
+  { name: 'James Wilson', company: 'FinanceHub', role: 'Director', industry: 'Finance', location: 'New York', email: 'james@financehub.com', linkedin: 'linkedin.com/in/jameswilson', skills: ['Finance', 'Analytics', 'Investment'] },
+  { name: 'Sarah Kim', company: 'EduTech', role: 'Founder', industry: 'Education', location: 'Seattle', email: 'sarah@edutech.io', linkedin: 'linkedin.com/in/sarahkim', skills: ['EdTech', 'Startups', 'Product'] },
+  { name: 'David Brown', company: 'CloudScale', role: 'Engineering Lead', industry: 'Technology', location: 'Austin', email: 'david@cloudscale.com', linkedin: 'linkedin.com/in/davidbrown', skills: ['Engineering', 'DevOps', 'Scale'] },
+];
+
 function CommunityNetworkAgent() {
+  // Demo mode detection
+  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -30,9 +41,24 @@ function CommunityNetworkAgent() {
   // Function to save JSON data to file
   // Enhanced handleSearch function with better user feedback
   const handleSearch = async (query) => {
+    // Demo mode: use mock search results
+    if (isDemoMode) {
+      addMessage("🔍 Searching through the network... (Demo Mode)", 'agent', null, 'markdown');
+      const filteredResults = DEMO_NETWORK_DATA.filter(person =>
+        person.name.toLowerCase().includes(query.toLowerCase()) ||
+        person.company.toLowerCase().includes(query.toLowerCase()) ||
+        person.industry.toLowerCase().includes(query.toLowerCase()) ||
+        person.skills.some(s => s.toLowerCase().includes(query.toLowerCase()))
+      );
+      const results = filteredResults.length > 0 ? filteredResults : DEMO_NETWORK_DATA.slice(0, 3);
+      const resultsHtml = results.map(p => `<strong>${p.name}</strong> - ${p.role} at ${p.company}<br>📧 ${p.email} | 🔗 ${p.linkedin}`).join('<br><br>');
+      addMessage(`🔍 <strong>Search Results</strong> (${results.length} found)<br><br>${resultsHtml}`, 'agent', null, 'html');
+      return;
+    }
+
     try {
       addMessage("🔍 Searching through the data...", 'agent', null, 'markdown');
-      
+
       const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

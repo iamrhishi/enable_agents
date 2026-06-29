@@ -4,6 +4,21 @@ import BackButton from '../components/BackButton';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 
+// Demo mock campaigns
+const DEMO_CAMPAIGNS = [
+  { id: 'demo-camp-1', name: 'Tech Startup Outreach', subject: 'Partnership Opportunity with Enable Agents', totalSent: 24, totalReplied: 8, replyRate: 33, createdAt: '2026-06-20T10:30:00Z' },
+  { id: 'demo-camp-2', name: 'HR Solutions Follow-up', subject: 'How Enable Agents Can Automate Your HR', totalSent: 18, totalReplied: 5, replyRate: 28, createdAt: '2026-06-22T14:15:00Z' },
+  { id: 'demo-camp-3', name: 'Enterprise Leads Q2', subject: 'Introducing AI-Powered Business Automation', totalSent: 32, totalReplied: 12, replyRate: 38, createdAt: '2026-06-25T09:00:00Z' },
+];
+
+const DEMO_RECIPIENTS = [
+  { name: 'TechFlow Solutions', email: 'contact@techflow.io', sentAt: '2026-06-25T09:05:00Z', replyStatus: 'Replied', repliedAt: '2026-06-25T14:30:00Z' },
+  { name: 'CloudHR Systems', email: 'info@cloudhr.com', sentAt: '2026-06-25T09:06:00Z', replyStatus: 'Replied', repliedAt: '2026-06-26T10:15:00Z' },
+  { name: 'PeopleFirst Inc', email: 'sales@peoplefirst.io', sentAt: '2026-06-25T09:07:00Z', replyStatus: 'No Reply', repliedAt: null },
+  { name: 'WorkStream AI', email: 'hello@workstream.ai', sentAt: '2026-06-25T09:08:00Z', replyStatus: 'Replied', repliedAt: '2026-06-25T16:45:00Z' },
+  { name: 'HRNova Solutions', email: 'contact@hrnova.com', sentAt: '2026-06-25T09:09:00Z', replyStatus: 'No Reply', repliedAt: null },
+];
+
 function CampaignDashboard() {
   const userId = localStorage.getItem("firstName") || "";
   const [campaigns, setCampaigns] = useState([]);
@@ -13,11 +28,33 @@ function CampaignDashboard() {
   const [loadError, setLoadError] = useState('');
   const [isRefreshingReplies, setIsRefreshingReplies] = useState(false);
 
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  // Listen for mode changes
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsDemoMode(stored !== 'live');
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     fetchCampaigns();
-    const intervalId = setInterval(fetchCampaigns, 30000);
-    return () => clearInterval(intervalId);
-  }, []);
+    if (!isDemoMode) {
+      const intervalId = setInterval(fetchCampaigns, 30000);
+      return () => clearInterval(intervalId);
+    }
+  }, [isDemoMode]);
 
   useEffect(() => {
     if (!selectedCampaign) return;
@@ -29,6 +66,14 @@ function CampaignDashboard() {
   const fetchCampaigns = async () => {
     setIsLoading(true);
     setLoadError('');
+
+    // In demo mode, use mock data
+    if (isDemoMode) {
+      setCampaigns(DEMO_CAMPAIGNS);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
       const data = await res.json();
@@ -73,6 +118,13 @@ function CampaignDashboard() {
   };
 
   const viewCampaign = async (campaignId) => {
+    // In demo mode, use mock recipients
+    if (isDemoMode) {
+      setRecipients(DEMO_RECIPIENTS);
+      setSelectedCampaign(campaignId);
+      return;
+    }
+
     try {
       const res = await fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaignId));
       const data = await res.json();
@@ -94,6 +146,7 @@ function CampaignDashboard() {
         <div className="main-workspace-area">
           <div className="tabs-container">
             <button className="workspace-tab" onClick={() => window.location.href='/market-research'}>Leads</button>
+            <button className="workspace-tab" onClick={() => window.location.href='/market-research?tab=saved'}>Saved Leads</button>
             <button className="workspace-tab active-tab">Campaign Dashboard</button>
           </div>
 
@@ -111,13 +164,13 @@ function CampaignDashboard() {
                       <table className="research-table" style={{ width: '100%' }}>  
                         <thead>
                           <tr>
-                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Date</th>
-                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Campaign Name</th>    
-                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Subject Line</th>     
-                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Sent</th>
-                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Replies</th>
-                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Rate</th>
-                            <th style={{ textAlign: 'center', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Action</th>
+                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Date</th>
+                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Campaign Name</th>
+                            <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Subject Line</th>
+                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700, textAlign: 'center' }}>Sent</th>
+                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700, textAlign: 'center' }}>Replies</th>
+                            <th style={{ position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700, textAlign: 'center' }}>Rate</th>
+                            <th style={{ textAlign: 'center', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -161,11 +214,11 @@ function CampaignDashboard() {
                     <table className="research-table" style={{ width: '100%' }}>    
                       <thead>
                         <tr>
-                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Business Name</th>      
-                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Email Address</th>      
-                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Sent At</th>
-                          <th style={{ textAlign: 'center', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Reply Status</th>     
-                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1 }}>Replied At</th>
+                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Business Name</th>
+                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Email Address</th>
+                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Sent At</th>
+                          <th style={{ textAlign: 'center', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Reply Status</th>
+                          <th style={{ textAlign: 'left', position: 'sticky', top: 0, background: '#F1EAE4', zIndex: 1, color: '#1E3A5F', fontWeight: 700 }}>Replied At</th>
                         </tr>
                       </thead>
                       <tbody>
