@@ -95,19 +95,7 @@ const DEMO_MOCK_DATA = {
   ]
 };
 
-// Helper to load/save demo state from sessionStorage
-const loadDemoState = () => {
-  try {
-    const saved = sessionStorage.getItem('demoModeData');
-    return saved ? JSON.parse(saved) : null;
-  } catch { return null; }
-};
-
-const saveDemoState = (data) => {
-  try {
-    sessionStorage.setItem('demoModeData', JSON.stringify(data));
-  } catch { /* ignore */ }
-};
+// Note: Demo state now handled by centralized modeStorage utility
 
 function RequirementsGathering() {
   // Demo mode detection
@@ -130,38 +118,7 @@ function RequirementsGathering() {
     };
   }, []);
 
-  // Restore demo state on mount if in demo mode (auto-load if no saved state)
-  useEffect(() => {
-    if (isDemoMode) {
-      const savedDemo = loadDemoState();
-      if (savedDemo && savedDemo.isDemo) {
-        setOverview(savedDemo.overview || '');
-        setIndustries(savedDemo.industries || '');
-        setCountries(savedDemo.countries || '');
-        setResponseFormat(savedDemo.responseFormat || '');
-        if (savedDemo.results) {
-          setCustomerResearchResults(savedDemo.results);
-        }
-      } else {
-        // Auto-load demo data if no saved state exists
-        setOverview(DEMO_MOCK_DATA.overview);
-        setIndustries(DEMO_MOCK_DATA.industries);
-        setCountries(DEMO_MOCK_DATA.countries);
-        setResponseFormat(DEMO_MOCK_DATA.responseFormat);
-        setCustomerResearchResults(DEMO_MOCK_DATA.results);
-        // Persist for tab switches
-        saveDemoState({
-          overview: DEMO_MOCK_DATA.overview,
-          industries: DEMO_MOCK_DATA.industries,
-          countries: DEMO_MOCK_DATA.countries,
-          responseFormat: DEMO_MOCK_DATA.responseFormat,
-          results: DEMO_MOCK_DATA.results,
-          savedLists: DEMO_MOCK_DATA.savedLists,
-          isDemo: true
-        });
-      }
-    }
-  }, [isDemoMode]);
+  // Note: Demo state loading moved to centralized storage useEffect below
 
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
@@ -445,23 +402,7 @@ function RequirementsGathering() {
             businesses: DEMO_MOCK_DATA.results.businesses
           });
           setShowCustomerResearchTable(true);
-          // Persist demo state
-          saveDemoState({
-            overview,
-            industries,
-            countries,
-            responseFormat,
-            results: {
-              query: overview,
-              location: countries,
-              industry: industries,
-              totalResults: DEMO_MOCK_DATA.results.businesses.length,
-              researchType: responseFormat,
-              businesses: DEMO_MOCK_DATA.results.businesses
-            },
-            savedLists: DEMO_MOCK_DATA.savedLists,
-            isDemo: true
-          });
+          // Data auto-saved by centralized storage useEffect
           return;
         }
 
@@ -1175,9 +1116,9 @@ function RequirementsGathering() {
 
      // In demo mode, use mock data
      if (isDemoMode) {
-       const savedDemo = loadDemoState();
-       if (savedDemo && savedDemo.savedLists) {
-         setSavedLists(savedDemo.savedLists);
+       const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, true);
+       if (savedData && savedData.savedLists) {
+         setSavedLists(savedData.savedLists);
        } else {
          setSavedLists(DEMO_MOCK_DATA.savedLists);
        }
@@ -2048,23 +1989,13 @@ ${getCurrentUsername() || 'Your Name'}`);
                         <button
                           className="demo-example-btn"
                           onClick={() => {
-                            // Load demo data and persist to sessionStorage
+                            // Load demo data (auto-saved by centralized storage useEffect)
                             setOverview(DEMO_MOCK_DATA.overview);
                             setIndustries(DEMO_MOCK_DATA.industries);
                             setCountries(DEMO_MOCK_DATA.countries);
                             setResponseFormat(DEMO_MOCK_DATA.responseFormat);
                             setCustomerResearchResults(DEMO_MOCK_DATA.results);
                             setShowCustomerResearchTable(true);
-                            // Persist demo state
-                            saveDemoState({
-                              overview: DEMO_MOCK_DATA.overview,
-                              industries: DEMO_MOCK_DATA.industries,
-                              countries: DEMO_MOCK_DATA.countries,
-                              responseFormat: DEMO_MOCK_DATA.responseFormat,
-                              results: DEMO_MOCK_DATA.results,
-                              savedLists: DEMO_MOCK_DATA.savedLists,
-                              isDemo: true
-                            });
                           }}
                         >
                           ✨ Try Example (Demo Mode)
