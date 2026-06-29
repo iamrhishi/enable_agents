@@ -92,10 +92,18 @@ function SalesHelperAgent() {
     defaultUserId ||
     'anonymous';
 
+  // Reload data when mode changes
   useEffect(() => {
+    // Clear current data first when switching modes
+    setSavedProjects([]);
+    setCampaigns([]);
+    setSelectedSavedProject(null);
+    setSelectedSavedProjectLeads([]);
+    setRankedVendors([]);
+    // Then fetch fresh data for current mode
     fetchSavedProjects();
     fetchCampaigns();
-  }, []);
+  }, [isDemoMode]);
 
   useEffect(() => {
     if (activeWorkspaceView !== 'vendorRanking' || rankedVendors.length === 0) return;

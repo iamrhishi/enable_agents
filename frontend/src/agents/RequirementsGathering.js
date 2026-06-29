@@ -1902,21 +1902,13 @@ ${getCurrentUsername() || 'Your Name'}`);
                               >
                                 <img src="/assets/icons/bar-chart.png" alt={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'} />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={() => { prepareSupplierEmailDraft(null); setShowEmailModal(true); }}
                                 title="Send Emails"
                                 aria-label="Send Emails"
                               >
                                 <img src="/assets/icons/mail.png" alt="Send Emails" />
-                              </button>
-                              <button 
-                                className="action-icon-button"
-                                onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
-                                title="Maximize"
-                                aria-label="Maximize Table"
-                              >
-                                <img src="/assets/icons/maximize.png" alt="Maximize" />
                               </button>
                           </div>
                         </div>
@@ -2146,129 +2138,7 @@ ${getCurrentUsername() || 'Your Name'}`);
             </div>
           )}
 
-          {/* Customer Research Results Table */}
-
-          {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-              <div className="popup-overlay">
-                <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
-                    style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
-                    title="Minimize Table"
-                  >
-                    &times;
-                  </button>
-                  <div className="research-summary-row">
-                  <span><strong>Search:</strong> {customerResearchResults.query}</span>
-                  <span><strong>Location:</strong> {customerResearchResults.location}</span>
-                  <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
-                  <span><strong>Total Results:</strong> {customerResearchResults.totalResults}</span>
-                </div>
-
-                {isLoadingResearch ? (
-                  <div className="loading">Loading businesses...</div>
-                ) : customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
-                  <div className="table-wrapper">
-                    <table className="businesses-table">
-                      <thead>
-                        <tr>
-                          <th>Business Name</th>
-                          <th>Address</th>
-                          <th>Phone</th>
-                          <th>Website</th>
-                          <th>Email</th>
-                          <th>LinkedIn</th>
-                          <th>Send Email</th>
-                          <th>Match</th>
-                          <th>Summary</th>
-                        </tr>
-                      </thead>
-                                <tbody>
-                                  {customerResearchResults.businesses.map((business, index) => (
-                                    <tr key={index}>
-                                      <td>{business.name || 'N/A'}</td>
-                                      <td>{business.address || 'N/A'}</td>
-                                      <td>{business.phone || 'N/A'}</td>
-                                      <td>
-                                        {business.website ? (
-                                          <a href={business.website} target="_blank" rel="noopener noreferrer">
-                                            Visit
-                                          </a>
-                                        ) : (
-                                          'N/A'
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? ( 
-                                          <span>{business.email}</span>
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            onClick={() => handleExtractEmailForBusiness(business, index)}
-                                            disabled={!!extractingEmailRows[index]}     
-                                          >
-                                            {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.linkedin ? (
-                                          business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
-                                              View Profile
-                                            </a>
-                                          ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
-                                          )
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
-                                            onClick={() => handleExtractLinkedInForBusiness(business, index)}
-                                            disabled={!!extractingLinkedInRows[index]}
-                                          >
-                                            {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? (
-                                          <button
-                                            onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                            disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                          >
-                                            {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
-                                          </button>
-                                        ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
-                                        )}
-                                      </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                                        {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
-                                      </td>
-                                      <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="no-results">No businesses found matching your search criteria.</div>
-                )}
-
-                <div className="modal-buttons">
-                  <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
-                    Minimize
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Customer Research Results Table - removed popup modal, now shown inline only */}
 
 
           {showPromptsPopup && (

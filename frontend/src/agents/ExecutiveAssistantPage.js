@@ -4,6 +4,7 @@ import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
 import { Input, Textarea, Select } from '../components';
+import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
 
 // Demo data for Executive Assistant
 const DEMO_PROJECTS = [
@@ -80,19 +81,10 @@ function ExecutiveAssistantPage() {
     sendTime: 'now'
   });
 
-  // Listen for mode changes and clear demo data when switching to live
+  // Listen for mode changes
   useEffect(() => {
     const handleModeChange = () => {
       const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
-      if (isDemoMode && !newMode) {
-        // Switching to live: clear demo data, load saved
-        const savedProjects = JSON.parse(localStorage.getItem('ea_projects') || '[]');
-        const savedTasks = JSON.parse(localStorage.getItem('ea_tasks') || '[]');
-        const savedPeople = JSON.parse(localStorage.getItem('ea_people') || '[]');
-        setProjects(savedProjects);
-        setTasks(savedTasks);
-        setPeople(savedPeople);
-      }
       setIsDemoMode(newMode);
     };
     window.addEventListener('storage', handleModeChange);
@@ -101,30 +93,35 @@ function ExecutiveAssistantPage() {
       window.removeEventListener('storage', handleModeChange);
       clearInterval(interval);
     };
-  }, [isDemoMode]);
+  }, []);
 
-  // Load data from localStorage on mount (with demo data fallback)
+  // Load data when mode changes - using centralized storage
   useEffect(() => {
-    const savedProjects = JSON.parse(localStorage.getItem('ea_projects') || '[]');
-    const savedTasks = JSON.parse(localStorage.getItem('ea_tasks') || '[]');
-    const savedPeople = JSON.parse(localStorage.getItem('ea_people') || '[]');
+    const savedData = getAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, isDemoMode);
 
-    // In demo mode, use demo data if no saved data exists
-    if (isDemoMode && savedProjects.length === 0) {
+    if (isDemoMode && (!savedData || !savedData.projects?.length)) {
+      // Demo mode with no saved data - load demo defaults
       setProjects(DEMO_PROJECTS);
       setTasks(DEMO_TASKS);
       setPeople(DEMO_PEOPLE);
+    } else if (savedData) {
+      setProjects(savedData.projects || []);
+      setTasks(savedData.tasks || []);
+      setPeople(savedData.people || []);
     } else {
-      setProjects(savedProjects);
-      setTasks(savedTasks);
-      setPeople(savedPeople);
+      // Live mode with no data - clear everything
+      setProjects([]);
+      setTasks([]);
+      setPeople([]);
     }
   }, [isDemoMode]);
 
-  // Save to localStorage whenever data changes
+  // Save to centralized storage whenever data changes
   useEffect(() => {
-    localStorage.setItem('ea_projects', JSON.stringify(projects));
-  }, [projects]);
+    if (projects.length > 0 || tasks.length > 0 || people.length > 0) {
+      setAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, { projects, tasks, people }, isDemoMode);
+    }
+  }, [projects, tasks, people, isDemoMode]);
 
   useEffect(() => {
     localStorage.setItem('ea_tasks', JSON.stringify(tasks));
