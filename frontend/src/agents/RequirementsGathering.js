@@ -104,11 +104,20 @@ function RequirementsGathering() {
     return stored !== 'live';
   });
 
+  // Track if we're in a mode transition (to prevent saving stale data)
+  const [isModeTransition, setIsModeTransition] = useState(false);
+  const prevModeRef = React.useRef(isDemoMode);
+
   // Listen for mode changes
   useEffect(() => {
     const handleModeChange = () => {
       const stored = localStorage.getItem('enableAgentsMode');
-      setIsDemoMode(stored !== 'live');
+      const newMode = stored !== 'live';
+      if (newMode !== prevModeRef.current) {
+        setIsModeTransition(true);
+        prevModeRef.current = newMode;
+        setIsDemoMode(newMode);
+      }
     };
     window.addEventListener('storage', handleModeChange);
     const interval = setInterval(handleModeChange, 1000);
@@ -117,8 +126,6 @@ function RequirementsGathering() {
       clearInterval(interval);
     };
   }, []);
-
-  // Note: Demo state loading moved to centralized storage useEffect below
 
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
@@ -153,7 +160,9 @@ function RequirementsGathering() {
   const [emailImages, setEmailImages] = useState([]);
 
   // Save market research data to centralized mode storage
+  // Skip saving during mode transitions to prevent saving stale data to wrong mode
   useEffect(() => {
+    if (isModeTransition) return; // Don't save during mode switch
     if (customerResearchResults !== null || showCustomerResearchTable || minimizedCustomerResearch) {
       setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
         results: customerResearchResults,
@@ -165,7 +174,7 @@ function RequirementsGathering() {
         responseFormat,
       }, isDemoMode);
     }
-  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
+  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode, isModeTransition]);
 
   // Load data when mode changes
   useEffect(() => {
@@ -196,6 +205,11 @@ function RequirementsGathering() {
       setIndustries('');
       setCountries('');
       setResponseFormat('');
+    }
+
+    // Reset transition flag after loading
+    if (isModeTransition) {
+      setIsModeTransition(false);
     }
   }, [isDemoMode]);
 
