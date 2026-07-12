@@ -6,21 +6,6 @@ import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from './toast';
 import { Modal, ModalTabs } from '../components/Modal';
 
-// Route to agent name mapping
-const ROUTE_TO_AGENT = {
-  '/requirements-gathering': 'Market Research',
-  '/requirements': 'Market Research',
-  '/sales-helper': 'Sales Helper',
-  '/content-marketing': 'Content Marketing',
-  '/community-network': 'Community Network',
-  '/event-networking': 'Event Networking',
-  '/executive-assistant': 'Executive Assistant',
-  '/data-insights': 'Data Insights',
-  '/supply-chain': 'Supply Chain',
-  '/invest': 'Investment',
-  '/chatbot': 'AI Chatbot',
-  '/settings': 'Settings',
-};
 
 function Header({ onProcessClick, onModeChange }) {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -33,9 +18,6 @@ function Header({ onProcessClick, onModeChange }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedSystemTab, setSelectedSystemTab] = useState('tools');
-
-  // Get current agent name from route
-  const currentAgentName = ROUTE_TO_AGENT[location.pathname] || null;
 
   // Live/Demo mode toggle - persisted in localStorage
   const [isLiveMode, setIsLiveMode] = useState(() => {
@@ -431,12 +413,6 @@ function Header({ onProcessClick, onModeChange }) {
               style={{ height: '48px' }}
             />
           </Link>
-          {currentAgentName && (
-            <span className="header-breadcrumb">
-              <span className="breadcrumb-separator">/</span>
-              <span className="breadcrumb-text">{currentAgentName}</span>
-            </span>
-          )}
         </div>
 
         <div className="header-icons">

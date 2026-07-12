@@ -213,11 +213,11 @@
 
 .btn-primary:hover:not(:disabled) {
   box-shadow: var(--shadow-accent-md);
-  transform: translateY(-2px);
+  opacity: 0.9;
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+  opacity: 0.95;
 }
 
 .btn-primary:disabled {

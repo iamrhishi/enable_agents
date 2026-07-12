@@ -2,6 +2,7 @@
  * Modal Component Styles
  *
  * Uses design tokens from tokens.css
+ * Enhanced with glassmorphism and modern animations
  */
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -16,20 +17,27 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4, 16px);
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  animation: modalFadeIn 0.15s ease-out;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: modalFadeIn 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 @keyframes modalFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+  }
 }
 
 @keyframes modalSlideIn {
   from {
     opacity: 0;
-    transform: scale(0.95) translateY(-10px);
+    transform: scale(0.9) translateY(20px);
   }
   to {
     opacity: 1;
@@ -42,17 +50,21 @@
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 .modal {
-  background: var(--color-surface, #ffffff);
-  border-radius: var(--radius-lg, 12px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-xl, 16px);
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
+    0 12px 24px -8px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   width: 100%;
   max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modalSlideIn 0.2s ease-out;
+  animation: modalSlideIn 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 /* Size variants */

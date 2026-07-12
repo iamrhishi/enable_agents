@@ -5,7 +5,9 @@
  */
 
 .login-page {
-  background: var(--color-background);
+  background: linear-gradient(-45deg, #f5f0eb, #e8e0d8, #f0ebe5, #ebe5df);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
   font-family: var(--font-body);
   margin: 0;
   padding: var(--space-5);
@@ -17,15 +19,63 @@
   position: relative;
 }
 
+/* Animated gradient background */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Subtle floating shapes in background */
+.login-page::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 20% 80%, rgba(191, 87, 0, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(30, 58, 95, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 40% 40%, rgba(191, 87, 0, 0.02) 0%, transparent 40%);
+  animation: floatShapes 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes floatShapes {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(2%, 2%) rotate(1deg); }
+  50% { transform: translate(0, 4%) rotate(0deg); }
+  75% { transform: translate(-2%, 2%) rotate(-1deg); }
+}
+
 .login-card-container {
-  background: var(--color-surface);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 420px;
   padding: 60px 40px;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--color-border);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.15),
+    0 12px 24px -8px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   margin: var(--space-5);
+  position: relative;
+  z-index: 1;
+  animation: cardFadeIn 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* Header with logo and branding */
@@ -70,45 +120,77 @@
 }
 
 .styled-input {
-  padding: var(--space-3) var(--space-4);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
   font-size: var(--text-base);
   color: var(--color-text);
-  background: var(--color-background);
+  background: rgba(255, 255, 255, 0.8);
   outline: none;
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
   font-family: var(--font-body);
   font-weight: var(--font-normal);
 }
 
 .styled-input:focus {
-  border-color: var(--color-primary);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+  border-color: var(--color-accent);
+  background: #ffffff;
+  box-shadow:
+    0 0 0 4px rgba(191, 87, 0, 0.1),
+    0 4px 12px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.styled-input:hover:not(:focus) {
+  border-color: var(--color-text-muted);
 }
 
 .styled-input::placeholder {
   color: var(--color-grey-muted);
+  transition: all 0.3s ease;
+}
+
+.styled-input:focus::placeholder {
+  opacity: 0.5;
+  transform: translateX(5px);
 }
 
 /* Primary button - Sign in/Continue */
 .primary-button {
-  padding: var(--space-3) var(--space-4);
-  background: var(--gradient-header);
-  color: var(--color-text-inverse);
+  padding: var(--space-4) var(--space-5);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
+  color: #ffffff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-size: var(--text-base);
-  font-weight: var(--font-semibold);
+  font-weight: var(--font-bold);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
   font-family: var(--font-body);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 15px rgba(191, 87, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.primary-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.primary-button:hover::before {
+  left: 100%;
 }
 
 .primary-button:hover:not(:disabled) {
-  background: var(--color-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(191, 87, 0, 0.4);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }

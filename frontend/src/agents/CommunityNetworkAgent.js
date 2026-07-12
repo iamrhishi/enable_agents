@@ -5,8 +5,22 @@ import '../styles/CommunityNetworkAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
+import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+
+// Demo network data
+const DEMO_NETWORK_DATA = [
+  { name: 'Alex Chen', company: 'TechCorp', role: 'CTO', industry: 'Technology', location: 'San Francisco', email: 'alex@techcorp.com', linkedin: 'linkedin.com/in/alexchen', skills: ['AI', 'Cloud', 'Leadership'] },
+  { name: 'Maria Garcia', company: 'HealthFirst', role: 'VP Marketing', industry: 'Healthcare', location: 'Boston', email: 'maria@healthfirst.com', linkedin: 'linkedin.com/in/mariagarcia', skills: ['Marketing', 'Strategy', 'Healthcare'] },
+  { name: 'James Wilson', company: 'FinanceHub', role: 'Director', industry: 'Finance', location: 'New York', email: 'james@financehub.com', linkedin: 'linkedin.com/in/jameswilson', skills: ['Finance', 'Analytics', 'Investment'] },
+  { name: 'Sarah Kim', company: 'EduTech', role: 'Founder', industry: 'Education', location: 'Seattle', email: 'sarah@edutech.io', linkedin: 'linkedin.com/in/sarahkim', skills: ['EdTech', 'Startups', 'Product'] },
+  { name: 'David Brown', company: 'CloudScale', role: 'Engineering Lead', industry: 'Technology', location: 'Austin', email: 'david@cloudscale.com', linkedin: 'linkedin.com/in/davidbrown', skills: ['Engineering', 'DevOps', 'Scale'] },
+];
 
 function CommunityNetworkAgent() {
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = React.useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -27,12 +41,45 @@ function CommunityNetworkAgent() {
   const [currentUserId] = useState('user_001');
   const [userFavorites, setUserFavorites] = useState([]);
 
+  // Listen for mode changes and clear demo data when switching to live
+  useEffect(() => {
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      if (isDemoMode && !newMode) {
+        // Switching to live: clear chat
+        clearChat();
+      }
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode, clearChat]);
+
   // Function to save JSON data to file
   // Enhanced handleSearch function with better user feedback
   const handleSearch = async (query) => {
+    // Demo mode: use mock search results
+    if (isDemoMode) {
+      addMessage("Searching through the network... (Demo Mode)", 'agent', null, 'markdown');
+      const filteredResults = DEMO_NETWORK_DATA.filter(person =>
+        person.name.toLowerCase().includes(query.toLowerCase()) ||
+        person.company.toLowerCase().includes(query.toLowerCase()) ||
+        person.industry.toLowerCase().includes(query.toLowerCase()) ||
+        person.skills.some(s => s.toLowerCase().includes(query.toLowerCase()))
+      );
+      const results = filteredResults.length > 0 ? filteredResults : DEMO_NETWORK_DATA.slice(0, 3);
+      const resultsHtml = results.map(p => `<strong>${p.name}</strong> - ${p.role} at ${p.company}<br>📧 ${p.email} | 🔗 ${p.linkedin}`).join('<br><br>');
+      addMessage(`<strong>Search Results</strong> (${results.length} found)<br><br>${resultsHtml}`, 'agent', null, 'html');
+      return;
+    }
+
     try {
-      addMessage("🔍 Searching through the data...", 'agent', null, 'markdown');
-      
+      addMessage("Searching through the data...", 'agent', null, 'markdown');
+
       const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,7 +102,7 @@ function CommunityNetworkAgent() {
           const resultsText = formatResults(result.results);
           
           // Use HTML format for search results with formatted profiles
-          addMessage(`🔍 <strong>Search Results</strong> (${result.total_found} found)<br><br><strong>Keywords extracted:</strong> ${keywordsText}<br><br>${resultsText}`, 'agent', {
+          addMessage(`<strong>Search Results</strong> (${result.total_found} found)<br><br><strong>Keywords extracted:</strong> ${keywordsText}<br><br>${resultsText}`, 'agent', {
             type: 'search_results',
             data: {
               query: query,
@@ -67,7 +114,7 @@ function CommunityNetworkAgent() {
           
           // Show more results option if there are many
           if (result.total_found > 5) {
-            addMessage(`💡 **Found ${result.total_found} total results.** Showing top 5. Try being more specific to narrow down results.`, 'agent', null, 'markdown');
+            addMessage(`**Found ${result.total_found} total results.** Showing top 5. Try being more specific to narrow down results.`, 'agent', null, 'markdown');
           }
           
           // Suggest related searches if results are limited
@@ -81,14 +128,14 @@ function CommunityNetworkAgent() {
             .map(([key, values]) => `${key}: ${values.join(', ')}`)
             .join(' | ');
           
-          addMessage(`🔍 **No results found** for: "${query}"\n\n**Keywords I looked for:** ${keywordsText}\n\n💡 **Try:**\n• Different spelling or synonyms\n• Broader search terms\n• Different fields (company vs title vs skills)\n\n**Example searches:**\n• "Find engineers" (instead of "senior software engineers")\n• "People at tech companies"\n• "Alumni with programming skills"`, 'agent', null, 'markdown');
+          addMessage(`**No results found** for: "${query}"\n\n**Keywords I looked for:** ${keywordsText}\n\n**Try:**\n• Different spelling or synonyms\n• Broader search terms\n• Different fields (company vs title vs skills)\n\n**Example searches:**\n• "Find engineers" (instead of "senior software engineers")\n• "People at tech companies"\n• "Alumni with programming skills"`, 'agent', null, 'markdown');
         }
       } else {
         addMessage(`**Search needs more specific input:** ${result.error}\n\nPlease try rephrasing your request e.g., mention company name or job title`, 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('Search error:', error);
-      addMessage("❌ **Connection error.** Please check your connection and try again.", 'agent', null, 'markdown');
+      addMessage("**Connection error.** Please check your connection and try again.", 'agent', null, 'markdown');
     }
   };
 
@@ -216,11 +263,11 @@ function CommunityNetworkAgent() {
         }
         
       } else {
-        addMessage(`❌ Error converting file: ${conversionResult.error}`, 'agent', null, 'markdown');
+        addMessage(`Error converting file: ${conversionResult.error}`, 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('File processing error:', error);
-      addMessage("❌ Error processing file. Please try again.", 'agent', null, 'markdown');
+      addMessage("Error processing file. Please try again.", 'agent', null, 'markdown');
     } finally {
       setIsLoading(false);
       event.target.value = '';
@@ -325,7 +372,7 @@ function CommunityNetworkAgent() {
           const skillsText = profile.skills.join(', ');
           const goalsText = profile.career_goals.join(', ');
           
-          addMessage(`🎯 **We analyzed your CV!**\n\n💼 **Skills:** ${skillsText}\n\n🚀 **Goals:** ${goalsText}\n\n📊 **Industry:** ${profile.industry}`, 'agent', {
+          addMessage(`**We analyzed your CV!**\n\n**Skills:** ${skillsText}\n\n**Goals:** ${goalsText}\n\n**Industry:** ${profile.industry}`, 'agent', {
             type: 'cv_analysis',
             data: profile
           }, 'markdown');
@@ -339,19 +386,19 @@ function CommunityNetworkAgent() {
             );
 
             if (recommendedCompanies.length > 0) {
-              addMessage(`🏢 **Recommended Companies:** ${recommendedCompanies.join(', ')}\n\n💡 **Try searching:** "Find people at ${recommendedCompanies[0]}" or "Show engineers at ${recommendedCompanies[1]}"`, 'agent', null, 'markdown');
+              addMessage(`**Recommended Companies:** ${recommendedCompanies.join(', ')}\n\n**Try searching:** "Find people at ${recommendedCompanies[0]}" or "Show engineers at ${recommendedCompanies[1]}"`, 'agent', null, 'markdown');
             }
           }
 
         } else {
-          addMessage(`❌ Error analyzing CV: ${ragResult.error || 'Unknown error'}`, 'agent', null, 'markdown');
+          addMessage(`Error analyzing CV: ${ragResult.error || 'Unknown error'}`, 'agent', null, 'markdown');
         }
       } else {
-        addMessage(`❌ Error uploading CV: ${uploadResult.error}`, 'agent', null, 'markdown');
+        addMessage(`Error uploading CV: ${uploadResult.error}`, 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('CV Analysis Error:', error);
-      addMessage("❌ Error analyzing CV. Please try again.", 'agent', null, 'markdown');
+      addMessage("Error analyzing CV. Please try again.", 'agent', null, 'markdown');
     } finally {
       setIsAnalyzing(false);
       event.target.value = '';
@@ -435,7 +482,7 @@ function CommunityNetworkAgent() {
     // Check if data is available
     if (!csvData || csvData.length === 0) {
       setTimeout(() => {
-        addMessage("Please upload a CSV/Excel file first so I can help you search through the data!\n\n💡 **Once you upload data, you can search like:**\n• 'Find people at Google'\n• 'Show me software engineers'\n• 'People with Python skills'\n• 'Alumni in San Francisco'", 'agent', null, 'markdown');
+        addMessage("Please upload a CSV/Excel file first so I can help you search through the data!\n\n**Once you upload data, you can search like:**\n- Find people at Google\n- Show me software engineers\n- People with Python skills\n- Alumni in San Francisco", 'agent', null, 'markdown');
         setIsLoading(false);
       }, 500);
       return;
@@ -458,7 +505,7 @@ function CommunityNetworkAgent() {
         await handleSearch(userMessage);
       } catch (error) {
         console.error('Search error:', error);
-        addMessage("❌ Error performing search. Please try again.", 'agent', null, 'markdown');
+        addMessage("Error performing search. Please try again.", 'agent', null, 'markdown');
       }
       setIsLoading(false);
       return;
@@ -467,15 +514,15 @@ function CommunityNetworkAgent() {
     // Handle general data questions and provide guidance
     setTimeout(() => {
       if (userMessageLower.includes('help') || userMessageLower.includes('what can you do')) {
-        addMessage(`🔍 **I can help you search through your data!**\n\n**Search Examples:**\n• "Find people at Microsoft"\n• "Show marketing managers"\n• "People with React skills"\n• "Alumni in New York"\n• "Senior engineers at tech companies"\n• "Developers with Python and JavaScript"\n\n**Data Available:** ${csvData.length} profiles\n**Fields:** ${Object.keys(csvData[0] || {}).join(', ')}\n\nJust ask me naturally!`, 'agent', null, 'markdown');
+        addMessage(`**I can help you search through your data!**\n\n**Search Examples:**\n- Find people at Microsoft\n- Show marketing managers\n- People with React skills\n- Alumni in New York\n- Senior engineers at tech companies\n- Developers with Python and JavaScript\n\n**Data Available:** ${csvData.length} profiles\n**Fields:** ${Object.keys(csvData[0] || {}).join(', ')}\n\nJust ask me naturally!`, 'agent', null, 'markdown');
       } else if (userMessageLower.includes('data') || userMessageLower.includes('profiles') || userMessageLower.includes('how many')) {
         // Show data summary
         const sampleProfile = csvData[0];
         const availableFields = Object.keys(sampleProfile);
-        addMessage(`📊 **Data Summary:**\n\n**Total Profiles:** ${csvData.length}\n**Available Fields:** ${availableFields.join(', ')}\n\n**Sample Profile:**\n${formatSampleProfile(sampleProfile)}\n\n🔍 **Try searching:** "Find people at [company]" or "Show [job title]"`, 'agent', null, 'markdown');
+        addMessage(`**Data Summary:**\n\n**Total Profiles:** ${csvData.length}\n**Available Fields:** ${availableFields.join(', ')}\n\n**Sample Profile:**\n${formatSampleProfile(sampleProfile)}\n\n**Try searching:** "Find people at [company]" or "Show [job title]"`, 'agent', null, 'markdown');
       } else {
         // Default response - guide user to search
-        addMessage(`I have ${csvData.length} profiles loaded and ready to search!\n\n🔍 **Try searching like:**\n• "Find software engineers"\n• "People working at Google"\n• "Show me data scientists"\n• "Alumni with machine learning skills"\n\n**Available fields:** ${Object.keys(csvData[0] || {}).join(', ')}\n\nWhat would you like to find?`, 'agent', null, 'markdown');
+        addMessage(`I have ${csvData.length} profiles loaded and ready to search!\n\n**Try searching like:**\n- Find software engineers\n- People working at Google\n- Show me data scientists\n- Alumni with machine learning skills\n\n**Available fields:** ${Object.keys(csvData[0] || {}).join(', ')}\n\nWhat would you like to find?`, 'agent', null, 'markdown');
       }
       setIsLoading(false);
     }, 1000);
@@ -509,11 +556,11 @@ function CommunityNetworkAgent() {
         // Refresh favorites list
         loadUserFavorites();
       } else {
-        addMessage(`❌ **Error saving to favorites:** ${result.error}`, 'agent', null, 'markdown');
+        addMessage(`**Error saving to favorites:** ${result.error}`, 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('Error saving to favorites:', error);
-      addMessage("❌ **Error saving to favorites.** Please try again.", 'agent', null, 'markdown');
+      addMessage("**Error saving to favorites.** Please try again.", 'agent', null, 'markdown');
     }
   };
 
@@ -648,7 +695,7 @@ function CommunityNetworkAgent() {
         saveToFavorites(profileData);
       } else {
         console.error('Profile data not found for ID:', resultId);
-        addMessage("❌ **Error:** Profile data not found. Please try again.", 'agent', null, 'markdown');
+        addMessage("**Error:** Profile data not found. Please try again.", 'agent', null, 'markdown');
       }
     };
 
@@ -676,7 +723,7 @@ function CommunityNetworkAgent() {
       const full_name = favorite.full_name || `${favorite.name || ''} ${favorite.lastname || ''}`.trim();
       const company = favorite.company || favorite.Company || 'Unknown';
       const title = favorite.title || favorite['Job title'] || favorite.Title || 'Unknown';
-      const savedDate = new Date(favorite.saved_at).toLocaleDateString();
+      const savedDate = formatDate(favorite.saved_at);
       
       // Create LinkedIn search URL
       const linkedinSearchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(full_name)}`;
@@ -686,7 +733,7 @@ function CommunityNetworkAgent() {
 <strong>Company:</strong> ${company}<br>
 <strong>Title:</strong> ${title}<br>
 <small style="color: #666;">Saved on: ${savedDate}</small><br>
-<button onclick="window.removeFromFavorites(${favorite.favorite_id})" style="background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 12px;">🗑️ Remove</button>
+<button onclick="window.removeFromFavorites(${favorite.favorite_id})" style="background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 12px;">Remove</button>
 </div>`;
     }).join('');
 
@@ -723,11 +770,11 @@ function CommunityNetworkAgent() {
         // Refresh favorites list
         loadUserFavorites();
       } else {
-        addMessage(`❌ **Error removing from favorites:** ${result.error}`, 'agent', null, 'markdown');
+        addMessage(`**Error removing from favorites:** ${result.error}`, 'agent', null, 'markdown');
       }
     } catch (error) {
       console.error('Error removing from favorites:', error);
-      addMessage("❌ **Error removing from favorites.** Please try again.", 'agent', null, 'markdown');
+      addMessage("**Error removing from favorites.** Please try again.", 'agent', null, 'markdown');
     }
   };
 
@@ -860,44 +907,37 @@ function CommunityNetworkAgent() {
           </div>
 
           <div className="messages-container">
-            {messages.map((message) => (
-              <div key={message.id} className={`message ${message.sender}`}>
-                <div className="message-content">
-                  <MessageContent message={message} />
-                  <span className="message-time">{message.timestamp}</span>
-
-                  {/* CV Analysis visualization */}
-                  {message.data && message.data.type === 'cv_analysis' && (
-                    <div className="profile-viz">
-                      <h4>Extracted Skills</h4>
-                      <div className="skills-tags">
-                        {message.data.data.skills.map((skill, index) => (
-                          <span key={index} className="skill-tag">{skill}</span>
-                        ))}
-                      </div>
+            {messages.map((message, index) => {
+              const prevMessage = messages[index - 1];
+              const showDateSeparator = !prevMessage || !isSameDay(message.timestamp, prevMessage.timestamp);
+              return (
+                <React.Fragment key={message.id}>
+                  {showDateSeparator && (
+                    <div className="date-separator">
+                      <span>{getRelativeDateLabel(message.timestamp)}</span>
                     </div>
                   )}
+                  <div className={`message ${message.sender}`}>
+                    <div className="message-content">
+                      <MessageContent message={message} />
+                      <span className="message-time">{formatTime(message.timestamp)}</span>
 
-                  {/* File upload success visualization
-                  {message.data && message.data.type === 'csv_upload_success' && (
-                    <div className="upload-viz">
-                      <h4>📊 File Processing Summary</h4>
-                      <div className="summary-stats">
-                        <div className="stat-item">
-                          <strong>Profiles:</strong> {message.data.data.profiles_count}
+                      {/* CV Analysis visualization */}
+                      {message.data && message.data.type === 'cv_analysis' && (
+                        <div className="profile-viz">
+                          <h4>Extracted Skills</h4>
+                          <div className="skills-tags">
+                            {message.data.data.skills.map((skill, idx) => (
+                              <span key={idx} className="skill-tag">{skill}</span>
+                            ))}
+                          </div>
                         </div>
-                        <div className="stat-item">
-                          <strong>Format:</strong> {message.data.data.file_type}
-                        </div>
-                        <div className="stat-item">
-                          <strong>JSON Saved:</strong> {message.data.data.json_saved ? '✅' : '❌'}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  )} */}
-                </div>
-              </div>
-            ))}
+                  </div>
+                </React.Fragment>
+              );
+            })}
             
             {(isLoading || isAnalyzing) && (
               <div className="message agent">

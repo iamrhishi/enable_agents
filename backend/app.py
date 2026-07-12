@@ -400,10 +400,7 @@ EMAIL_EXTRACTION_UNIT_COST = float(os.getenv('EMAIL_EXTRACTION_UNIT_COST', '0.20
 DEFAULT_EMAIL_EXTRACTION_LIMIT = int(os.getenv('EMAIL_EXTRACTION_DEFAULT_LIMIT', '500'))
 
 
-# Note: Email models have been migrated to agents/email_outreach/models.py
-# Keeping these for backwards compatibility with existing app.py code
-# that hasn't been migrated yet
-
+# Email models imported from centralized location
 from agents.email_outreach.models import (
     EmailCampaign,
     EmailCampaignRecipient,

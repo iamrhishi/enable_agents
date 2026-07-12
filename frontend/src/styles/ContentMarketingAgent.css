@@ -124,8 +124,7 @@
 }
 
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-accent-md);
+  opacity: 0.9;
 }
 
 .btn-primary:disabled {
@@ -296,6 +295,23 @@
   background: var(--color-background);
 }
 
+/* WhatsApp-style date separator */
+.date-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.date-separator span {
+  background: var(--color-background-subtle);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--font-medium);
+}
+
 /* ========== MESSAGES ========== */
 .message {
   display: flex;
@@ -456,8 +472,7 @@
 }
 
 .chat-input-form button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-accent-sm);
+  opacity: 0.9;
 }
 
 .chat-input-form button:disabled {

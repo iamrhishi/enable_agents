@@ -16,41 +16,42 @@ def create_campaign():
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
 
+    campaign_id = str(uuid4())
     campaign = EmailCampaign(
-        campaign_id=str(uuid4()),
+        id=campaign_id,
         name=data["name"],
         subject=data["subject"],
         body_template=data["body_template"],
-        created_by=data.get("created_by", "system"),
+        username=data.get("username", "system"),
     )
     db.session.add(campaign)
 
     for r in data.get("recipients", []):
         db.session.add(EmailCampaignRecipient(
-            campaign_id=campaign.campaign_id,
-            email=r.get("email"),
-            name=r.get("name"),
+            campaign_id=campaign_id,
+            receiver_email=r.get("email"),
+            receiver_name=r.get("name"),
             company=r.get("company"),
         ))
 
     db.session.commit()
-    return jsonify({"success": True, "campaign_id": campaign.campaign_id}), 201
+    return jsonify({"success": True, "campaign_id": campaign_id}), 201
 
 
 def list_campaigns():
     campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
     return jsonify({"success": True, "campaigns": [
-        {"campaign_id": c.campaign_id, "name": c.name, "status": c.status, "created_at": c.created_at.isoformat()}
+        {"campaign_id": c.id, "name": c.name, "status": c.status, "created_at": c.created_at.isoformat()}
         for c in campaigns
     ]})
 
 
 def campaign_stats(campaign_id: str):
-    campaign = EmailCampaign.query.filter_by(campaign_id=campaign_id).first()
+    campaign = EmailCampaign.query.filter_by(id=campaign_id).first()
     if not campaign:
         return jsonify({"error": "Campaign not found"}), 404
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
-    sent = sum(1 for r in recipients if r.status == "sent")
+    sent = sum(1 for r in recipients if r.status == "Sent")
     failed = sum(1 for r in recipients if r.status == "failed")
     return jsonify({
         "success": True,
@@ -67,7 +68,7 @@ def campaign_stats(campaign_id: str):
 def campaign_recipients(campaign_id: str):
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
     return jsonify({"success": True, "recipients": [
-        {"email": r.email, "name": r.name, "company": r.company, "status": r.status}
+        {"email": r.receiver_email, "name": r.receiver_name, "company": r.company, "status": r.status}
         for r in recipients
     ]})
 

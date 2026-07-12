@@ -6,6 +6,8 @@ import Header from '../core/Header';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
+import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
+import { formatDate } from '../utils/dateFormat';
 
 const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
 
@@ -58,7 +60,73 @@ const fillTemplate = (template, vars = {}) => {
   return out;
 };
 
+// Demo mode mock data - realistic examples (persisted in sessionStorage)
+const DEMO_MOCK_DATA = {
+  overview: 'B2B SaaS platform for HR automation',
+  industries: 'Technology',
+  countries: 'North America',
+  responseFormat: 'Customer Research',
+  results: {
+    query: 'B2B SaaS platform for HR automation',
+    location: 'North America',
+    industry: 'Technology',
+    totalResults: 8,
+    researchType: 'Customer Research',
+    businesses: [
+      { name: 'TechFlow Solutions', address: 'San Francisco, CA', website: 'https://techflow.io', phone: '+1 (415) 555-0123', email: 'contact@techflow.io', linkedin: 'https://linkedin.com/company/techflow', match_score: 92, summary: 'Leading HR automation platform' },
+      { name: 'CloudHR Systems', address: 'Austin, TX', website: 'https://cloudhr.com', phone: '+1 (512) 555-0456', email: 'info@cloudhr.com', linkedin: 'https://linkedin.com/company/cloudhr', match_score: 88, summary: 'Cloud-based HR solutions' },
+      { name: 'PeopleFirst Inc', address: 'Seattle, WA', website: 'https://peoplefirst.io', phone: '+1 (206) 555-0789', email: 'sales@peoplefirst.io', linkedin: 'https://linkedin.com/company/peoplefirst', match_score: 85, summary: 'Employee experience platform' },
+      { name: 'WorkStream AI', address: 'New York, NY', website: 'https://workstream.ai', phone: '+1 (212) 555-0321', email: 'hello@workstream.ai', linkedin: 'https://linkedin.com/company/workstream', match_score: 91, summary: 'AI-powered workforce management' },
+      { name: 'HRNova Solutions', address: 'Boston, MA', website: 'https://hrnova.com', phone: '+1 (617) 555-0654', email: 'contact@hrnova.com', linkedin: 'https://linkedin.com/company/hrnova', match_score: 94, summary: 'Enterprise HR transformation' },
+      { name: 'Talent Dynamics', address: 'Denver, CO', website: 'https://talentdynamics.co', phone: '+1 (303) 555-0987', email: 'info@talentdynamics.co', linkedin: 'https://linkedin.com/company/talentdynamics', match_score: 79, summary: 'Recruiting and talent acquisition' },
+      { name: 'PayrollPro Systems', address: 'Chicago, IL', website: 'https://payrollpro.io', phone: '+1 (312) 555-0147', email: 'sales@payrollpro.io', linkedin: 'https://linkedin.com/company/payrollpro', match_score: 82, summary: 'Payroll and benefits automation' },
+      { name: 'BenefitHub Corp', address: 'Atlanta, GA', website: 'https://benefithub.com', phone: '+1 (404) 555-0258', email: 'team@benefithub.com', linkedin: 'https://linkedin.com/company/benefithub', match_score: 77, summary: 'Employee benefits management' },
+    ],
+    summary: {
+      totalLeads: 8,
+      topIndustries: ['HR Technology', 'Enterprise Software', 'AI/ML'],
+      avgRating: 4.6,
+      region: 'North America'
+    }
+  },
+  savedLists: [
+    { id: 'demo-1', name: 'Tech Startups Q1', query_used: 'B2B SaaS startups', created_at: '2026-06-15', lead_count: 24, status: 'active' },
+    { id: 'demo-2', name: 'Enterprise HR Leads', query_used: 'Enterprise HR software', created_at: '2026-06-20', lead_count: 18, status: 'active' },
+    { id: 'demo-3', name: 'West Coast Prospects', query_used: 'Tech companies California', created_at: '2026-06-25', lead_count: 32, status: 'active' },
+  ]
+};
+
+// Note: Demo state now handled by centralized modeStorage utility
+
 function RequirementsGathering() {
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  // Track if initial load is done (don't save during initial load or mode transitions)
+  const isInitialLoadRef = React.useRef(true);
+  const lastSavedModeRef = React.useRef(null);
+
+  // Listen for mode changes
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      const newMode = stored !== 'live';
+      if (newMode !== isDemoMode) {
+        isInitialLoadRef.current = true; // Treat mode change like initial load
+        setIsDemoMode(newMode);
+      }
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
+
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
   const [countries, setCountries] = useState('');
@@ -72,24 +140,10 @@ function RequirementsGathering() {
   const [showPromptsPopup, setShowPromptsPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [googleBusinessConnected, setGoogleBusinessConnected] = useState(false);
-  const [customerResearchResults, setCustomerResearchResults] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('customerResearchResults');
-      return item ? JSON.parse(item) : null;
-    } catch { return null; }
-  });
-  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('showCustomerResearchTable');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
-  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('minimizedCustomerResearch');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
+  // Note: These are initialized to null/false and loaded by useEffect based on mode
+  const [customerResearchResults, setCustomerResearchResults] = useState(null);
+  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(false);
+  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
 
   // Email Modal State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -105,21 +159,64 @@ function RequirementsGathering() {
   const [isAddingNewCampaign, setIsAddingNewCampaign] = useState(false);
   const [emailImages, setEmailImages] = useState([]);
 
+  // Save market research data to centralized mode storage
+  // Only save after initial load is complete and mode matches last saved mode
   useEffect(() => {
-    if (customerResearchResults !== null) {
-      sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
-    } else {
-      sessionStorage.removeItem('customerResearchResults');
+    // Skip saving during initial load or mode transitions
+    if (isInitialLoadRef.current) return;
+
+    // Only save if we have results and mode matches what we last loaded
+    if (customerResearchResults !== null && lastSavedModeRef.current === isDemoMode) {
+      setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
+        results: customerResearchResults,
+        showTable: showCustomerResearchTable,
+        minimized: minimizedCustomerResearch,
+        overview,
+        industries,
+        countries,
+        responseFormat,
+      }, isDemoMode);
     }
-  }, [customerResearchResults]);
+  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
 
+  // Load data when mode changes
   useEffect(() => {
-    sessionStorage.setItem('showCustomerResearchTable', JSON.stringify(showCustomerResearchTable));
-  }, [showCustomerResearchTable]);
+    // Clear state first
+    setCustomerResearchResults(null);
+    setShowCustomerResearchTable(false);
+    setMinimizedCustomerResearch(false);
+    setOverview('');
+    setIndustries('');
+    setCountries('');
+    setResponseFormat('');
 
-  useEffect(() => {
-    sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
-  }, [minimizedCustomerResearch]);
+    // Load data for current mode
+    const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, isDemoMode);
+
+    if (isDemoMode && !savedData?.results) {
+      // Demo mode with no saved data - load demo defaults
+      setCustomerResearchResults(DEMO_MOCK_DATA.results);
+      setShowCustomerResearchTable(true);
+      setOverview(DEMO_MOCK_DATA.overview);
+      setIndustries(DEMO_MOCK_DATA.industries);
+      setCountries(DEMO_MOCK_DATA.countries);
+      setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+    } else if (savedData?.results) {
+      setCustomerResearchResults(savedData.results);
+      setShowCustomerResearchTable(savedData.showTable || false);
+      setMinimizedCustomerResearch(savedData.minimized || false);
+      if (savedData.overview) setOverview(savedData.overview);
+      if (savedData.industries) setIndustries(savedData.industries);
+      if (savedData.countries) setCountries(savedData.countries);
+      if (savedData.responseFormat) setResponseFormat(savedData.responseFormat);
+    }
+
+    // Mark initial load as complete after state updates
+    setTimeout(() => {
+      isInitialLoadRef.current = false;
+      lastSavedModeRef.current = isDemoMode;
+    }, 100);
+  }, [isDemoMode]);
 
   // Fetch existing campaigns when email modal opens
   useEffect(() => {
@@ -229,9 +326,18 @@ function RequirementsGathering() {
       : { singular: 'lead', plural: 'leads', title: 'Leads' };
   };
 
-  // Check if user just returned from Google OAuth authorization
+  // Check URL params for tab and Google OAuth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Handle tab param from Campaign Dashboard navigation
+    if (params.get('tab') === 'saved') {
+      setShowSavedListsView(true);
+      fetchSavedLists();
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (params.get('google_connected') === 'true') {
       setGoogleBusinessConnected(true);
       alert('Google Business Account connected successfully!');
@@ -301,6 +407,21 @@ function RequirementsGathering() {
         // Validate required inputs for research
         if (!overview || !industries || !countries) {
           alert('Please fill in Overview, Industries, and Region/Countries for research');
+          return;
+        }
+
+        // In demo mode, use mock data instead of API call
+        if (isDemoMode) {
+          setCustomerResearchResults({
+            query: overview,
+            location: countries,
+            industry: industries,
+            totalResults: DEMO_MOCK_DATA.results.businesses.length,
+            researchType: responseFormat,
+            businesses: DEMO_MOCK_DATA.results.businesses
+          });
+          setShowCustomerResearchTable(true);
+          // Data auto-saved by centralized storage useEffect
           return;
         }
 
@@ -414,6 +535,12 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
+      return;
+    }
+
     setIsLoadingEmails(true);
 
     try {
@@ -461,6 +588,13 @@ function RequirementsGathering() {
 
   const handleExtractLinkedInForBusiness = async (business, index) => {
     if (!business) return;
+
+    // In demo mode, data already has LinkedIn
+    if (isDemoMode) {
+      alert('Demo mode: LinkedIn data is already populated in the sample data.');
+      return;
+    }
+
     setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
     console.log(`[LINKEDIN_EXTRACTION] Starting extraction for ${business.name}`);
 
@@ -544,6 +678,12 @@ function RequirementsGathering() {
   const handleExtractEmailForBusiness = async (business, index) => {
     if (!business || !business.website) {
       alert('Website not available for this business.');
+      return;
+    }
+
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
       return;
     }
 
@@ -743,6 +883,27 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, simulate saving
+    if (isDemoMode) {
+      if (!saveListName.trim() && saveListMode !== 'append') {
+        alert('Please provide a name for the list.');
+        return;
+      }
+      const newList = {
+        id: `demo-${Date.now()}`,
+        name: saveListName || 'New Demo List',
+        query_used: customerResearchResults?.query || '',
+        created_at: new Date().toISOString(),
+        lead_count: rows.length,
+        status: 'active'
+      };
+      setSavedLists(prev => [newList, ...prev]);
+      setShowSaveListModal(false);
+      setSaveListName('');
+      alert('Demo mode: List saved to local view.');
+      return;
+    }
+
     const payloadLeads = (customerResearchResults?.businesses || []).map((business) => ({
       name: business.name || 'N/A',
       website: business.website || '',
@@ -847,6 +1008,13 @@ function RequirementsGathering() {
       return;
     }
 
+    // In demo mode, scores are already populated
+    if (isDemoMode) {
+      alert('Demo mode: Match scores are already visible in the demo data. In live mode, AI would re-score based on your criteria.');
+      setShowScoreModal(false);
+      return;
+    }
+
     setIsScoring(true);
     try {
       const payload = sourceBusinesses.map(b => ({
@@ -925,6 +1093,17 @@ function RequirementsGathering() {
     const confirmed = window.confirm('Delete this saved list permanently?');
     if (!confirmed) return;
 
+    // In demo mode, just remove from local state
+    if (isDemoMode) {
+      setSavedLists(prev => prev.filter(l => l.id !== projectId));
+      if (activeSavedList && activeSavedList.id === projectId) {
+        setActiveSavedList(null);
+        setActiveSavedListLeads([]);
+      }
+      alert('Demo mode: List removed from view.');
+      return;
+    }
+
     setDeletingListId(projectId);
     try {
       const response = await fetch(`${API_CONFIG.DELETE_SAVED_PROJECT}/${projectId}?username=${encodeURIComponent(getCurrentUsername())}`, {
@@ -953,6 +1132,19 @@ function RequirementsGathering() {
 
   const fetchSavedLists = async () => {
      setIsLoadingSavedLists(true);
+
+     // In demo mode, use mock data
+     if (isDemoMode) {
+       const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, true);
+       if (savedData && savedData.savedLists) {
+         setSavedLists(savedData.savedLists);
+       } else {
+         setSavedLists(DEMO_MOCK_DATA.savedLists);
+       }
+       setIsLoadingSavedLists(false);
+       return;
+     }
+
      try {
        const userIdentifier = getCurrentUsername();
        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`, {
@@ -980,6 +1172,31 @@ function RequirementsGathering() {
   }, [showSaveListModal]);
 
   const loadSavedListDetails = async (projectId) => {
+     // In demo mode, use mock leads
+     if (isDemoMode) {
+       const demoList = DEMO_MOCK_DATA.savedLists.find(l => l.id === projectId);
+       if (demoList) {
+         // Use the main demo businesses as the leads for any demo list
+         const leads = DEMO_MOCK_DATA.results.businesses;
+
+         setCustomerResearchResults({
+           query: demoList.query_used || demoList.name,
+           location: 'North America',
+           industry: 'Technology',
+           totalResults: leads.length,
+           researchType: 'Customer Research',
+           businesses: leads
+         });
+
+         setActiveSavedList(demoList);
+         setActiveSavedListLeads(leads);
+         setShowSavedListsView(false);
+         setShowCustomerResearchTable(true);
+         setMinimizedCustomerResearch(false);
+       }
+       return;
+     }
+
      try {
         const userIdentifier = getCurrentUsername();
         const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`, {
@@ -1000,7 +1217,7 @@ function RequirementsGathering() {
             summary: l.summary || l.description || 'N/A',
             has_extracted: l.has_extracted
            }));
-           
+
            // Set customer research results to display in regular leads view
            setCustomerResearchResults({
              query: data.project.query_used || data.project.name,
@@ -1014,11 +1231,11 @@ function RequirementsGathering() {
                businesses: leads
              }));
            } catch (e) { /* ignore */ }
-           
+
            // Store saved list info for context
            setActiveSavedList(data.project);
            setActiveSavedListLeads(leads);
-           
+
            // Switch to leads view (not saved lists view)
            setShowSavedListsView(false);
            setShowCustomerResearchTable(true);
@@ -1192,6 +1409,26 @@ function RequirementsGathering() {
         return;
       }
 
+      // In demo mode, use sample email content
+      if (isDemoMode) {
+        setEmailSubject(`Partnership Opportunity - ${business.name || 'Your Company'}`);
+        setEmailBody(`Hi ${business.name ? business.name.split(' ')[0] : 'there'},
+
+I came across ${business.name || 'your company'} and was impressed by your work in ${business.summary || 'your industry'}.
+
+We at Enable Agents specialize in AI-powered business automation, and I believe there's potential for a valuable partnership.
+
+Would you be open to a brief call this week to explore how we might work together?
+
+Best regards,
+${getCurrentUsername() || 'Your Name'}`);
+        setCampaignName('Personalized: ' + (business.name || 'Company'));
+        setSelectedLead(business);
+        setShowEmailModal(true);
+        setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
+        return;
+      }
+
       const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1245,6 +1482,17 @@ function RequirementsGathering() {
       alert("Subject and Body required unless using AI Personalization");
       return;
     }
+
+    // In demo mode, simulate sending
+    if (isDemoMode) {
+      alert('Demo mode: Email sending simulated. In live mode, emails would be sent via your connected account.');
+      setShowEmailModal(false);
+      setEmailSubject('');
+      setEmailBody('');
+      setSelectedLead(null);
+      return;
+    }
+
     const registeredEmail = getCurrentUserEmail();
     if (!registeredEmail) {
       alert('Registered email not found. Please log in again so the campaign can be sent from your account.');
@@ -1292,7 +1540,7 @@ function RequirementsGathering() {
         setEmailBody('');
         setSelectedLead(null);
       } else {
-        alert('Error : ' + data.error);
+        alert('Error: ' + data.error);
       }
     } catch (e) {
       alert('Error sending emails: ' + e.message);
@@ -1329,7 +1577,7 @@ function RequirementsGathering() {
               <label>INDUSTRY</label>
               <input
                 type="text"
-                placeholder="e.g. Fintech"
+                placeholder="e.g., Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
               />
@@ -1338,7 +1586,7 @@ function RequirementsGathering() {
               <label>REGION</label>
               <input
                 type="text"
-                placeholder="e.g. North Ame"
+                placeholder="e.g., North America"
                 value={countries}
                 onChange={(e) => setCountries(e.target.value)}
               />
@@ -1384,9 +1632,29 @@ function RequirementsGathering() {
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>{responseFormat === 'Supplier Research' ? 'Vendors' : 'Leads'}</button>
-            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</button>
-            <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
+            <div className="view-filter-group">
+              <label className="view-filter-label">View:</label>
+              <select
+                className="view-filter-select"
+                value={showSavedListsView ? 'saved' : 'results'}
+                onChange={(e) => {
+                  if (e.target.value === 'saved') {
+                    setShowSavedListsView(true);
+                    fetchSavedLists();
+                  } else {
+                    setShowSavedListsView(false);
+                    setActiveSavedList(null);
+                    setActiveSavedListLeads([]);
+                  }
+                }}
+              >
+                <option value="results">{responseFormat === 'Supplier Research' ? 'All Vendors' : 'All Leads'}</option>
+                <option value="saved">{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</option>
+              </select>
+            </div>
+            <a href="/market-research/campaigns" className="workspace-link">
+              Campaign Dashboard →
+            </a>
           </div>
 
           <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>
@@ -1400,11 +1668,11 @@ function RequirementsGathering() {
                        ← Back to All Lists
                     </button>
                  )}
-                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1E3A5F' }}>
-                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : (responseFormat === 'Supplier Research' ? 'Saved Vendors Lists' : 'Saved Leads Lists')}
-                    </h2>
-                 </div>
+                 {activeSavedList && (
+                   <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
+                     {activeSavedList.name}
+                   </h2>
+                 )}
                  {isLoadingSavedLists ? (
                     <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
                  ) : !activeSavedList ? (
@@ -1428,7 +1696,7 @@ function RequirementsGathering() {
                                 <td>{list.name}</td>
                                 <td>{list.query_used || 'N/A'}</td>
                                 <td style={{ textAlign: 'center' }}>{list.lead_count}</td>
-                                <td style={{ textAlign: 'center' }}>{list.created_at ? new Date(list.created_at).toLocaleDateString() : 'N/A'}</td>
+                                <td style={{ textAlign: 'center' }}>{list.created_at ? formatDate(list.created_at) : 'N/A'}</td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                     <button
@@ -1477,7 +1745,7 @@ function RequirementsGathering() {
                               <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
                               <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
                               <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} className="table-btn-primary">{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
                               <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                 {business.match_score != null ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1557,9 +1825,9 @@ function RequirementsGathering() {
                           </div>
                           
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
-                                <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
-                                <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                              <div className="summary-badge emails-badge">
+                                <span className="badge-label">Extracted</span>
+                                <span className="badge-value">
                                   {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
                                 </span>
                               </div>
@@ -1612,21 +1880,13 @@ function RequirementsGathering() {
                               >
                                 <img src="/assets/icons/bar-chart.png" alt={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'} />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={() => { prepareSupplierEmailDraft(null); setShowEmailModal(true); }}
                                 title="Send Emails"
                                 aria-label="Send Emails"
                               >
                                 <img src="/assets/icons/mail.png" alt="Send Emails" />
-                              </button>
-                              <button 
-                                className="action-icon-button"
-                                onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
-                                title="Maximize"
-                                aria-label="Maximize Table"
-                              >
-                                <img src="/assets/icons/maximize.png" alt="Maximize" />
                               </button>
                           </div>
                         </div>
@@ -1678,16 +1938,15 @@ function RequirementsGathering() {
                                       <td>
                                         {business.linkedin ? (
                                           business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="table-link">
                                               View Profile
                                             </a>
                                           ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                            <span className="table-na">Not Found</span>
                                           )
                                         ) : (
                                           <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                            className="table-btn-secondary"
                                             onClick={() => handleExtractLinkedInForBusiness(business, index)}
                                             disabled={!!extractingLinkedInRows[index]}
                                           >
@@ -1698,24 +1957,24 @@ function RequirementsGathering() {
                                       <td>
                                         {business.email && business.email !== 'N/A' ? (
                                           <button
+                                            className="table-btn-primary"
                                             onClick={() => handleGeneratePersonalizedEmail(business, index)}
                                             disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                                           >
                                             {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
                                           </button>
                                         ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                          <span className="table-muted">-</span>
                                         )}
                                       </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <td className="match-cell">
                                         {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
+                                          <span className={`match-score ${business.match_score >= 70 ? 'match-score--high' : business.match_score >= 40 ? 'match-score--medium' : 'match-score--low'}`}>
+                                            {business.match_score}%
+                                          </span>
+                                        ) : <span className="table-muted">-</span>}
                                       </td>
-                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.short_summary || business.summary || business.description || 'N/A'}>
+                                      <td className="summary-cell" title={business.short_summary || business.summary || business.description || 'N/A'}>
                                         {business.short_summary || business.summary || business.description || 'N/A'}
                                       </td>
                                     </tr>
@@ -1743,7 +2002,43 @@ function RequirementsGathering() {
                   )}
 
                   {aiRequirements.length === 0 && !customerResearchResults && (
-                    <p className="empty-message">Generate requirements to see results here...</p>
+                    <div className="empty-state-container">
+                      <div className="empty-state-icon">🔍</div>
+                      <h3 className="empty-state-title">Ready to Research</h3>
+                      <p className="empty-state-description">
+                        Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.
+                      </p>
+                      <div className="empty-state-steps">
+                        <div className="empty-state-step">
+                          <span className="step-number">1</span>
+                          <span className="step-text">Enter project context</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">2</span>
+                          <span className="step-text">Select industry & region</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">3</span>
+                          <span className="step-text">Get AI-powered insights</span>
+                        </div>
+                      </div>
+                      {isDemoMode && (
+                        <button
+                          className="demo-example-btn"
+                          onClick={() => {
+                            // Load demo data (auto-saved by centralized storage useEffect)
+                            setOverview(DEMO_MOCK_DATA.overview);
+                            setIndustries(DEMO_MOCK_DATA.industries);
+                            setCountries(DEMO_MOCK_DATA.countries);
+                            setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+                            setCustomerResearchResults(DEMO_MOCK_DATA.results);
+                            setShowCustomerResearchTable(true);
+                          }}
+                        >
+                          Try Example (Demo Mode)
+                        </button>
+                      )}
+                    </div>
                   )}
                 </>
               )}
@@ -1811,129 +2106,7 @@ function RequirementsGathering() {
             </div>
           )}
 
-          {/* Customer Research Results Table */}
-
-          {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-              <div className="popup-overlay">
-                <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
-                    style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
-                    title="Minimize Table"
-                  >
-                    &times;
-                  </button>
-                  <div className="research-summary-row">
-                  <span><strong>Search:</strong> {customerResearchResults.query}</span>
-                  <span><strong>Location:</strong> {customerResearchResults.location}</span>
-                  <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
-                  <span><strong>Total Results:</strong> {customerResearchResults.totalResults}</span>
-                </div>
-
-                {isLoadingResearch ? (
-                  <div className="loading">Loading businesses...</div>
-                ) : customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
-                  <div className="table-wrapper">
-                    <table className="businesses-table">
-                      <thead>
-                        <tr>
-                          <th>Business Name</th>
-                          <th>Address</th>
-                          <th>Phone</th>
-                          <th>Website</th>
-                          <th>Email</th>
-                          <th>LinkedIn</th>
-                          <th>Send Email</th>
-                          <th>Match</th>
-                          <th>Summary</th>
-                        </tr>
-                      </thead>
-                                <tbody>
-                                  {customerResearchResults.businesses.map((business, index) => (
-                                    <tr key={index}>
-                                      <td>{business.name || 'N/A'}</td>
-                                      <td>{business.address || 'N/A'}</td>
-                                      <td>{business.phone || 'N/A'}</td>
-                                      <td>
-                                        {business.website ? (
-                                          <a href={business.website} target="_blank" rel="noopener noreferrer">
-                                            Visit
-                                          </a>
-                                        ) : (
-                                          'N/A'
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? ( 
-                                          <span>{business.email}</span>
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            onClick={() => handleExtractEmailForBusiness(business, index)}
-                                            disabled={!!extractingEmailRows[index]}     
-                                          >
-                                            {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.linkedin ? (
-                                          business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
-                                              View Profile
-                                            </a>
-                                          ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
-                                          )
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
-                                            onClick={() => handleExtractLinkedInForBusiness(business, index)}
-                                            disabled={!!extractingLinkedInRows[index]}
-                                          >
-                                            {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? (
-                                          <button
-                                            onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                            disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                          >
-                                            {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
-                                          </button>
-                                        ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
-                                        )}
-                                      </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                                        {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
-                                      </td>
-                                      <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="no-results">No businesses found matching your search criteria.</div>
-                )}
-
-                <div className="modal-buttons">
-                  <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
-                    Minimize
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Customer Research Results Table - removed popup modal, now shown inline only */}
 
 
           {showPromptsPopup && (
@@ -2211,7 +2384,7 @@ function RequirementsGathering() {
                 ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
-                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
+                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="e.g., NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
                 </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
@@ -2234,7 +2407,7 @@ function RequirementsGathering() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
-                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g. We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
+                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g., We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
                   <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
