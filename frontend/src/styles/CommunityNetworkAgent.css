@@ -27,9 +27,7 @@
   color: white;
 }
 .csv-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #4338ca, #6d28d9);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+  opacity: 0.9;
 }
 
 .cv-btn {
@@ -37,9 +35,7 @@
   color: white;
 }
 .cv-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #047857, #065f46);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
+  opacity: 0.9;
 }
 
 /* ── Data preview table ─────────────────────────────────────────────────── */
@@ -159,6 +155,23 @@
 }
 
 .community-network-agent .messages-container { background: #f8fafc; }
+
+/* WhatsApp-style date separator */
+.community-network-agent .date-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2, 8px) 0;
+}
+
+.community-network-agent .date-separator span {
+  background: var(--color-background-subtle, #e5e7eb);
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  border-radius: var(--radius-full, 9999px);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-muted, #6b7280);
+  font-weight: var(--font-medium, 500);
+}
 
 .community-network-agent .message.user .message-content {
   background: linear-gradient(135deg, #667eea, #764ba2);

@@ -5,6 +5,7 @@ import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
 import { Input, Textarea, Select } from '../components';
 import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
+import { formatDate } from '../utils/dateFormat';
 
 // Demo data for Executive Assistant
 const DEMO_PROJECTS = [
@@ -30,7 +31,7 @@ function ExecutiveAssistantPage() {
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return localStorage.getItem('enableAgentsMode') !== 'live';
   });
-  const [activeTab, setActiveTab] = useState('projects');
+  const [activeTab, setActiveTab] = useState('projects-tasks');
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [people, setPeople] = useState([]);
@@ -41,6 +42,16 @@ function ExecutiveAssistantPage() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedPerson, setSelectedPerson] = useState(null);
+  const [expandedProjects, setExpandedProjects] = useState({});
+  const [inlineReminderPerson, setInlineReminderPerson] = useState(null);
+
+  // Toggle project expansion to show inline tasks
+  const toggleProjectExpand = (projectId) => {
+    setExpandedProjects(prev => ({
+      ...prev,
+      [projectId]: !prev[projectId]
+    }));
+  };
 
   // Form states
   const [newProject, setNewProject] = useState({
@@ -267,456 +278,371 @@ function ExecutiveAssistantPage() {
       <Header />
 
       <div className="ea-container">
-        {/* Tab Navigation */}
+        {/* Tab Navigation - Consolidated from 4 to 2 tabs */}
         <div className="module-tabs">
           <button
-            className={`module-tab ${activeTab === 'projects' ? 'module-tab--active' : ''}`}
-            onClick={() => setActiveTab('projects')}
+            className={`module-tab ${activeTab === 'projects-tasks' ? 'module-tab--active' : ''}`}
+            onClick={() => setActiveTab('projects-tasks')}
           >
-            Projects ({projects.length})
+            Projects & Tasks ({projects.length}/{tasks.length})
           </button>
           <button
-            className={`module-tab ${activeTab === 'tasks' ? 'module-tab--active' : ''}`}
-            onClick={() => setActiveTab('tasks')}
+            className={`module-tab ${activeTab === 'team' ? 'module-tab--active' : ''}`}
+            onClick={() => setActiveTab('team')}
           >
-            Tasks ({tasks.length})
-          </button>
-          <button
-            className={`module-tab ${activeTab === 'people' ? 'module-tab--active' : ''}`}
-            onClick={() => setActiveTab('people')}
-          >
-            People ({people.length})
-          </button>
-          <button
-            className={`module-tab ${activeTab === 'reminders' ? 'module-tab--active' : ''}`}
-            onClick={() => setActiveTab('reminders')}
-          >
-            WhatsApp Reminders
+            Team ({people.length})
           </button>
         </div>
 
-        {/* Projects Tab */}
-        {activeTab === 'projects' && (
-          <div className="ea-content projects-section">
+        {/* Projects & Tasks Tab - Consolidated view with inline tasks */}
+        {activeTab === 'projects-tasks' && (
+          <div className="ea-content projects-tasks-section">
             <div className="section-header">
-              <h2>Your Projects</h2>
-              <button className="add-button" onClick={() => setShowProjectForm(!showProjectForm)}>
-                + Add Project
-              </button>
+              <h2>Projects & Tasks</h2>
+              <div className="header-actions">
+                <button className="add-button" onClick={() => setShowProjectForm(!showProjectForm)}>
+                  + Project
+                </button>
+                <button className="add-button add-button-secondary" onClick={() => setShowTaskForm(!showTaskForm)}>
+                  + Task
+                </button>
+              </div>
             </div>
 
+            {/* Inline Project Form */}
             {showProjectForm && (
-              <div className="form-card">
-                <h3>Create New Project</h3>
-                <Input
-                  placeholder="Project Name"
-                  value={newProject.name}
-                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                />
+              <div className="inline-form-card">
+                <h3>New Project</h3>
+                <div className="inline-form-row">
+                  <Input
+                    placeholder="Project Name"
+                    value={newProject.name}
+                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                  />
+                  <Input
+                    type="date"
+                    value={newProject.dueDate}
+                    onChange={(e) => setNewProject({ ...newProject, dueDate: e.target.value })}
+                  />
+                  <Select
+                    value={newProject.status}
+                    onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
+                    variant="outlined"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="On Hold">On Hold</option>
+                    <option value="Completed">Completed</option>
+                  </Select>
+                </div>
                 <Textarea
                   placeholder="Project Description"
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
                 />
-                <Input
-                  type="date"
-                  value={newProject.dueDate}
-                  onChange={(e) => setNewProject({ ...newProject, dueDate: e.target.value })}
-                />
-                <Select
-                  value={newProject.status}
-                  onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-                  variant="outlined"
-                >
-                  <option value="Active">Active</option>
-                  <option value="On Hold">On Hold</option>
-                  <option value="Completed">Completed</option>
-                </Select>
                 <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddProject}>Save Project</button>
+                  <button className="btn btn-primary" onClick={handleAddProject}>Save</button>
                   <button className="btn btn-secondary" onClick={() => setShowProjectForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
 
-            <div className="projects-grid">
-              {projects.length === 0 ? (
-                <p className="empty-state">No projects yet. Create one to get started!</p>
-              ) : (
-                projects.map((project) => (
-                  <div key={project.id} className="project-card">
-                    <div className="card-header">
-                      <h3>{project.name}</h3>
-                      <span className={`status-badge ${project.status.toLowerCase()}`}>
-                        {project.status}
-                      </span>
-                    </div>
-                    <p className="description">{project.description}</p>
-                    {project.dueDate && (
-                      <p className="due-date">📅 Due: {new Date(project.dueDate).toLocaleDateString()}</p>
-                    )}
-                    <div className="card-stats">
-                      <span>Tasks: {getProjectTasks(project.id).length}</span>
-                      <span>People: {getProjectPeople(project.id).length}</span>
-                    </div>
-                    <div className="card-actions">
-                      <button
-                        className="btn-view"
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setActiveTab('tasks');
-                        }}
-                      >
-                        View Tasks
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeleteProject(project.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Tasks Tab */}
-        {activeTab === 'tasks' && (
-          <div className="ea-content tasks-section">
-            <div className="section-header">
-              <h2>Tasks {selectedProject && `- ${selectedProject.name}`}</h2>
-              <button className="add-button" onClick={() => setShowTaskForm(!showTaskForm)}>
-                + Add Task
-              </button>
-            </div>
-
+            {/* Inline Task Form */}
             {showTaskForm && (
-              <div className="form-card">
-                <h3>Create New Task</h3>
-                <Select
-                  value={newTask.projectId}
-                  onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
-                  variant="outlined"
-                >
-                  <option value="">Select Project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
-                <Input
-                  placeholder="Task Title"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                />
+              <div className="inline-form-card">
+                <h3>New Task</h3>
+                <div className="inline-form-row">
+                  <Select
+                    value={newTask.projectId}
+                    onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
+                    variant="outlined"
+                  >
+                    <option value="">Select Project</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </Select>
+                  <Input
+                    placeholder="Task Title"
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  />
+                  <Select
+                    value={newTask.priority}
+                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                    variant="outlined"
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                  </Select>
+                </div>
+                <div className="inline-form-row">
+                  <Select
+                    value={newTask.assignedTo}
+                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                    variant="outlined"
+                  >
+                    <option value="">Assign to</option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </Select>
+                  <Input
+                    type="date"
+                    value={newTask.dueDate}
+                    onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                  />
+                  <Select
+                    value={newTask.status}
+                    onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
+                    variant="outlined"
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                  </Select>
+                </div>
                 <Textarea
                   placeholder="Task Description"
                   value={newTask.description}
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                 />
-                <Select
-                  value={newTask.assignedTo}
-                  onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
-                  variant="outlined"
-                >
-                  <option value="">Assign to Person</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
-                <Input
-                  type="date"
-                  value={newTask.dueDate}
-                  onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                />
-                <Select
-                  value={newTask.priority}
-                  onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                  variant="outlined"
-                >
-                  <option value="Low">Low Priority</option>
-                  <option value="Medium">Medium Priority</option>
-                  <option value="High">High Priority</option>
-                </Select>
-                <Select
-                  value={newTask.status}
-                  onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
-                  variant="outlined"
-                >
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                </Select>
                 <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddTask}>Save Task</button>
+                  <button className="btn btn-primary" onClick={handleAddTask}>Save</button>
                   <button className="btn btn-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
 
-            <div className="tasks-list">
-              {tasks.length === 0 ? (
-                <p className="empty-state">No tasks yet. Create one to get started!</p>
+            {/* Projects List with Expandable Tasks */}
+            <div className="projects-list">
+              {projects.length === 0 ? (
+                <p className="empty-state">No projects yet. Create one to get started!</p>
               ) : (
-                tasks
-                  .filter((t) => !selectedProject || t.projectId === selectedProject.id)
-                  .map((task) => {
-                    const assignedPerson = people.find(p => p.id === task.assignedTo);
-                    const project = projects.find(p => p.id === task.projectId);
-                    return (
-                      <div key={task.id} className="task-card">
-                        <div className="task-header">
-                          <h3>{task.title}</h3>
-                          <div className="task-badges">
-                            <span className={`priority-badge ${task.priority.toLowerCase()}`}>
-                              {task.priority}
-                            </span>
-                            <span className={`status-badge ${task.status.toLowerCase()}`}>
-                              {task.status}
-                            </span>
-                          </div>
+                projects.map((project) => {
+                  const projectTasks = getProjectTasks(project.id);
+                  const isExpanded = expandedProjects[project.id];
+                  return (
+                    <div key={project.id} className={`project-row ${isExpanded ? 'expanded' : ''}`}>
+                      <div className="project-header-row" onClick={() => toggleProjectExpand(project.id)}>
+                        <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                        <div className="project-info">
+                          <h3>{project.name}</h3>
+                          <span className="project-meta">
+                            {projectTasks.length} task{projectTasks.length !== 1 ? 's' : ''}
+                            {project.dueDate && ` · Due ${formatDate(project.dueDate)}`}
+                          </span>
                         </div>
-                        <p className="description">{task.description}</p>
-                        <div className="task-info">
-                          {project && <span>📋 {project.name}</span>}
-                          {assignedPerson && <span>👤 {assignedPerson.name}</span>}
-                          {task.dueDate && <span>📅 {new Date(task.dueDate).toLocaleDateString()}</span>}
-                        </div>
-                        <div className="task-actions">
-                          <button
-                            className="btn-remind"
-                            onClick={() => {
-                              setSelectedTask(task);
-                              setReminderDetails({
-                                ...reminderDetails,
-                                person: task.assignedTo,
-                                task: task.id
-                              });
-                              setActiveTab('reminders');
-                            }}
-                          >
-                            Send Reminder
-                          </button>
-                          <button
-                            className="btn-delete"
-                            onClick={() => handleDeleteTask(task.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <span className={`status-badge ${project.status.toLowerCase().replace(' ', '-')}`}>
+                          {project.status}
+                        </span>
+                        <button
+                          className="btn-delete-small"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
+                        >
+                          ×
+                        </button>
                       </div>
-                    );
-                  })
+
+                      {isExpanded && (
+                        <div className="project-tasks-inline">
+                          {project.description && (
+                            <p className="project-description">{project.description}</p>
+                          )}
+                          {projectTasks.length === 0 ? (
+                            <p className="no-tasks-hint">No tasks yet</p>
+                          ) : (
+                            <div className="inline-tasks-list">
+                              {projectTasks.map((task) => {
+                                const assignedPerson = people.find(p => p.id === task.assignedTo);
+                                return (
+                                  <div key={task.id} className="inline-task-row">
+                                    <span className={`priority-dot ${task.priority.toLowerCase()}`}></span>
+                                    <span className="task-title">{task.title}</span>
+                                    {assignedPerson && <span className="task-assignee">{assignedPerson.name}</span>}
+                                    {task.dueDate && <span className="task-due">{formatDate(task.dueDate)}</span>}
+                                    <span className={`status-pill ${task.status.toLowerCase().replace(' ', '-')}`}>
+                                      {task.status}
+                                    </span>
+                                    <button
+                                      className="btn-delete-small"
+                                      onClick={() => handleDeleteTask(task.id)}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
-        {/* People Tab */}
-        {activeTab === 'people' && (
-          <div className="ea-content people-section">
+        {/* Team Tab - Consolidated People + WhatsApp Reminders */}
+        {activeTab === 'team' && (
+          <div className="ea-content team-section">
             <div className="section-header">
               <h2>Team Members</h2>
               <button className="add-button" onClick={() => setShowPersonForm(!showPersonForm)}>
-                + Add Person
+                + Add Member
               </button>
             </div>
 
+            {/* Inline Add Person Form */}
             {showPersonForm && (
-              <div className="form-card">
+              <div className="inline-form-card">
                 <h3>Add Team Member</h3>
-                <Input
-                  placeholder="Full Name"
-                  value={newPerson.name}
-                  onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
-                />
-                <Input
-                  type="email"
-                  placeholder="Email"
-                  value={newPerson.email}
-                  onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
-                />
-                <Input
-                  type="tel"
-                  placeholder="Phone Number"
-                  value={newPerson.phone}
-                  onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
-                />
-                <Input
-                  type="tel"
-                  placeholder="WhatsApp Number (with country code, e.g., +1234567890)"
-                  value={newPerson.whatsappNumber}
-                  onChange={(e) => setNewPerson({ ...newPerson, whatsappNumber: e.target.value })}
-                />
-                <Input
-                  placeholder="Role/Position"
-                  value={newPerson.role}
-                  onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })}
-                />
+                <div className="inline-form-row">
+                  <Input
+                    placeholder="Full Name"
+                    value={newPerson.name}
+                    onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Role/Position"
+                    value={newPerson.role}
+                    onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })}
+                  />
+                </div>
+                <div className="inline-form-row">
+                  <Input
+                    type="email"
+                    placeholder="Email"
+                    value={newPerson.email}
+                    onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
+                  />
+                  <Input
+                    type="tel"
+                    placeholder="Phone"
+                    value={newPerson.phone}
+                    onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
+                  />
+                  <Input
+                    type="tel"
+                    placeholder="WhatsApp (+1234567890)"
+                    value={newPerson.whatsappNumber}
+                    onChange={(e) => setNewPerson({ ...newPerson, whatsappNumber: e.target.value })}
+                  />
+                </div>
                 <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddPerson}>Save Person</button>
+                  <button className="btn btn-primary" onClick={handleAddPerson}>Save</button>
                   <button className="btn btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
                 </div>
               </div>
             )}
 
-            <div className="people-grid">
+            {/* Team Members Table with Inline Reminder */}
+            <div className="team-table-wrapper">
               {people.length === 0 ? (
                 <p className="empty-state">No team members yet. Add one to get started!</p>
               ) : (
-                people.map((person) => (
-                  <div key={person.id} className="person-card">
-                    <div className="person-avatar">👤</div>
-                    <h3>{person.name}</h3>
-                    {person.role && <p className="role">{person.role}</p>}
-                    <div className="contact-info">
-                      {person.email && <p>📧 {person.email}</p>}
-                      {person.phone && <p>📱 {person.phone}</p>}
-                      {person.whatsappNumber && <p>💬 {person.whatsappNumber}</p>}
-                    </div>
-                    <div className="person-actions">
-                      <button
-                        className="btn-remind"
-                        onClick={() => {
-                          setSelectedPerson(person);
-                          setReminderDetails({ ...reminderDetails, person: person.id });
-                          setActiveTab('reminders');
-                        }}
-                      >
-                        Send WhatsApp
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeletePerson(person.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
+                <table className="team-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Contact</th>
+                      <th>WhatsApp</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {people.map((person) => (
+                      <React.Fragment key={person.id}>
+                        <tr className={inlineReminderPerson === person.id ? 'row-active' : ''}>
+                          <td className="name-cell">{person.name}</td>
+                          <td>{person.role || '-'}</td>
+                          <td>
+                            {person.email && <span className="contact-line">{person.email}</span>}
+                            {person.phone && <span className="contact-line">{person.phone}</span>}
+                          </td>
+                          <td>{person.whatsappNumber || '-'}</td>
+                          <td className="actions-cell">
+                            <button
+                              className={`btn-remind-inline ${inlineReminderPerson === person.id ? 'active' : ''}`}
+                              onClick={() => {
+                                if (inlineReminderPerson === person.id) {
+                                  setInlineReminderPerson(null);
+                                } else {
+                                  setInlineReminderPerson(person.id);
+                                  setReminderDetails({ ...reminderDetails, person: person.id });
+                                }
+                              }}
+                            >
+                              {inlineReminderPerson === person.id ? 'Close' : 'Message'}
+                            </button>
+                            <button
+                              className="btn-delete-small"
+                              onClick={() => handleDeletePerson(person.id)}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                        {/* Inline Reminder Form Row */}
+                        {inlineReminderPerson === person.id && (
+                          <tr className="inline-reminder-row">
+                            <td colSpan="5">
+                              <div className="inline-reminder-form">
+                                <div className="reminder-form-row">
+                                  <Select
+                                    value={reminderDetails.task}
+                                    onChange={(e) => setReminderDetails({ ...reminderDetails, task: e.target.value })}
+                                    variant="outlined"
+                                  >
+                                    <option value="">Task (optional)</option>
+                                    {tasks.map((t) => (
+                                      <option key={t.id} value={t.id}>{t.title}</option>
+                                    ))}
+                                  </Select>
+                                  <Select
+                                    value={reminderDetails.project}
+                                    onChange={(e) => setReminderDetails({ ...reminderDetails, project: e.target.value })}
+                                    variant="outlined"
+                                  >
+                                    <option value="">Project (optional)</option>
+                                    {projects.map((p) => (
+                                      <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                  </Select>
+                                  <Select
+                                    value={reminderDetails.sendTime}
+                                    onChange={(e) => setReminderDetails({ ...reminderDetails, sendTime: e.target.value })}
+                                    variant="outlined"
+                                  >
+                                    <option value="now">Send Now</option>
+                                    <option value="tomorrow">Tomorrow</option>
+                                    <option value="next-day">Next Day</option>
+                                  </Select>
+                                </div>
+                                <div className="reminder-form-row">
+                                  <Textarea
+                                    placeholder="Your message..."
+                                    value={reminderDetails.message}
+                                    onChange={(e) => setReminderDetails({ ...reminderDetails, message: e.target.value })}
+                                    rows={2}
+                                  />
+                                  <button className="btn btn-primary btn-send" onClick={handleSendReminder}>
+                                    Send WhatsApp
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
-          </div>
-        )}
-
-        {/* WhatsApp Reminders Tab */}
-        {activeTab === 'reminders' && (
-          <div className="ea-content reminders-section">
-            <div className="section-header">
-              <h2>WhatsApp Reminders</h2>
-            </div>
-
-            {people.length === 0 ? (
-              <div className="empty-state-card">
-                <p>No team members added yet. Add team members first to send reminders.</p>
-              </div>
-            ) : (
-              <div className="reminder-card">
-                <h3>Send WhatsApp Reminder</h3>
-
-                <div className="reminder-form">
-                  <div className="form-group">
-                    <label>Select Person:</label>
-                    <Select
-                      value={reminderDetails.person}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, person: e.target.value })}
-                      variant="outlined"
-                    >
-                      <option value="">Choose a team member</option>
-                      {people.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.whatsappNumber})
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Related Task (Optional):</label>
-                    <Select
-                      value={reminderDetails.task}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, task: e.target.value })}
-                      variant="outlined"
-                    >
-                      <option value="">Select a task</option>
-                      {tasks.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Related Project (Optional):</label>
-                    <Select
-                      value={reminderDetails.project}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, project: e.target.value })}
-                      variant="outlined"
-                    >
-                      <option value="">Select a project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Message:</label>
-                    <Textarea
-                      placeholder="Enter your reminder message"
-                      value={reminderDetails.message}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, message: e.target.value })}
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Send When:</label>
-                    <Select
-                      value={reminderDetails.sendTime}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, sendTime: e.target.value })}
-                      variant="outlined"
-                    >
-                      <option value="now">Send Now</option>
-                      <option value="tomorrow">Tomorrow Morning</option>
-                      <option value="next-day">Next Day</option>
-                      <option value="weekly">Weekly</option>
-                    </Select>
-                  </div>
-
-                  <button className="btn btn-primary" onClick={handleSendReminder}>
-                    Send via WhatsApp
-                  </button>
-                </div>
-
-                <div className="reminder-preview">
-                  <h4>Preview:</h4>
-                  <div className="message-preview">
-                    {reminderDetails.person && (
-                      <p><strong>To:</strong> {people.find(p => p.id === reminderDetails.person)?.name}</p>
-                    )}
-                    {reminderDetails.message && (
-                      <p><strong>Message:</strong> {reminderDetails.message}</p>
-                    )}
-                    {reminderDetails.task && (
-                      <p><strong>Task:</strong> {tasks.find(t => t.id === reminderDetails.task)?.title}</p>
-                    )}
-                    {reminderDetails.project && (
-                      <p><strong>Project:</strong> {projects.find(p => p.id === reminderDetails.project)?.name}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

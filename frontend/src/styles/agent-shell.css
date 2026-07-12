@@ -123,8 +123,8 @@ body:has(.agent-shell) {
 }
 
 .upload-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-accent-lg);
+  opacity: 0.9;
+  box-shadow: var(--shadow-accent-md);
 }
 
 .upload-btn:disabled {
@@ -132,6 +132,17 @@ body:has(.agent-shell) {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.upload-btn.secondary {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  border: 2px solid var(--color-accent);
+}
+
+.upload-btn.secondary:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-background);
 }
 
 /* ── Chat panel ─────────────────────────────────────────────────────────── */

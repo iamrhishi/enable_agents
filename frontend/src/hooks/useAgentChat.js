@@ -29,12 +29,12 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
     } catch (e) {
       console.error('Error loading chat history:', e);
     }
-    // Default welcome message
+    // Default welcome message - store ISO timestamp for proper formatting
     return [{
       id: 1,
       text: welcomeText,
       sender: 'agent',
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
       format: 'markdown',
     }];
   });
@@ -80,7 +80,7 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
         id: Date.now(),
         text,
         sender,
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: new Date().toISOString(),
         data,
         format,
       },
@@ -92,7 +92,7 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
       id: 1,
       text: welcomeText,
       sender: 'agent',
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
       format: 'markdown',
     }]);
     setShowClearConfirm(false);

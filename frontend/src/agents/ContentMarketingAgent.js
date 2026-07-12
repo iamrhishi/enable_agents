@@ -5,6 +5,7 @@ import Header from '../core/Header';
 import { BackButton, Input, Textarea, Select } from '../components';
 import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
+import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 
 // Demo content templates
 const DEMO_GENERATED_CONTENT = {
@@ -88,7 +89,7 @@ function ContentMarketingAgent() {
       id: 1,
       text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
       sender: 'agent',
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
       format: 'markdown'
     }
   ]);
@@ -117,7 +118,7 @@ function ContentMarketingAgent() {
           id: 1,
           text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
           sender: 'agent',
-          timestamp: new Date().toLocaleTimeString(),
+          timestamp: new Date().toISOString(),
           format: 'markdown'
         }]);
       }
@@ -305,7 +306,7 @@ function ContentMarketingAgent() {
       id: Date.now(),
       text,
       sender,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
       format
     };
     setMessages(prev => [...prev, newMessage]);
@@ -540,12 +541,23 @@ function ContentMarketingAgent() {
         <div className="cma-right-panel">
           <div className="chat-container">
             <div className="messages-container">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`message message-${msg.sender}`}>
-                  <div className="message-time">{msg.timestamp}</div>
-                  <MessageContent message={msg} />
-                </div>
-              ))}
+              {messages.map((msg, index) => {
+                const prevMessage = messages[index - 1];
+                const showDateSeparator = !prevMessage || !isSameDay(msg.timestamp, prevMessage.timestamp);
+                return (
+                  <React.Fragment key={msg.id}>
+                    {showDateSeparator && (
+                      <div className="date-separator">
+                        <span>{getRelativeDateLabel(msg.timestamp)}</span>
+                      </div>
+                    )}
+                    <div className={`message message-${msg.sender}`}>
+                      <div className="message-time">{formatTime(msg.timestamp)}</div>
+                      <MessageContent message={msg} />
+                    </div>
+                  </React.Fragment>
+                );
+              })}
               {isLoading && (
                 <div className="message message-agent">
                   <div className="typing-indicator">

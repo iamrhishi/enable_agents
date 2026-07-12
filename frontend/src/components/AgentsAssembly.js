@@ -14,54 +14,27 @@ import Select from './Select';
 
 
 
-// Utility: Analyze requirements from a query string (stub)
-const analyzeBusinessRequirements = (query) => {
-  // This should return an object like { confidence: 1, needs: [], businessTypes: [] }
-  return { confidence: 1, needs: [], businessTypes: [] };
-};
-
-// Utility: Filter modules by requirements (basic implementation)
-function filterModulesByRequirements(modules, requirements) {
-  // Example: filter by needs and businessTypes if present
-  if (!requirements) return modules;
-  let filtered = modules;
-  if (requirements.needs && requirements.needs.length > 0) {
-    filtered = filtered.filter(module =>
-      requirements.needs.some(need =>
-        module.name.toLowerCase().includes(need.toLowerCase()) ||
-        (module.keywords && module.keywords.some(k => k.toLowerCase().includes(need.toLowerCase())))
-      )
-    );
-  }
-  if (requirements.businessTypes && requirements.businessTypes.length > 0) {
-    filtered = filtered.filter(module =>
-      module.businessContext && requirements.businessTypes.some(type =>
-        module.businessContext.includes(type.toLowerCase())
-      )
-    );
-  }
-  return filtered;
-}
-
-
 function AgentsAssembly() {
   // Department/function options for second question
   const departmentOptions = [
     'Sales', 'Marketing', 'Finance', 'Operations', 'HR', 'Customer Service', 'Product', 'IT', 'Legal', 'Procurement', 'R&D', 'Strategy', 'Supply Chain', 'Admin', 'Executive'
   ];
-  const [departmentPrompted, setDepartmentPrompted] = useState(false);
+  const [departmentPrompted, setDepartmentPrompted] = useState(() => {
+    return localStorage.getItem('agentsAssemblyDeptPrompted') === 'true';
+  });
   // Industry options for initial selection
   const industryOptions = [
     'Retail', 'Food Service', 'Manufacturing', 'Healthcare', 'Finance', 'Technology', 'Consulting',
     'Education', 'Transportation', 'Hospitality', 'Real Estate', 'Media', 'Nonprofit', 'Legal', 'Construction'
   ];
-  const [industryPrompted, setIndustryPrompted] = useState(false);
+  const [industryPrompted, setIndustryPrompted] = useState(() => {
+    return localStorage.getItem('agentsAssemblyIndPrompted') === 'true';
+  });
   const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [detailedReportData, setDetailedReportData] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [selectedProcess, setSelectedProcess] = useState('');
-  const [searchResults, setSearchResults] = useState(null);
   const [businessPage, setBusinessPage] = useState(1);
   const [businessesPerPage] = useState(50); // Show 50 per page
   const [allBusinesses, setAllBusinesses] = useState([]);
@@ -69,11 +42,26 @@ function AgentsAssembly() {
   const [userMessage, setUserMessage] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [inputHighlighted, setInputHighlighted] = useState(false);
-  const [chatState, setChatState] = useState({});
-  const [chatHistory, setChatHistory] = useState([]);
-  const [nextQuestion, setNextQuestion] = useState("Tell us more about your business to get agent recommendations");
-  const [nextQuestionKey, setNextQuestionKey] = useState("");
-  const [completed, setCompleted] = useState(false);
+  const [chatState, setChatState] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyChatState');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [chatHistory, setChatHistory] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyChatHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [nextQuestion, setNextQuestion] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyNextQuestion');
+    return saved || "Tell us more about your business to get agent recommendations";
+  });
+  const [nextQuestionKey, setNextQuestionKey] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyNextQuestionKey');
+    return saved || "";
+  });
+  const [completed, setCompleted] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyCompleted');
+    return saved === 'true';
+  });
   const [isBuffering, setIsBuffering] = useState(false);
   const [recommendedModules, setRecommendedModules] = useState([]);
   const [moduleTab, setModuleTab] = useState('business'); // 'business' or 'technical'
@@ -115,6 +103,56 @@ function AgentsAssembly() {
       if (agents.length > 0) setRegistryAgents(agents);
     });
   }, []);
+
+  // Persist chat state to localStorage
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyChatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyChatState', JSON.stringify(chatState));
+  }, [chatState]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyNextQuestion', nextQuestion);
+  }, [nextQuestion]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyNextQuestionKey', nextQuestionKey);
+  }, [nextQuestionKey]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyCompleted', completed.toString());
+  }, [completed]);
+
+  // Clear chat session
+  const clearChatSession = () => {
+    setChatHistory([]);
+    setChatState({});
+    setNextQuestion("Tell us more about your business to get agent recommendations");
+    setNextQuestionKey("");
+    setCompleted(false);
+    setIndustryPrompted(false);
+    setDepartmentPrompted(false);
+    setRecommendedModules([]);
+    setDetailedReportData(null);
+    localStorage.removeItem('agentsAssemblyChatHistory');
+    localStorage.removeItem('agentsAssemblyChatState');
+    localStorage.removeItem('agentsAssemblyNextQuestion');
+    localStorage.removeItem('agentsAssemblyNextQuestionKey');
+    localStorage.removeItem('agentsAssemblyCompleted');
+    localStorage.removeItem('agentsAssemblyIndPrompted');
+    localStorage.removeItem('agentsAssemblyDeptPrompted');
+  };
+
+  // Persist industry/department prompted state
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyIndPrompted', industryPrompted.toString());
+  }, [industryPrompted]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyDeptPrompted', departmentPrompted.toString());
+  }, [departmentPrompted]);
 
   // Auto-scroll chat history to bottom when new messages arrive
   useEffect(() => {
@@ -163,7 +201,7 @@ function AgentsAssembly() {
       name: 'Sales Helper Agent',
       icon: '/assets/icons/increase.png',
       price: '$45/month',
-      status: 'in-progress',
+      status: 'ready',
       description: 'Supercharge your sales with lead management, CRM integration, and intelligent sales strategy recommendations.',
       keywords: ['sales', 'sales enablement', 'CRM', 'lead management', 'sales strategy'],
       businessContext: ['sales', 'lead generation', 'customer acquisition', 'sales optimization', 'business growth'],
@@ -385,36 +423,48 @@ function AgentsAssembly() {
     if (searchTerm.trim() || selectedIndustry) {
       fetchBusinesses();
     }
-    // Filtering modules logic remains unchanged
-    let modules = [...businessModules, ...technicalModules];
+    // Keep all modules
+    const allModules = [...businessModules, ...technicalModules];
+    setFilteredModules(allModules);
+
+    // Sort function (same as displayModules sort)
+    const sortByStatus = (a, b) => {
+      if (a.status === 'ready' && b.status !== 'ready') return -1;
+      if (a.status !== 'ready' && b.status === 'ready') return 1;
+      return 0;
+    };
+
     if (searchTerm.trim()) {
-      const requirements = analyzeBusinessRequirements(searchTerm);
-      setSearchResults(requirements);
-      if (requirements.confidence > 0.2) {
-        modules = filterModulesByRequirements(modules, requirements);
-      } else {
-        modules = modules.filter(module =>
-          module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (module.keywords && module.keywords.some(keyword => 
-            keyword.toLowerCase().includes(searchTerm.toLowerCase())
-          )) ||
-          (module.businessContext && module.businessContext.some(context =>
-            context.toLowerCase().includes(searchTerm.toLowerCase())
-          ))
-        );
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (module) =>
+        module.name.toLowerCase().includes(term) ||
+        (module.keywords && module.keywords.some(k => k.toLowerCase().includes(term)));
+
+      // Sort business modules same as carousel
+      const sortedBusiness = [...businessModules].sort(sortByStatus);
+      const businessIdx = sortedBusiness.findIndex(matchesSearch);
+
+      if (businessIdx !== -1) {
+        setModuleTab('business');
+        setCarouselIndex(businessIdx);
+        return;
       }
-    } else if (selectedIndustry) {
-      modules = modules.filter(module => 
-        module.industries && (
-          module.industries.includes(selectedIndustry.toLowerCase()) ||
-          module.industries.includes('all industries')
-        )
-      );
-    } else {
-      modules = [...businessModules, ...technicalModules];
+
+      // Sort technical modules same as carousel
+      const sortedTech = [...technicalModules].sort(sortByStatus);
+      const techIdx = sortedTech.findIndex(matchesSearch);
+
+      if (techIdx !== -1) {
+        setModuleTab('technical');
+        setCarouselIndex(techIdx);
+        return;
+      }
     }
-    setFilteredModules(modules);
-    setCarouselIndex(0); // Reset carousel to start when filters change
+
+    // No search - reset
+    if (!searchTerm.trim()) {
+      setCarouselIndex(0);
+    }
   }, [searchTerm, selectedIndustry, selectedProcess, businessPage]);
         {/* Businesses Pagination Section */}
         {allBusinesses.length > 0 && (
@@ -428,7 +478,7 @@ function AgentsAssembly() {
               ))}
             </ul>
             <div className="pagination-controls">
-              <button disabled={businessPage === 1} onClick={() => setBusinessPage(businessPage-1)}>Prev</button>
+              <button disabled={businessPage === 1} onClick={() => setBusinessPage(businessPage-1)}>Previous</button>
               <span>Page {businessPage} of {Math.ceil(allBusinesses.length/businessesPerPage)}</span>
               <button disabled={businessPage === Math.ceil(allBusinesses.length/businessesPerPage)} onClick={() => setBusinessPage(businessPage+1)}>Next</button>
             </div>
@@ -562,21 +612,23 @@ const handleEnterpriseChat = async (userInput) => {
       // Remove buffering message
       setChatHistory(prev => prev.filter(msg => msg.type !== 'buffer'));
 
+      const now = new Date().toISOString();
+
       // If there was a system prompt before, add the user reply after it
       if (updatedChatHistory.length > 0 && lastAnswer) {
         let lastSystemIdx = updatedChatHistory.map(msg => msg.type).lastIndexOf('system');
         if (lastSystemIdx !== -1) {
-          updatedChatHistory.splice(lastSystemIdx + 1, 0, { type: 'user', text: lastAnswer });
+          updatedChatHistory.splice(lastSystemIdx + 1, 0, { type: 'user', text: lastAnswer, timestamp: now });
         } else {
-          updatedChatHistory.push({ type: 'user', text: lastAnswer });
+          updatedChatHistory.push({ type: 'user', text: lastAnswer, timestamp: now });
         }
       } else if (lastAnswer) {
-        updatedChatHistory.push({ type: 'user', text: lastAnswer });
+        updatedChatHistory.push({ type: 'user', text: lastAnswer, timestamp: now });
       }
 
       // Add next system prompt if not completed
       if (data.next_question && !data.completed) {
-        updatedChatHistory.push({ type: 'system', text: data.next_question });
+        updatedChatHistory.push({ type: 'system', text: data.next_question, timestamp: now });
         // Insert department options marker only if the question asks about role or department
         if (
           (data.next_question.toLowerCase().includes('role') || data.next_question.toLowerCase().includes('department')) &&
@@ -588,7 +640,7 @@ const handleEnterpriseChat = async (userInput) => {
 
       // Add summary if completed
       if (data.completed && data.search_summary) {
-        updatedChatHistory.push({ type: 'system', text: data.search_summary });
+        updatedChatHistory.push({ type: 'system', text: data.search_summary, timestamp: now });
       }
 
       setChatHistory(updatedChatHistory);
@@ -626,7 +678,7 @@ const handleEnterpriseChat = async (userInput) => {
           if (!toolNames.length) {
             setChatHistory((prev) => [
               ...prev,
-              { type: 'system', text: 'We could not identify recommended modules from the response. Please try refining your answers.' }
+              { type: 'system', text: 'We could not identify recommended modules from the response. Please try refining your answers.', timestamp: new Date().toISOString() }
             ]);
           }
         } catch (recErr) {
@@ -634,7 +686,7 @@ const handleEnterpriseChat = async (userInput) => {
           setDetailedReportData(null);
           setChatHistory((prev) => [
             ...prev.filter(msg => msg.type !== 'buffer'),
-            { type: 'system', text: 'Recommendation service is currently unavailable. Please try again shortly.' }
+            { type: 'system', text: 'Recommendation service is currently unavailable. Please try again shortly.', timestamp: new Date().toISOString() }
           ]);
         }
 
@@ -648,7 +700,7 @@ const handleEnterpriseChat = async (userInput) => {
         break; // Exit loop, wait for next user input
       }
     } catch (err) {
-      setChatHistory(prev => [...prev.filter(msg => msg.type !== 'buffer'), { type: 'system', text: "Error contacting chat API." }]);
+      setChatHistory(prev => [...prev.filter(msg => msg.type !== 'buffer'), { type: 'system', text: "Error contacting chat API.", timestamp: new Date().toISOString() }]);
       setIsBuffering(false);
       break;
     }
@@ -743,63 +795,73 @@ const handleEnterpriseChat = async (userInput) => {
         </Modal>
         <div className="page-header-row">
           <h2>Agents Assembly</h2>
-          <button
-            className={`stage-badge ${showChatbot ? 'stage-badge--active' : 'stage-badge--inactive'}`}
-            onClick={() => setShowChatbot(!showChatbot)}
-            title={showChatbot ? 'AI Assistant: Active - Click to hide' : 'AI Assistant: Inactive - Click to activate'}
-            aria-pressed={showChatbot}
-            aria-label={`AI Assistant ${showChatbot ? 'Active' : 'Inactive'}`}
-          >
-            <span className="stage-badge-icon">{showChatbot ? '🤖' : '💤'}</span>
-            <span className="stage-badge-label">{showChatbot ? 'AI Active' : 'AI Off'}</span>
-          </button>
         </div>
 
-        <div className={`chatbot-section ${showChatbot ? 'chatbot-section--open' : 'chatbot-section--closed'}`}>
-          <div className="chatbot-container enhanced-chatbot unified-chat">
-            <div className="chat-header">
-              <div className="chat-header-content">
-                <span className="chat-header-icon">✨</span>
-                <span className="chat-header-title">AI Assistant</span>
+        {/* Floating Chat Widget */}
+        <div className={`floating-chat-widget ${showChatbot ? 'floating-chat-widget--open' : ''}`}>
+          {/* Floating trigger button */}
+          {!showChatbot && (
+            <button
+              className="floating-chat-trigger"
+              onClick={() => setShowChatbot(true)}
+              title="Ask AI Assistant"
+              aria-label="Ask AI Assistant"
+            >
+              <span className="floating-chat-trigger-icon">?</span>
+            </button>
+          )}
+
+          {/* Chat panel */}
+          <div className={`floating-chat-panel ${showChatbot ? 'floating-chat-panel--open' : ''}`}>
+            <div className="floating-chat-header">
+              <span className="floating-chat-title">AI Assistant</span>
+              <div className="floating-chat-actions">
+                <button
+                  className="floating-chat-clear"
+                  onClick={clearChatSession}
+                  title="Clear chat"
+                  aria-label="Clear chat"
+                >
+                  ↻
+                </button>
+                <button
+                  className="floating-chat-close"
+                  onClick={() => setShowChatbot(false)}
+                  aria-label="Close chat"
+                >
+                  ×
+                </button>
               </div>
-              <button
-                className="chat-minimize-btn"
-                onClick={() => setShowChatbot(false)}
-                aria-label="Minimize chat"
-              >
-                −
-              </button>
             </div>
-            <div ref={chatHistoryRef} className="chat-history" role="log" aria-live="polite" aria-label="Chat messages" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '12px', scrollBehavior: 'smooth' }}>
+            <div ref={chatHistoryRef} className="chat-history" role="log" aria-live="polite" aria-label="Chat messages">
               {chatHistory.length === 0 && (
                 <>
                   <div className="chat-row system">
-                    <div className="chat-avatar system-avatar" />
+                    <span className="chat-sender">AI Assistant</span>
                     <div className="chat-message system">
                       <span>{nextQuestion}</span>
                     </div>
                   </div>
                   {!industryPrompted && (
                     <div className="chat-row system">
-                      <div className="chat-avatar system-avatar" />
+                      <span className="chat-sender">AI Assistant</span>
                       <div className="chat-message system">
-                        <span>
-                          <div className="industry-options-list">
-                            {industryOptions.map((option, idx) => (
-                              <button
-                                key={option}
-                                className="industry-option-btn"
-                                onClick={() => {
-                                  setInputValue(`We are in the ${option} industry`);
-                                  setIndustryPrompted(true);
-                                  setInputHighlighted(true);
-                                }}
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </span>
+                        <span>Select your industry:</span>
+                        <div className="industry-options-list">
+                          {industryOptions.map((option, idx) => (
+                            <button
+                              key={option}
+                              className="industry-option-btn"
+                              onClick={() => {
+                                setInputValue(`We are in the ${option} industry`);
+                                setIndustryPrompted(true);
+                                setInputHighlighted(true);
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -807,28 +869,29 @@ const handleEnterpriseChat = async (userInput) => {
               )}
               {chatHistory.map((msg, idx) => {
                 if (msg.text === '__DEPARTMENT_OPTIONS__') {
+                  // Skip if already selected
+                  if (departmentPrompted) return null;
                   // Render department options as a separate chat row
                   return (
                     <div key={idx} className="chat-row system">
-                      <div className="chat-avatar system-avatar" />
+                      <span className="chat-sender">AI Assistant</span>
                       <div className="chat-message system">
-                        <span>
-                          Please select your department or business function:
-                          <div className="industry-options-list">
-                            {departmentOptions.map((option, didx) => (
-                              <button
-                                key={option}
-                                className="industry-option-btn"
-                                onClick={() => {
-                                  setInputValue(`I am in the ${option}`);
-                                  setInputHighlighted(true);
-                                }}
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </span>
+                        <span>Select your department:</span>
+                        <div className="industry-options-list">
+                          {departmentOptions.map((option, didx) => (
+                            <button
+                              key={option}
+                              className="industry-option-btn"
+                              onClick={() => {
+                                setInputValue(`I am in the ${option}`);
+                                setInputHighlighted(true);
+                                setDepartmentPrompted(true);
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
@@ -836,11 +899,13 @@ const handleEnterpriseChat = async (userInput) => {
                   // Skip empty system messages (if any)
                   return null;
                 } else {
-                  // Render all other chat messages as before
+                  // Render chat messages with sender and timestamp
+                  const senderLabel = msg.type === 'user' ? 'You' : 'AI Assistant';
+                  const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                   return (
-                    <div key={idx} className={`chat-row ${msg.type}`}> 
-                      <div className={`chat-avatar ${msg.type}-avatar`} />
-                      <div className={`chat-message ${msg.type}`}> 
+                    <div key={idx} className={`chat-row ${msg.type}`}>
+                      <span className="chat-sender">{senderLabel}</span>
+                      <div className={`chat-message ${msg.type}`}>
                         {msg.type === 'buffer' ? (
                           <span className="buffering">
                             <span className="loading-dots">
@@ -851,13 +916,14 @@ const handleEnterpriseChat = async (userInput) => {
                           <span>{msg.text}</span>
                         )}
                       </div>
+                      {timeStr && <span className="chat-timestamp">{timeStr}</span>}
                     </div>
                   );
                 }
               })}
               {isBuffering && (
                 <div className="chat-row buffer-row">
-                  <div className="chat-avatar system-avatar" />
+                  <span className="chat-sender">AI Assistant</span>
                   <div className="chat-message system">
                     <span className="buffering">
                       <span className="loading-dots">
@@ -926,18 +992,14 @@ const handleEnterpriseChat = async (userInput) => {
         {/* Show recommended modules as cards matching business/technical modules, with a 'Recommended' tag and Detailed Report */}
         {recommendedModules.length > 0 && (
           <div className="recommended-modules enhanced">
-            <h3 style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <span>
-                <span role="img" aria-label="star" style={{color: '#fbbf24', marginRight: '8px'}}>★</span>
-                Recommended Agentic Modules
-              </span>
-              <span
+            <h3 className="recommended-header">
+              <span>Recommended Agentic Modules</span>
+              <button
                 className="detailed-report-tag"
-                style={{cursor: 'pointer', fontSize: '0.95rem', color: '#2563eb', background: '#e0e7ef', borderRadius: '8px', padding: '4px 12px', marginLeft: '12px', fontWeight: 500}}
                 onClick={() => setShowDetailedReport(true)}
               >
                 Detailed Report
-              </span>
+              </button>
             </h3>
             <CardGrid columns="auto" gap="md" className="modules-container recommended">
               {recommendedModules.map((name, idx) => {
@@ -948,7 +1010,6 @@ const handleEnterpriseChat = async (userInput) => {
                   <div
                     key={idx}
                     className={`module-card recommended-card ${businessModules.some(b => b.name === name) ? 'business-module' : 'technical-module'}`}
-                    style={{ cursor: 'pointer', position: 'relative' }}
                   >
                     <img src={module.icon} alt={module.name} />
                     <p>{module.name}</p>
@@ -1094,29 +1155,14 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         )}
 
-        {/* Show search insights */}
-        {searchResults && searchResults.confidence > 0.2 && (
-          <div className="search-insights">
-            <div className="insights-content">
-              {searchResults.businessTypes.length > 0 && (
-                <p><strong>Business Type:</strong> {searchResults.businessTypes.join(', ')}</p>
-              )}
-              {searchResults.needs.length > 0 && (
-                <p><strong>Identified Needs:</strong> {searchResults.needs.join(', ')}</p>
-              )}
-              <p><strong>Showing {filteredModules.length} relevant Agentic modules</strong></p>
-            </div>
-          </div>
-        )}
 
-        {/* Module Tabs + Filter Chips Row */}
-        <div className="tabs-filters-row">
+        {/* Unified toolbar: Tabs | Search | Filters */}
+        <div className="agents-toolbar">
           <div className="module-tabs" role="tablist" aria-label="Module categories">
             <button
               role="tab"
               className={`module-tab module-tab--business ${moduleTab === 'business' ? 'module-tab--active' : ''}`}
               aria-selected={moduleTab === 'business'}
-              aria-controls="business-modules-panel"
               onClick={() => { setModuleTab('business'); setCarouselIndex(0); }}
             >
               Business ({businessModules.length})
@@ -1125,12 +1171,32 @@ const handleEnterpriseChat = async (userInput) => {
               role="tab"
               className={`module-tab module-tab--technical ${moduleTab === 'technical' ? 'module-tab--active' : ''}`}
               aria-selected={moduleTab === 'technical'}
-              aria-controls="technical-modules-panel"
               onClick={() => { setModuleTab('technical'); setCarouselIndex(0); }}
             >
               Technical ({technicalModules.length})
             </button>
           </div>
+
+          <div className="agent-search-wrapper">
+            <input
+              type="text"
+              className="agent-search-input"
+              placeholder="Search agent..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Search agent"
+            />
+            {searchTerm && (
+              <button
+                className="agent-search-clear"
+                onClick={() => setSearchTerm('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
           <div className="filter-chips" role="group" aria-label="Filter modules">
             <Select
               value={selectedIndustry}
@@ -1159,6 +1225,19 @@ const handleEnterpriseChat = async (userInput) => {
               <option value="Finance">Finance</option>
               <option value="Customer Service">Customer Service</option>
             </Select>
+            {(selectedIndustry || selectedProcess) && (
+              <button
+                className="clear-filters-btn"
+                onClick={() => {
+                  setSelectedIndustry('');
+                  setSelectedProcess('');
+                }}
+                title="Clear filters"
+                aria-label="Clear all filters"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
 
@@ -1166,11 +1245,30 @@ const handleEnterpriseChat = async (userInput) => {
         {(() => {
           const displayModules = filteredModules
             .filter(module => {
+              // Filter by tab (business/technical)
               if (moduleTab === 'business') {
-                return businessModules.some(b => b.name === module.name);
+                if (!businessModules.some(b => b.name === module.name)) return false;
               } else {
-                return technicalModules.some(t => t.name === module.name);
+                if (!technicalModules.some(t => t.name === module.name)) return false;
               }
+              // Filter by industry
+              if (selectedIndustry && module.industries) {
+                const industryMatch = module.industries.some(ind =>
+                  ind.toLowerCase().includes(selectedIndustry.toLowerCase()) ||
+                  ind.toLowerCase() === 'all industries'
+                );
+                if (!industryMatch) return false;
+              }
+              // Filter by process
+              if (selectedProcess && module.keywords) {
+                const processMatch = module.keywords.some(kw =>
+                  kw.toLowerCase().includes(selectedProcess.toLowerCase())
+                ) || (module.businessContext && module.businessContext.some(ctx =>
+                  ctx.toLowerCase().includes(selectedProcess.toLowerCase())
+                ));
+                if (!processMatch) return false;
+              }
+              return true;
             })
             .sort((a, b) => {
               if (a.status === 'ready' && b.status !== 'ready') return -1;

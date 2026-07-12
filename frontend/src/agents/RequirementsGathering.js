@@ -7,6 +7,7 @@ import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
+import { formatDate } from '../utils/dateFormat';
 
 const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
 
@@ -104,18 +105,17 @@ function RequirementsGathering() {
     return stored !== 'live';
   });
 
-  // Track if we're in a mode transition (to prevent saving stale data)
-  const [isModeTransition, setIsModeTransition] = useState(false);
-  const prevModeRef = React.useRef(isDemoMode);
+  // Track if initial load is done (don't save during initial load or mode transitions)
+  const isInitialLoadRef = React.useRef(true);
+  const lastSavedModeRef = React.useRef(null);
 
   // Listen for mode changes
   useEffect(() => {
     const handleModeChange = () => {
       const stored = localStorage.getItem('enableAgentsMode');
       const newMode = stored !== 'live';
-      if (newMode !== prevModeRef.current) {
-        setIsModeTransition(true);
-        prevModeRef.current = newMode;
+      if (newMode !== isDemoMode) {
+        isInitialLoadRef.current = true; // Treat mode change like initial load
         setIsDemoMode(newMode);
       }
     };
@@ -125,7 +125,7 @@ function RequirementsGathering() {
       window.removeEventListener('storage', handleModeChange);
       clearInterval(interval);
     };
-  }, []);
+  }, [isDemoMode]);
 
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
@@ -160,10 +160,13 @@ function RequirementsGathering() {
   const [emailImages, setEmailImages] = useState([]);
 
   // Save market research data to centralized mode storage
-  // Skip saving during mode transitions to prevent saving stale data to wrong mode
+  // Only save after initial load is complete and mode matches last saved mode
   useEffect(() => {
-    if (isModeTransition) return; // Don't save during mode switch
-    if (customerResearchResults !== null || showCustomerResearchTable || minimizedCustomerResearch) {
+    // Skip saving during initial load or mode transitions
+    if (isInitialLoadRef.current) return;
+
+    // Only save if we have results and mode matches what we last loaded
+    if (customerResearchResults !== null && lastSavedModeRef.current === isDemoMode) {
       setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
         results: customerResearchResults,
         showTable: showCustomerResearchTable,
@@ -174,10 +177,20 @@ function RequirementsGathering() {
         responseFormat,
       }, isDemoMode);
     }
-  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode, isModeTransition]);
+  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
 
   // Load data when mode changes
   useEffect(() => {
+    // Clear state first
+    setCustomerResearchResults(null);
+    setShowCustomerResearchTable(false);
+    setMinimizedCustomerResearch(false);
+    setOverview('');
+    setIndustries('');
+    setCountries('');
+    setResponseFormat('');
+
+    // Load data for current mode
     const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, isDemoMode);
 
     if (isDemoMode && !savedData?.results) {
@@ -188,29 +201,21 @@ function RequirementsGathering() {
       setIndustries(DEMO_MOCK_DATA.industries);
       setCountries(DEMO_MOCK_DATA.countries);
       setResponseFormat(DEMO_MOCK_DATA.responseFormat);
-    } else if (savedData) {
-      setCustomerResearchResults(savedData.results || null);
+    } else if (savedData?.results) {
+      setCustomerResearchResults(savedData.results);
       setShowCustomerResearchTable(savedData.showTable || false);
       setMinimizedCustomerResearch(savedData.minimized || false);
       if (savedData.overview) setOverview(savedData.overview);
       if (savedData.industries) setIndustries(savedData.industries);
       if (savedData.countries) setCountries(savedData.countries);
       if (savedData.responseFormat) setResponseFormat(savedData.responseFormat);
-    } else {
-      // Live mode with no data - clear everything
-      setCustomerResearchResults(null);
-      setShowCustomerResearchTable(false);
-      setMinimizedCustomerResearch(false);
-      setOverview('');
-      setIndustries('');
-      setCountries('');
-      setResponseFormat('');
     }
 
-    // Reset transition flag after loading
-    if (isModeTransition) {
-      setIsModeTransition(false);
-    }
+    // Mark initial load as complete after state updates
+    setTimeout(() => {
+      isInitialLoadRef.current = false;
+      lastSavedModeRef.current = isDemoMode;
+    }, 100);
   }, [isDemoMode]);
 
   // Fetch existing campaigns when email modal opens
@@ -1535,7 +1540,7 @@ ${getCurrentUsername() || 'Your Name'}`);
         setEmailBody('');
         setSelectedLead(null);
       } else {
-        alert('Error : ' + data.error);
+        alert('Error: ' + data.error);
       }
     } catch (e) {
       alert('Error sending emails: ' + e.message);
@@ -1572,7 +1577,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               <label>INDUSTRY</label>
               <input
                 type="text"
-                placeholder="e.g. Fintech"
+                placeholder="e.g., Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
               />
@@ -1581,7 +1586,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               <label>REGION</label>
               <input
                 type="text"
-                placeholder="e.g. North Ame"
+                placeholder="e.g., North America"
                 value={countries}
                 onChange={(e) => setCountries(e.target.value)}
               />
@@ -1627,8 +1632,26 @@ ${getCurrentUsername() || 'Your Name'}`);
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>{responseFormat === 'Supplier Research' ? 'Vendors' : 'Leads'}</button>
-            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</button>
+            <div className="view-filter-group">
+              <label className="view-filter-label">View:</label>
+              <select
+                className="view-filter-select"
+                value={showSavedListsView ? 'saved' : 'results'}
+                onChange={(e) => {
+                  if (e.target.value === 'saved') {
+                    setShowSavedListsView(true);
+                    fetchSavedLists();
+                  } else {
+                    setShowSavedListsView(false);
+                    setActiveSavedList(null);
+                    setActiveSavedListLeads([]);
+                  }
+                }}
+              >
+                <option value="results">{responseFormat === 'Supplier Research' ? 'All Vendors' : 'All Leads'}</option>
+                <option value="saved">{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</option>
+              </select>
+            </div>
             <a href="/market-research/campaigns" className="workspace-link">
               Campaign Dashboard →
             </a>
@@ -1673,7 +1696,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                                 <td>{list.name}</td>
                                 <td>{list.query_used || 'N/A'}</td>
                                 <td style={{ textAlign: 'center' }}>{list.lead_count}</td>
-                                <td style={{ textAlign: 'center' }}>{list.created_at ? new Date(list.created_at).toLocaleDateString() : 'N/A'}</td>
+                                <td style={{ textAlign: 'center' }}>{list.created_at ? formatDate(list.created_at) : 'N/A'}</td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                     <button
@@ -1722,7 +1745,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                               <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
                               <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
                               <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} className="table-btn-primary">{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
                               <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                 {business.match_score != null ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -2012,7 +2035,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                             setShowCustomerResearchTable(true);
                           }}
                         >
-                          ✨ Try Example (Demo Mode)
+                          Try Example (Demo Mode)
                         </button>
                       )}
                     </div>
@@ -2361,7 +2384,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                 ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
-                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
+                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="e.g., NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
                 </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
@@ -2384,7 +2407,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
-                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g. We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
+                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g., We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
                   <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
