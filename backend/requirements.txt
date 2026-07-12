@@ -29,7 +29,6 @@ selenium
 webdriver-manager
 openpyxl
 duckduckgo-search
-twilio
 google-auth-oauthlib
 google-auth
 google-api-python-client

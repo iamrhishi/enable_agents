@@ -17,7 +17,8 @@ RUN apt-get update -o Acquire::Retries=5 \
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --prefer-binary avoids source builds where wheels exist (faster)
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Bake NLTK data into the image (avoids flaky runtime downloads and worker races on punkt_tab/stopwords).
 RUN python -c "import nltk; nltk.download('stopwords', quiet=True); nltk.download('punkt_tab', quiet=True)"
