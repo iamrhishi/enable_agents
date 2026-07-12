@@ -424,33 +424,6 @@ class EmailExtractionUsageLog(db.Model):
     total_cost_after = db.Column(db.Float, nullable=False, default=0.0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-class EmailCampaign(db.Model):
-    __tablename__ = 'email_campaigns'
-    __table_args__ = {'extend_existing': True}
-    id = db.Column(db.String(36), primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    subject = db.Column(db.String(255), nullable=False)
-    username = db.Column(db.String(120), index=True)
-    sender_email = db.Column(db.String(255), nullable=True, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-class EmailCampaignRecipient(db.Model):
-    __tablename__ = 'email_campaign_recipients'
-    __table_args__ = {'extend_existing': True}
-    id = db.Column(db.Integer, primary_key=True)
-    campaign_id = db.Column(db.String(36), db.ForeignKey('email_campaigns.id'), nullable=False)
-    receiver_email = db.Column(db.String(255), nullable=False, index=True)
-    receiver_name = db.Column(db.String(255), nullable=True)
-    status = db.Column(db.String(50), default='Sent')
-    reply_status = db.Column(db.String(50), default='No Reply')
-    message_id = db.Column(db.String(255), nullable=True) # For tracking Gmail threads
-    thread_id = db.Column(db.String(255), nullable=True)
-    reply_subject = db.Column(db.String(512), nullable=True)
-    reply_snippet = db.Column(db.Text, nullable=True)
-    reply_body = db.Column(db.Text, nullable=True)
-    sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    replied_at = db.Column(db.DateTime, nullable=True)
-
 class SavedProject(db.Model):
     __tablename__ = 'saved_projects'
     __table_args__ = {'extend_existing': True}
