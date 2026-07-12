@@ -50,7 +50,7 @@ export const AGENTS = {
     icon: 'sales-helper.png',
     description: 'Supercharge your sales with CRM integration, and intelligent recommendations.',
     category: AGENT_CATEGORIES.BUSINESS,
-    status: AGENT_STATUS.COMING_SOON,
+    status: AGENT_STATUS.READY,
     price: '$45/month',
     features: ['CRM Integration', 'Lead Scoring', 'Sales Analytics'],
   },
@@ -62,7 +62,7 @@ export const AGENTS = {
     icon: 'content-marketing.png',
     description: 'Create engaging content, manage campaigns, and analyze performance across channels.',
     category: AGENT_CATEGORIES.BUSINESS,
-    status: AGENT_STATUS.COMING_SOON,
+    status: AGENT_STATUS.READY,
     price: '$35/month',
     features: ['Content Generation', 'Campaign Management', 'Analytics'],
   },
@@ -74,7 +74,7 @@ export const AGENTS = {
     icon: 'community-network.png',
     description: 'Build and engage your community with AI-powered networking and relationship management.',
     category: AGENT_CATEGORIES.BUSINESS,
-    status: AGENT_STATUS.COMING_SOON,
+    status: AGENT_STATUS.READY,
     price: '$25/month',
     features: ['Community Building', 'Engagement Tools', 'Network Analysis'],
   },
@@ -86,7 +86,7 @@ export const AGENTS = {
     icon: 'event-networking.png',
     description: 'Maximize event ROI with smart attendee matching and follow-up automation.',
     category: AGENT_CATEGORIES.BUSINESS,
-    status: AGENT_STATUS.COMING_SOON,
+    status: AGENT_STATUS.READY,
     price: '$30/month',
     features: ['Attendee Matching', 'Follow-up Automation', 'Event Analytics'],
   },
@@ -110,11 +110,12 @@ export const AGENTS = {
     icon: 'data-insights.png',
     description: 'Transform raw data into actionable insights with AI-powered analytics and visualization.',
     category: AGENT_CATEGORIES.TECHNICAL,
-    status: AGENT_STATUS.COMING_SOON,
+    status: AGENT_STATUS.READY,
     price: '$49/month',
     features: ['Data Visualization', 'Predictive Analytics', 'Reports'],
   },
 
+  // Hidden - placeholder only
   supplyChain: {
     id: 'supplyChain',
     name: 'Supply Chain',
@@ -123,10 +124,12 @@ export const AGENTS = {
     description: 'Optimize your supply chain with demand forecasting and vendor management.',
     category: AGENT_CATEGORIES.TECHNICAL,
     status: AGENT_STATUS.COMING_SOON,
+    hidden: true,
     price: '$55/month',
     features: ['Demand Forecasting', 'Vendor Management', 'Inventory'],
   },
 
+  // Hidden - placeholder only
   investAgent: {
     id: 'investAgent',
     name: 'Investment Agent',
@@ -135,10 +138,12 @@ export const AGENTS = {
     description: 'Make smarter investment decisions with AI-powered market analysis and portfolio recommendations.',
     category: AGENT_CATEGORIES.TECHNICAL,
     status: AGENT_STATUS.COMING_SOON,
+    hidden: true,
     price: '$65/month',
     features: ['Market Analysis', 'Portfolio Tracking', 'Risk Assessment'],
   },
 
+  // Hidden - placeholder only
   teamPerformance: {
     id: 'teamPerformance',
     name: 'Team Performance',
@@ -147,10 +152,12 @@ export const AGENTS = {
     description: 'Track team productivity, evaluate performance, and identify areas for improvement with analytics.',
     category: AGENT_CATEGORIES.TECHNICAL,
     status: AGENT_STATUS.COMING_SOON,
+    hidden: true,
     price: '$39/month',
     features: ['Performance Tracking', 'Team Analytics', 'Goal Management'],
   },
 
+  // Hidden - placeholder only
   aiChatbot: {
     id: 'aiChatbot',
     name: 'AI Chatbot',
@@ -159,6 +166,7 @@ export const AGENTS = {
     description: 'Deploy intelligent chatbots for customer support and lead qualification.',
     category: AGENT_CATEGORIES.TECHNICAL,
     status: AGENT_STATUS.COMING_SOON,
+    hidden: true,
     price: '$40/month',
     features: ['Customer Support', 'Lead Qualification', 'Multi-channel'],
   },
@@ -185,14 +193,14 @@ export const getAgentById = (id) => {
   return AGENTS[id];
 };
 
-// Get all agents as array
+// Get all agents as array (excluding hidden)
 export const getAllAgents = () => {
-  return Object.values(AGENTS);
+  return Object.values(AGENTS).filter(agent => !agent.hidden);
 };
 
-// Get agents by category
+// Get agents by category (excluding hidden)
 export const getAgentsByCategory = (category) => {
-  return Object.values(AGENTS).filter(agent => agent.category === category);
+  return Object.values(AGENTS).filter(agent => agent.category === category && !agent.hidden);
 };
 
 // Get business modules
@@ -205,9 +213,9 @@ export const getTechnicalAgents = () => {
   return getAgentsByCategory(AGENT_CATEGORIES.TECHNICAL);
 };
 
-// Get ready agents only
+// Get ready agents only (excluding hidden)
 export const getReadyAgents = () => {
-  return Object.values(AGENTS).filter(agent => agent.status === AGENT_STATUS.READY);
+  return Object.values(AGENTS).filter(agent => agent.status === AGENT_STATUS.READY && !agent.hidden);
 };
 
 // Check if agent is ready
