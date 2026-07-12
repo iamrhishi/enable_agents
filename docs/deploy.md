@@ -6,6 +6,33 @@
 - **VM Instance:** `instance-20260419-210128` (us-central1-f)
 - **VM Type:** e2-medium (2 vCPU, 4GB RAM, 4GB swap)
 - **Domain:** enableyou.co
+- **Live URL:** https://agents.enableyou.co/
+
+## SSL/HTTPS
+
+- HTTP automatically redirects to HTTPS (301)
+- SSL certificates managed by Let's Encrypt (certbot)
+- Nginx handles SSL termination inside Docker
+
+### GCP Firewall Rules Required
+
+```bash
+# Port 80 (HTTP - for redirect)
+gcloud compute firewall-rules create allow-http --allow=tcp:80
+
+# Port 443 (HTTPS)
+gcloud compute firewall-rules create allow-https --allow=tcp:443
+```
+
+### Verify HTTPS
+
+```bash
+# Should return HTTP/2 200
+curl -I https://agents.enableyou.co/
+
+# Should return 301 redirect to HTTPS
+curl -I http://agents.enableyou.co/
+```
 
 ## Deployment Methods
 
@@ -114,6 +141,20 @@ gcloud compute ssh instance-20260419-210128 --zone=us-central1-f --command="free
 gcloud compute ssh instance-20260419-210128 --zone=us-central1-f --command="
   cd /home/rhishi/enable_agents && sudo docker compose down && sudo docker compose up -d
 "
+```
+
+### HTTPS not working
+1. Check GCP firewall rules allow port 443:
+```bash
+gcloud compute firewall-rules list --filter="allowed:tcp:443"
+```
+2. Check nginx container is running:
+```bash
+gcloud compute ssh instance-20260419-210128 --zone=us-central1-f --command="sudo docker ps | grep nginx"
+```
+3. Check SSL certificate exists:
+```bash
+gcloud compute ssh instance-20260419-210128 --zone=us-central1-f --command="sudo docker exec enable_agents_nginx ls -la /etc/letsencrypt/live/"
 ```
 
 ## Branches
