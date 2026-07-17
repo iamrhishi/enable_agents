@@ -18,12 +18,23 @@ from core.database import db
 
 
 class ProcessedDocument(db.Model):
-    """Document metadata and processing status."""
+    """Document metadata and processing status.
+
+    Documents are project-scoped: they belong to a project and can be
+    accessed by any team member with project access. The uploaded_by
+    field tracks who originally uploaded the document.
+    """
 
     __tablename__ = "processed_documents"
 
     document_id = db.Column(db.String(36), primary_key=True)
-    user_id = db.Column(db.String(255), nullable=False, index=True)
+
+    # Project-scoped ownership (nullable for backwards compatibility)
+    project_id = db.Column(db.String(36), nullable=True, index=True)
+
+    # Track who uploaded (renamed from user_id)
+    uploaded_by = db.Column("uploaded_by", db.String(255), nullable=False, index=True)
+
     file_name = db.Column(db.String(255), nullable=False)
     file_type = db.Column(db.String(50))
     file_size = db.Column(db.Integer)
@@ -69,7 +80,8 @@ class ProcessedDocument(db.Model):
     def to_dict(self) -> Dict[str, Any]:
         return {
             "document_id": self.document_id,
-            "user_id": self.user_id,
+            "project_id": self.project_id,
+            "uploaded_by": self.uploaded_by,
             "file_name": self.file_name,
             "file_type": self.file_type,
             "file_size": self.file_size,

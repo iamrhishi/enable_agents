@@ -9,6 +9,19 @@ body, html {
   padding: 0;
 }
 
+.chatbot-agent-page {
+  min-height: 100vh;
+  background: var(--gradient-surface);
+}
+
+.chatbot-agent-page .agent-page-header + .agent-outcomes,
+.chatbot-agent-page .agent-page-header + .agent-outcomes + .live-mode-hint {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+  box-sizing: border-box;
+}
+
 .chatbot-page {
   background: var(--gradient-surface);
   display: flex;
@@ -186,7 +199,7 @@ body, html {
 
 /* Timestamp */
 .chatbot-message-time {
-  font-size: 0.7rem;
+  font-size: var(--text-caption);
   color: rgba(0, 0, 0, 0.4);
   margin-top: var(--space-1);
   display: block;
@@ -259,7 +272,7 @@ body, html {
 /* Send icon */
 .chatbot-input-row button::after {
   content: '↑';
-  font-size: 1.2rem;
+  font-size: var(--text-page-title);
 }
 
 .chatbot-history ul {

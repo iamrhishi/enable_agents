@@ -7,27 +7,24 @@
 .back-to-hub-button {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start; /* Don't stretch in flex column containers */
+  align-self: flex-start;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-surface);
-  color: var(--color-primary);
-  border: 1.5px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-background);
+  color: var(--color-text-muted);
+  border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-body);
   font-weight: var(--font-medium);
   font-family: var(--font-body);
   cursor: pointer;
-  transition: all var(--transition-normal);
-  margin: var(--space-4);
-  margin-bottom: var(--space-3);
+  transition: all var(--transition-fast);
+  margin: 0;
 }
 
 .back-to-hub-button:hover {
-  background: var(--color-background);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  transform: translateX(-2px);
+  background: var(--color-border);
+  color: var(--color-text);
 }
 
 .back-to-hub-button svg {

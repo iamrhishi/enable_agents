@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
+import { BackButton, ProjectSelector, LiveModeHint, ProjectGate, AgentOutcomesStrip } from '../components';
 import '../styles/SalesHelperAgent.css';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
-import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 
 // Demo mock data for Sales Helper
 const DEMO_SAVED_PROJECTS = [
@@ -25,7 +27,14 @@ const DEMO_CAMPAIGNS = [
   { id: 'demo-camp-2', name: 'Product Launch Follow-up', subject: 'New Features Available', totalSent: 32, totalReplied: 8, replyRate: 25, createdAt: '2026-06-18' },
 ];
 
+const DEMO_DOCUMENTS = [
+  { id: 'doc-1', name: 'Product Catalog 2026.pdf', type: 'product_catalog', size: '2.4 MB', uploadedAt: '2026-06-10', status: 'processed' },
+  { id: 'doc-2', name: 'Enterprise Features.pdf', type: 'product_info', size: '1.1 MB', uploadedAt: '2026-06-15', status: 'processed' },
+];
+
 function SalesHelperAgent() {
+  const selectedProjectId = useSelectedProjectId();
+
   // Demo mode detection
   const [isDemoMode, setIsDemoMode] = useState(() => {
     const stored = localStorage.getItem('enableAgentsMode');
@@ -68,11 +77,17 @@ function SalesHelperAgent() {
   const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
   const [isRankingVendors, setIsRankingVendors] = useState(false);
   const [rankedVendors, setRankedVendors] = useState([]);
-  const [isLeadsPanelCollapsed, setIsLeadsPanelCollapsed] = useState(false);
-  const [isRankingPanelCollapsed, setIsRankingPanelCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('leads'); // 'leads' or 'ranking'
   const [isChatOpen, setIsChatOpen] = useState(false);
   const rankingResultsRef = useRef(null);
   const [defaultUserId] = useState('user_001');
+
+  // Product catalog / document upload
+  const [uploadedDocuments, setUploadedDocuments] = useState([]);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [showDocUploadModal, setShowDocUploadModal] = useState(false);
+  const fileInputRef = useRef(null);
+  // eslint-disable-next-line no-unused-vars
   const selectedRankingCampaign = campaigns.find((campaign) => String(campaign.id) === String(selectedRankingCampaignId));
   const savedLeadsCount = selectedSavedProjectLeads.length;
 
@@ -83,29 +98,160 @@ function SalesHelperAgent() {
     defaultUserId ||
     'anonymous';
 
-  // Reload data when mode changes
+  // Reload data when mode or project changes
   useEffect(() => {
-    // Clear current data first when switching modes
+    if (!selectedProjectId) {
+      setSavedProjects([]);
+      setCampaigns([]);
+      setSelectedSavedProject(null);
+      setSelectedSavedProjectLeads([]);
+      setRankedVendors([]);
+      setUploadedDocuments([]);
+      return;
+    }
     setSavedProjects([]);
     setCampaigns([]);
     setSelectedSavedProject(null);
     setSelectedSavedProjectLeads([]);
     setRankedVendors([]);
-    // Then fetch fresh data for current mode
+    setUploadedDocuments(isDemoMode ? DEMO_DOCUMENTS : []);
     fetchSavedProjects();
     fetchCampaigns();
-  }, [isDemoMode]);
+  }, [isDemoMode, selectedProjectId]);
+
+  // Document upload handler
+  const handleDocumentUpload = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+
+    if (!allowedTypes.includes(file.type)) {
+      addMessage('Please upload a PDF, Word document, or text file.', 'agent', null, 'markdown');
+      return;
+    }
+
+    if (isDemoMode) {
+      const newDoc = {
+        id: `doc-${Date.now()}`,
+        name: file.name,
+        type: 'product_catalog',
+        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+        uploadedAt: new Date().toISOString().split('T')[0],
+        status: 'processed',
+      };
+      setUploadedDocuments([...uploadedDocuments, newDoc]);
+      setShowDocUploadModal(false);
+      addMessage(`**Document uploaded:** ${file.name}\n\nI can now use this document to match prospects with your products and services. (Demo Mode)`, 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsUploadingDoc(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('user_id', getCurrentUserIdentifier());
+      formData.append('type', 'product_catalog');
+
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents`, {
+        method: 'POST',
+        headers: authOptionalHeaders(),
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setUploadedDocuments([...uploadedDocuments, result.document]);
+        setShowDocUploadModal(false);
+        addMessage(`**Document uploaded:** ${file.name}\n\nI can now use this document to match prospects with your products and services.`, 'agent', null, 'markdown');
+      } else {
+        addMessage(`Failed to upload document: ${result.error || 'Unknown error'}`, 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Document upload error:', error);
+      addMessage('Error uploading document. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsUploadingDoc(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Remove document
+  const handleRemoveDocument = async (docId) => {
+    if (isDemoMode) {
+      setUploadedDocuments(uploadedDocuments.filter(d => d.id !== docId));
+      addMessage('Document removed (Demo Mode)', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents/${docId}`, {
+        method: 'DELETE',
+        headers: authOptionalHeaders(),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setUploadedDocuments(uploadedDocuments.filter(d => d.id !== docId));
+      }
+    } catch (error) {
+      console.error('Error removing document:', error);
+    }
+  };
+
+  // Match prospects with documents
+  const handleMatchProspects = async () => {
+    if (uploadedDocuments.length === 0) {
+      addMessage('Please upload a product catalog first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    if (selectedSavedProjectLeads.length === 0) {
+      addMessage('Please load a leads list first to match prospects.', 'agent', null, 'markdown');
+      return;
+    }
+
+    if (isDemoMode) {
+      addMessage(`**Prospect Matching Results**\n\nBased on your product catalog, here are the best matches from **${selectedSavedProject?.name}**:\n\n1. **Acme Corp** - 95% match\n   - Needs: Enterprise software, automation\n   - Product fit: Enterprise Features package\n\n2. **TechStart Inc** - 88% match\n   - Needs: SaaS platform, integrations\n   - Product fit: API Suite, Starter plan\n\n3. **DataFlow Systems** - 82% match\n   - Needs: Data analytics, reporting\n   - Product fit: Analytics module\n\n(Demo Mode)`, 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/match-prospects`, {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({
+          user_id: getCurrentUserIdentifier(),
+          leads: selectedSavedProjectLeads.slice(0, 20),
+          document_ids: uploadedDocuments.map(d => d.id),
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        addMessage(result.analysis || 'Matching complete. See results above.', 'agent', null, 'markdown');
+      } else {
+        addMessage(`Matching failed: ${result.error || 'Unknown error'}`, 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Prospect matching error:', error);
+      addMessage('Error matching prospects. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Scroll to ranking results when they appear
   useEffect(() => {
-    if (rankedVendors.length === 0 || isRankingPanelCollapsed) return;
+    if (rankedVendors.length === 0) return;
 
     const scrollTimer = window.requestAnimationFrame(() => {
       rankingResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
     return () => window.cancelAnimationFrame(scrollTimer);
-  }, [rankedVendors.length, isRankingPanelCollapsed]);
+  }, [rankedVendors.length]);
 
   const fetchCampaigns = async () => {
     // Demo mode: use mock campaigns
@@ -216,7 +362,7 @@ function SalesHelperAgent() {
       setSelectedSavedProjectLeads(DEMO_PROJECT_LEADS);
       setSavedProjectSelection(String(projectId));
       addMessage(
-        `📂 **Loaded saved leads list:** ${demoProject?.name || 'Demo List'}\n\nI can now answer questions about these ${DEMO_PROJECT_LEADS.length} leads. (Demo Mode)`,
+        `**Loaded saved leads list:** ${demoProject?.name || 'Demo List'}\n\nI can now answer questions about these ${DEMO_PROJECT_LEADS.length} leads. (Demo Mode)`,
         'agent',
         null,
         'markdown'
@@ -237,7 +383,7 @@ function SalesHelperAgent() {
         setSelectedSavedProjectLeads(result.leads || []);
         setSavedProjectSelection(String(projectId));
         addMessage(
-          `📂 **Loaded saved leads list:** ${result.project?.name || 'Untitled'}\n\nI can now answer questions about these ${result.leads?.length || 0} leads.`,
+          `**Loaded saved leads list:** ${result.project?.name || 'Untitled'}\n\nI can now answer questions about these ${result.leads?.length || 0} leads.`,
           'agent',
           null,
           'markdown'
@@ -296,7 +442,7 @@ function SalesHelperAgent() {
 
     try {
       setIsRankingVendors(true);
-      addMessage('🧮 Ranking vendor replies by your criteria...', 'agent', null, 'markdown');
+      addMessage('Ranking vendor replies by your criteria...', 'agent', null, 'markdown');
       const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.RANK_CAMPAIGN_VENDORS.replace('{campaignId}', selectedRankingCampaignId), {
         method: 'POST',
@@ -312,7 +458,7 @@ function SalesHelperAgent() {
         setRankedVendors(result.vendors);
         const campaignName = result.campaign?.name || 'selected campaign';
         addMessage(
-          `🏆 **Vendor ranking completed for ${campaignName}:**\n\n${result.vendors.map(v => `${v.rank}. ${v.vendor_name} - ${v.score}/100\n${v.reason || v.reply_summary || ''}`).join('\n\n')}`,
+          `**Vendor ranking completed for ${campaignName}:**\n\n${result.vendors.map(v => `${v.rank}. ${v.vendor_name} - ${v.score}/100\n${v.reason || v.reply_summary || ''}`).join('\n\n')}`,
           'agent',
           null,
           'markdown'
@@ -357,15 +503,15 @@ function SalesHelperAgent() {
     window.salesHelper = {
       contactProspect: (index) => {
         const prospect = csvData[index];
-        addMessage(`📞 **Initiating contact with ${prospect.company || prospect.name}**\n\n📋 **Contact Details:**\n${prospect.email ? `📧 Email: ${prospect.email}` : ''}\n${prospect.phone ? `📱 Phone: ${prospect.phone}` : ''}\n${prospect.linkedin ? `🔗 LinkedIn: ${prospect.linkedin}` : ''}`, 'agent', null, 'markdown');
+        addMessage(`**Initiating contact with ${prospect.company || prospect.name}**\n\n**Contact Details:**\n${prospect.email ? `Email: ${prospect.email}` : ''}\n${prospect.phone ? `Phone: ${prospect.phone}` : ''}\n${prospect.linkedin ? `LinkedIn: ${prospect.linkedin}` : ''}`, 'agent', null, 'markdown');
       },
       addToFavorites: (index) => {
         const prospect = csvData[index];
-        addMessage(`⭐ Added ${prospect.company || prospect.name} to favorites!`, 'agent', null, 'markdown');
+        addMessage(`Added ${prospect.company || prospect.name} to favorites!`, 'agent', null, 'markdown');
       },
       addNotes: (index) => {
         const prospect = csvData[index];
-        addMessage(`📝 **Add notes for ${prospect.company || prospect.name}:**\n\nYou can track:\n• Last contact date\n• Discussion points\n• Next follow-up action\n• Decision makers involved`, 'agent', null, 'markdown');
+        addMessage(`**Add notes for ${prospect.company || prospect.name}:**\n\nYou can track:\n• Last contact date\n• Discussion points\n• Next follow-up action\n• Decision makers involved`, 'agent', null, 'markdown');
       }
     };
 
@@ -378,58 +524,82 @@ function SalesHelperAgent() {
     <div className="sales-helper-agent">
       <Header />
 
-      <div className="main-container">
-        <div className="assistant-workspace side-by-side-layout">
-          {/* Left Panel - Saved Leads */}
-          <div className={`split-panel leads-panel ${isLeadsPanelCollapsed ? 'collapsed' : ''}`}>
-            <div className="split-panel-header">
-              <div className="panel-title-row">
-                <h3>Saved Leads</h3>
-                <div className="panel-badges">
-                  <span className="mini-badge">{savedProjects.length} lists</span>
-                  <span className="mini-badge accent">{savedLeadsCount} loaded</span>
-                </div>
-              </div>
-              <div className="panel-header-btns">
-                <button className="icon-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects} title="Refresh">
-                  {isLoadingSavedProjects ? '...' : '↻'}
-                </button>
-                <button
-                  className="icon-btn collapse-btn"
-                  onClick={() => setIsLeadsPanelCollapsed(!isLeadsPanelCollapsed)}
-                  title={isLeadsPanelCollapsed ? 'Expand' : 'Collapse'}
-                >
-                  {isLeadsPanelCollapsed ? '▶' : '◀'}
-                </button>
-              </div>
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Sales Helper</h1>
             </div>
+            <p className="text-muted">
+              Analyze prospects, rank vendors, and match leads with your product catalog.
+            </p>
+          </div>
+        </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="salesHelper"
+            onProjectChange={(project) => {
+              if (project) {
+                console.log('Project selected:', project.name);
+              }
+            }}
+          />
+        </div>
+      </div>
 
-            {!isLeadsPanelCollapsed && (
-              <div className="split-panel-body">
-                <div className="saved-leads-controls">
-                  <select
-                    value={savedProjectSelection}
-                    onChange={(e) => setSavedProjectSelection(e.target.value)}
-                    className="saved-leads-select"
-                  >
-                    <option value="">Select a list</option>
-                    {savedProjects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.lead_count})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="open-saved-list-btn"
-                    onClick={() => loadSavedProjectLeads(savedProjectSelection)}
-                    disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
-                  >
-                    {isLoadingSavedProjectLeads ? '...' : 'Open'}
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/search-analysis.png', title: 'Lead analysis', description: 'Load saved lead lists and explore prospect data.' },
+          { iconSrc: '/assets/icons/chat.png', title: 'AI assistant', description: 'Ask questions about vendors and product fit.' },
+          { iconSrc: '/assets/icons/bar-chart.png', title: 'Vendor ranking', description: 'Score and compare vendors for your RFP.' },
+        ]}
+      />
+
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample leads."
+      />
+
+      <div className="main-container">
+        <ProjectGate agentLabel="Sales Helper workspace">
+          <div className="sales-helper-content">
+            <div className="assistant-workspace tabbed-layout">
+          {/* Tab Navigation */}
+          <div className="workspace-tabs">
+            <button
+              className={`workspace-tab ${activeTab === 'leads' ? 'active' : ''}`}
+              onClick={() => setActiveTab('leads')}
+            >
+              Saved Leads
+              <span className="tab-badge">{savedProjects.length} lists</span>
+              {savedLeadsCount > 0 && <span className="tab-badge accent">{savedLeadsCount} loaded</span>}
+            </button>
+            <button
+              className={`workspace-tab ${activeTab === 'ranking' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ranking')}
+            >
+              Vendor Ranking
+              <span className="tab-badge">{campaigns.length} campaigns</span>
+              {rankedVendors.length > 0 && <span className="tab-badge accent">{rankedVendors.length} ranked</span>}
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="workspace-tab-content">
+            {/* Saved Leads Tab */}
+            {activeTab === 'leads' && (
+              <div className="tab-panel leads-panel">
+                <div className="panel-header-row">
+                  <button type="button" className="panel-action-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects} title="Refresh lists">
+                    {isLoadingSavedProjects ? '...' : 'Refresh'}
                   </button>
                 </div>
 
+                {/* Main content area */}
+                <div className="leads-main">
                 {!selectedSavedProject ? (
-                  <div className="saved-leads-table-scroll">
+                  <div className="leads-grid-container">
                     {isLoadingSavedProjects ? (
                       <div className="empty-saved-state">Loading...</div>
                     ) : savedProjects.length === 0 ? (
@@ -437,40 +607,32 @@ function SalesHelperAgent() {
                         <p>No saved lists yet. Create lead lists from Market Research.</p>
                       </div>
                     ) : (
-                      <table className="businesses-table saved-projects-table dashboard-table compact-table">
-                        <thead>
-                          <tr>
-                            <th>List</th>
-                            <th>Leads</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {savedProjects.map((project) => (
-                            <tr key={project.id}>
-                              <td>
-                                <div className="table-main-cell">{project.name}</div>
-                                <div className="table-subtext">{project.query_used || ''}</div>
-                              </td>
-                              <td><span className="inline-pill">{project.lead_count}</span></td>
-                              <td>
-                                <button className="open-row-btn" onClick={() => loadSavedProjectLeads(project.id)}>
-                                  Open
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="leads-list-grid">
+                        {savedProjects.map((project) => (
+                          <button
+                            key={project.id}
+                            className="lead-list-card"
+                            onClick={() => loadSavedProjectLeads(project.id)}
+                          >
+                            <div className="lead-list-card-header">
+                              <span className="lead-count">{project.lead_count}</span>
+                              <span className="lead-count-label">leads</span>
+                            </div>
+                            <div className="lead-list-card-body">
+                              <h4 className="lead-list-name">{project.name}</h4>
+                              <p className="lead-list-query">{project.query_used || 'No query specified'}</p>
+                            </div>
+                            <div className="lead-list-card-footer">
+                              <span className="view-leads-link">View leads →</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ) : (
                   <>
-                    <div className="selected-saved-list-bar compact">
-                      <div>
-                        <h4>{selectedSavedProject?.name}</h4>
-                        <span>{selectedSavedProjectLeads.length} leads</span>
-                      </div>
+                    <div className="selected-list-header">
                       <button
                         className="back-to-lists-btn"
                         onClick={() => {
@@ -478,119 +640,286 @@ function SalesHelperAgent() {
                           setSelectedSavedProjectLeads([]);
                         }}
                       >
-                        ← Back
+                        ← All Lists
                       </button>
+                      <div className="selected-list-info">
+                        <h3>{selectedSavedProject?.name}</h3>
+                        <span className="lead-count-badge">{selectedSavedProjectLeads.length} leads</span>
+                      </div>
                     </div>
 
-                    <div className="saved-leads-table-scroll">
-                      <table className="businesses-table saved-leads-table dashboard-table compact-table">
-                        <thead>
-                          <tr>
-                            <th>Business</th>
-                            <th>Contact</th>
-                            <th>Email</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedSavedProjectLeads.map((lead, index) => (
-                            <tr key={`${lead.id || index}`}>
-                              <td>
-                                <div className="table-main-cell">{lead.name || 'N/A'}</div>
-                                {lead.website && <a href={lead.website} target="_blank" rel="noopener noreferrer" className="table-subtext">Website</a>}
-                              </td>
-                              <td className="table-mono">{lead.phone || '-'}</td>
-                              <td className="table-mono">{lead.email || (Array.isArray(lead.emails) && lead.emails[0]) || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="leads-card-grid">
+                      {selectedSavedProjectLeads.map((lead, index) => (
+                        <div key={`${lead.id || index}`} className="lead-card">
+                          <div className="lead-card-header">
+                            <h4 className="lead-name">{lead.name || 'Unknown'}</h4>
+                            {lead.website && (
+                              <a href={lead.website} target="_blank" rel="noopener noreferrer" className="lead-website-btn">
+                                Website
+                              </a>
+                            )}
+                          </div>
+                          <div className="lead-card-details">
+                            {lead.phone && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Phone</span>
+                                <span className="detail-value">{lead.phone}</span>
+                              </div>
+                            )}
+                            {(lead.email || (Array.isArray(lead.emails) && lead.emails[0])) && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Email</span>
+                                <span className="detail-value">{lead.email || lead.emails[0]}</span>
+                              </div>
+                            )}
+                            {lead.address && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Location</span>
+                                <span className="detail-value">{lead.address}</span>
+                              </div>
+                            )}
+                          </div>
+                          {lead.summary && (
+                            <p className="lead-summary">{lead.summary}</p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </>
                 )}
-              </div>
-            )}
-          </div>
 
-          {/* Right Panel - Vendor Ranking */}
-          <div className={`split-panel ranking-panel ${isRankingPanelCollapsed ? 'collapsed' : ''}`}>
-            <div className="split-panel-header">
-              <div className="panel-title-row">
-                <h3>Vendor Ranking</h3>
-                <div className="panel-badges">
-                  <span className="mini-badge">{campaigns.length} campaigns</span>
-                  <span className="mini-badge accent">{rankedVendors.length} ranked</span>
+                {/* Documents Section - Redesigned */}
+                <div className="catalog-section">
+                  <div className="catalog-header">
+                    <div>
+                      <h4>Product Catalogs</h4>
+                      <p className="catalog-subtitle">Upload documents to match prospects with your offerings</p>
+                    </div>
+                  </div>
+
+                  <div className="catalog-content">
+                    {/* Upload Zone */}
+                    <div
+                      className={`upload-dropzone ${isUploadingDoc ? 'uploading' : ''}`}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <img src="/assets/icons/document.png" alt="" className="dropzone-icon-img" />
+                      <div className="dropzone-text">
+                        <span className="dropzone-title">
+                          {isUploadingDoc ? 'Uploading...' : 'Drop files or click to upload'}
+                        </span>
+                        <span className="dropzone-hint">PDF, Word, TXT up to 10MB</span>
+                      </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleDocumentUpload}
+                        accept=".pdf,.doc,.docx,.txt"
+                        style={{ display: 'none' }}
+                      />
+                    </div>
+
+                    {/* Document List */}
+                    {uploadedDocuments.length > 0 && (
+                      <div className="document-list">
+                        {uploadedDocuments.map(doc => (
+                          <div key={doc.id} className="document-card">
+                            <div className="doc-card-top">
+                              <img src="/assets/icons/document.png" alt="" className="doc-card-icon" />
+                              <div className="doc-card-info">
+                                <span className="doc-card-name">{doc.name}</span>
+                                <span className="doc-card-meta">{doc.size} · {doc.uploadedAt}</span>
+                              </div>
+                            </div>
+                            <div className="doc-card-actions">
+                              <button
+                                className="doc-text-btn"
+                                onClick={() => window.open(doc.url || `/api/sales-helper/documents/${doc.id}/view`, '_blank')}
+                              >
+                                View
+                              </button>
+                              <a
+                                className="doc-text-btn"
+                                href={doc.url || `/api/sales-helper/documents/${doc.id}/download`}
+                                download={doc.name}
+                              >
+                                Download
+                              </a>
+                              <button
+                                className="doc-text-btn danger"
+                                onClick={() => handleRemoveDocument(doc.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Match Button */}
+                    {uploadedDocuments.length > 0 && selectedSavedProjectLeads.length > 0 && (
+                      <button className="match-prospects-btn" onClick={handleMatchProspects} disabled={isLoading}>
+                        {isLoading ? 'Matching prospects...' : 'Match with Prospects'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="panel-header-btns">
-                <button className="icon-btn" onClick={fetchCampaigns} disabled={isLoadingCampaigns} title="Refresh">
-                  {isLoadingCampaigns ? '...' : '↻'}
-                </button>
-                <button
-                  className="icon-btn collapse-btn"
-                  onClick={() => setIsRankingPanelCollapsed(!isRankingPanelCollapsed)}
-                  title={isRankingPanelCollapsed ? 'Expand' : 'Collapse'}
-                >
-                  {isRankingPanelCollapsed ? '◀' : '▶'}
-                </button>
               </div>
-            </div>
+            )}
 
-            {!isRankingPanelCollapsed && (
-              <div className="split-panel-body">
-                <div className="ranking-form-compact">
-                  <label className="field-group">
-                    <span className="field-label">Campaign</span>
-                    <select
-                      value={selectedRankingCampaignId}
-                      onChange={(e) => {
-                        setSelectedRankingCampaignId(e.target.value);
-                        setRankedVendors([]);
-                      }}
-                      className="sales-input"
-                    >
-                      <option value="">Select campaign</option>
+            {/* Vendor Ranking Tab - Redesigned */}
+            {activeTab === 'ranking' && (
+              <div className="tab-panel ranking-panel-redesigned">
+                {/* Step 1: Select Campaign */}
+                <div className="ranking-step">
+                  <div className="step-header">
+                    <span className="step-number">1</span>
+                    <div className="step-info">
+                      <h4>Select Campaign</h4>
+                      <p>Choose a campaign with vendor responses to rank</p>
+                    </div>
+                    <button type="button" className="refresh-btn-small" onClick={fetchCampaigns} disabled={isLoadingCampaigns}>
+                      {isLoadingCampaigns ? '...' : '↻'}
+                    </button>
+                  </div>
+
+                  {campaigns.length === 0 ? (
+                    <div className="no-campaigns-hint">
+                      <p>No campaigns with responses yet</p>
+                    </div>
+                  ) : (
+                    <div className="campaign-cards">
                       {campaigns.map((campaign) => (
-                        <option key={campaign.id} value={campaign.id}>
-                          {campaign.name} ({campaign.totalReplied || 0} replies)
-                        </option>
+                        <button
+                          key={campaign.id}
+                          className={`campaign-card ${selectedRankingCampaignId === campaign.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedRankingCampaignId(campaign.id);
+                            setRankedVendors([]);
+                          }}
+                        >
+                          <div className="campaign-card-main">
+                            <span className="campaign-name">{campaign.name}</span>
+                            <span className="campaign-date">{campaign.created_at ? new Date(campaign.created_at).toLocaleDateString() : ''}</span>
+                          </div>
+                          <div className="campaign-stats">
+                            <div className="stat">
+                              <span className="stat-value">{campaign.totalReplied || 0}</span>
+                              <span className="stat-label">replies</span>
+                            </div>
+                            <div className="stat">
+                              <span className="stat-value">{campaign.totalSent || 0}</span>
+                              <span className="stat-label">sent</span>
+                            </div>
+                          </div>
+                          {selectedRankingCampaignId === campaign.id && (
+                            <div className="selected-check">✓</div>
+                          )}
+                        </button>
                       ))}
-                    </select>
-                  </label>
+                    </div>
+                  )}
+                </div>
 
-                  <label className="field-group">
-                    <span className="field-label">Criteria</span>
+                {/* Step 2: Define Criteria */}
+                <div className={`ranking-step ${!selectedRankingCampaignId ? 'disabled' : ''}`}>
+                  <div className="step-header">
+                    <span className="step-number">2</span>
+                    <div className="step-info">
+                      <h4>Define Ranking Criteria</h4>
+                      <p>What factors matter most for your decision?</p>
+                    </div>
+                  </div>
+
+                  <div className="criteria-input-area">
                     <textarea
                       value={rankingCriteria}
                       onChange={(e) => setRankingCriteria(e.target.value)}
                       rows={4}
-                      className="sales-textarea"
-                      placeholder="Cost, Quality, Reliability..."
+                      className="criteria-textarea"
+                      placeholder="e.g., Price competitiveness, delivery timeline, quality certifications, customer support..."
+                      disabled={!selectedRankingCampaignId}
                     />
-                  </label>
+                    <div className="criteria-suggestions">
+                      <span className="suggestion-label">Quick add:</span>
+                      {['Price', 'Quality', 'Reliability', 'Speed', 'Support'].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="criteria-tag"
+                          onClick={() => setRankingCriteria(prev => prev ? `${prev}, ${tag}` : tag)}
+                          disabled={!selectedRankingCampaignId}
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   <button
                     type="button"
-                    className="rank-btn"
+                    className="rank-vendors-btn"
                     onClick={handleRankVendorReplies}
                     disabled={!selectedRankingCampaignId || isRankingVendors || isLoadingCampaigns}
                   >
-                    {isRankingVendors ? 'Ranking...' : 'Rank Vendors'}
+                    {isRankingVendors ? (
+                      <>
+                        <span className="spinner-small" />
+                        Analyzing responses...
+                      </>
+                    ) : 'Rank Vendors'}
                   </button>
                 </div>
 
                 {/* Ranked Results */}
                 {rankedVendors.length > 0 && (
                   <div className="ranked-results" ref={rankingResultsRef}>
-                    <h4>Results</h4>
-                    <div className="ranked-list">
+                    <div className="results-header">
+                      <h4>Ranking Results</h4>
+                      <span className="results-count">{rankedVendors.length} vendors scored</span>
+                    </div>
+
+                    {/* Top 3 Podium */}
+                    {rankedVendors.length >= 3 && (
+                      <div className="podium">
+                        <div className="podium-item silver">
+                          <div className="podium-rank">2</div>
+                          <div className="podium-name">{rankedVendors[1]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[1]?.score}</div>
+                        </div>
+                        <div className="podium-item gold">
+                          <div className="podium-rank">1</div>
+                          <div className="podium-name">{rankedVendors[0]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[0]?.score}</div>
+                        </div>
+                        <div className="podium-item bronze">
+                          <div className="podium-rank">3</div>
+                          <div className="podium-name">{rankedVendors[2]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[2]?.score}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Full list with score bars */}
+                    <div className="ranked-list-visual">
                       {rankedVendors.map((v) => (
-                        <div key={v.rank} className="ranked-item">
-                          <span className="rank-num">#{v.rank}</span>
-                          <div className="rank-info">
-                            <span className="rank-name">{v.vendor_name}</span>
-                            <span className="rank-reason">{v.reason || v.reply_summary || ''}</span>
+                        <div key={v.rank} className={`ranked-item-visual ${v.rank <= 3 ? 'top-three' : ''}`}>
+                          <div className="rank-header">
+                            <span className="rank-position">#{v.rank}</span>
+                            <span className="rank-vendor-name">{v.vendor_name}</span>
+                            <span className="rank-score-value">{v.score}</span>
                           </div>
-                          <span className="rank-score">{v.score}/100</span>
+                          <div className="score-bar-container">
+                            <div
+                              className="score-bar-fill"
+                              style={{ width: `${v.score}%` }}
+                            />
+                          </div>
+                          {(v.reason || v.reply_summary) && (
+                            <p className="rank-summary">{v.reason || v.reply_summary}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -599,16 +928,17 @@ function SalesHelperAgent() {
               </div>
             )}
           </div>
+        </div>
 
-          {/* Floating Chat Button */}
-          {!isChatOpen && (
-            <button className="floating-chat-btn" onClick={() => setIsChatOpen(true)}>
-              ?
-            </button>
-          )}
+        {/* Floating Chat Button */}
+        {!isChatOpen && (
+          <button className="floating-chat-btn" onClick={() => setIsChatOpen(true)} aria-label="Open chat">
+            <img src="/assets/icons/chat.png" alt="" className="chat-btn-icon" />
+          </button>
+        )}
 
-          {/* Right Section - Chat Interface (Collapsible) */}
-          {isChatOpen && (
+        {/* Chat Interface */}
+        {isChatOpen && (
             <div className="chat-section">
               <div className="chat-header">
                 <div className="chat-header-content">
@@ -624,7 +954,7 @@ function SalesHelperAgent() {
                   onClick={() => setIsChatOpen(false)}
                   aria-label="Close chat"
                 >
-                  ✕
+                  Close
                 </button>
               </div>
 
@@ -676,7 +1006,8 @@ function SalesHelperAgent() {
               </form>
             </div>
           )}
-        </div>
+          </div>
+        </ProjectGate>
       </div>
     </div>
   );

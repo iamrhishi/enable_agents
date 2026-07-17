@@ -1,13 +1,15 @@
-import { API_CONFIG } from '../config/apiConfig';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
-import { Input, Textarea, Select } from '../components';
-import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
+import { Input, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate } from '../components';
+import ReminderModal from '../components/ReminderModal';
+import { setAgentData, AGENT_KEYS } from '../utils';
 import { formatDate } from '../utils/dateFormat';
+import { useProjectData } from '../hooks/useProjectData';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 
-// Demo data for Executive Assistant
+// Demo data for Executive Assistant - comprehensive sample to showcase features
 const DEMO_PROJECTS = [
   { id: 'demo-p1', name: 'Q3 Product Launch', description: 'Launch new product features', status: 'Active', dueDate: '2026-09-15' },
   { id: 'demo-p2', name: 'Marketing Campaign', description: 'Summer marketing initiative', status: 'Active', dueDate: '2026-08-01' },
@@ -15,15 +17,28 @@ const DEMO_PROJECTS = [
 ];
 
 const DEMO_TASKS = [
-  { id: 'demo-t1', projectId: 'demo-p1', title: 'Finalize feature specs', description: 'Complete technical specifications', assignedTo: 'John Smith', dueDate: '2026-07-15', priority: 'High', status: 'In Progress' },
-  { id: 'demo-t2', projectId: 'demo-p1', title: 'Design review', description: 'Review UI/UX designs', assignedTo: 'Sarah Johnson', dueDate: '2026-07-20', priority: 'Medium', status: 'Pending' },
-  { id: 'demo-t3', projectId: 'demo-p2', title: 'Create ad copy', description: 'Write marketing copy for ads', assignedTo: 'Mike Wilson', dueDate: '2026-07-10', priority: 'High', status: 'Completed' },
+  // Pending tasks
+  { id: 'demo-t1', projectId: 'demo-p1', title: 'Write release notes', description: 'Document all new features', assignedTo: 'demo-pe1', dueDate: '2026-07-25', priority: 'Medium', status: 'Pending' },
+  { id: 'demo-t2', projectId: 'demo-p1', title: 'Design review meeting', description: 'Review UI/UX designs with team', assignedTo: 'demo-pe2', dueDate: '2026-07-20', priority: 'High', status: 'Pending' },
+  { id: 'demo-t3', projectId: 'demo-p2', title: 'Plan social media posts', description: 'Create content calendar', assignedTo: 'demo-pe3', dueDate: '2026-07-22', priority: 'Medium', status: 'Pending' },
+  { id: 'demo-t4', projectId: 'demo-p3', title: 'Post job listings', description: 'Publish on LinkedIn and Indeed', assignedTo: 'demo-pe4', dueDate: '2026-07-18', priority: 'High', status: 'Pending' },
+  // In Progress tasks
+  { id: 'demo-t5', projectId: 'demo-p1', title: 'Finalize feature specs', description: 'Complete technical specifications', assignedTo: 'demo-pe1', dueDate: '2026-07-15', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t6', projectId: 'demo-p1', title: 'Build landing page', description: 'Create product launch page', assignedTo: 'demo-pe2', dueDate: '2026-07-28', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t7', projectId: 'demo-p2', title: 'Create ad copy', description: 'Write marketing copy for ads', assignedTo: 'demo-pe3', dueDate: '2026-07-19', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t8', projectId: 'demo-p3', title: 'Screen resumes', description: 'Review initial applications', assignedTo: 'demo-pe4', dueDate: '2026-07-21', priority: 'Medium', status: 'In Progress' },
+  // Completed tasks
+  { id: 'demo-t9', projectId: 'demo-p1', title: 'Define MVP scope', description: 'Finalize feature list for launch', assignedTo: 'demo-pe1', dueDate: '2026-07-10', priority: 'High', status: 'Completed' },
+  { id: 'demo-t10', projectId: 'demo-p1', title: 'Create wireframes', description: 'Design initial mockups', assignedTo: 'demo-pe2', dueDate: '2026-07-08', priority: 'Medium', status: 'Completed' },
+  { id: 'demo-t11', projectId: 'demo-p2', title: 'Competitor analysis', description: 'Research competitor campaigns', assignedTo: 'demo-pe3', dueDate: '2026-07-05', priority: 'Low', status: 'Completed' },
+  { id: 'demo-t12', projectId: 'demo-p3', title: 'Define job requirements', description: 'Write job descriptions', assignedTo: 'demo-pe4', dueDate: '2026-07-12', priority: 'High', status: 'Completed' },
 ];
 
 const DEMO_PEOPLE = [
-  { id: 'demo-pe1', name: 'John Smith', email: 'john@company.com', phone: '+1 555-0101', whatsappNumber: '+1 555-0101', role: 'Product Manager', projects: ['demo-p1'] },
-  { id: 'demo-pe2', name: 'Sarah Johnson', email: 'sarah@company.com', phone: '+1 555-0102', whatsappNumber: '+1 555-0102', role: 'Designer', projects: ['demo-p1', 'demo-p2'] },
-  { id: 'demo-pe3', name: 'Mike Wilson', email: 'mike@company.com', phone: '+1 555-0103', whatsappNumber: '+1 555-0103', role: 'Marketing Lead', projects: ['demo-p2'] },
+  { id: 'demo-pe1', name: 'John Smith', email: 'john@company.com', phone: '+1 555-0101', role: 'Product Manager', projects: ['demo-p1'] },
+  { id: 'demo-pe2', name: 'Sarah Johnson', email: 'sarah@company.com', phone: '+1 555-0102', role: 'Designer', projects: ['demo-p1', 'demo-p2'] },
+  { id: 'demo-pe3', name: 'Mike Wilson', email: 'mike@company.com', phone: '+1 555-0103', role: 'Marketing Lead', projects: ['demo-p2'] },
+  { id: 'demo-pe4', name: 'Emily Chen', email: 'emily@company.com', phone: '+1 555-0104', role: 'HR Manager', projects: ['demo-p3'] },
 ];
 
 function ExecutiveAssistantPage() {
@@ -31,37 +46,55 @@ function ExecutiveAssistantPage() {
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return localStorage.getItem('enableAgentsMode') !== 'live';
   });
-  const [activeTab, setActiveTab] = useState('projects-tasks');
-  const [projects, setProjects] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [showProjectForm, setShowProjectForm] = useState(false);
-  const [showTaskForm, setShowTaskForm] = useState(false);
-  const [showPersonForm, setShowPersonForm] = useState(false);
-  const [showWhatsAppReminder, setShowWhatsAppReminder] = useState(false);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [expandedProjects, setExpandedProjects] = useState({});
-  const [inlineReminderPerson, setInlineReminderPerson] = useState(null);
 
-  // Toggle project expansion to show inline tasks
-  const toggleProjectExpand = (projectId) => {
-    setExpandedProjects(prev => ({
-      ...prev,
-      [projectId]: !prev[projectId]
-    }));
-  };
+  // Global project data hook - manages cross-agent project context
+  const {
+    project: globalProject,
+    hasProject: hasGlobalProject,
+    data: projectData,
+    saveData: saveProjectData,
+    sharedData,
+    getSharedAgentData,
+    hasSharedData,
+  } = useProjectData('executiveAssistant', {
+    defaultData: { localProjects: [], tasks: [], people: [] },
+    onProjectLoad: (project, data, shared) => {
+      const hasSavedData = data?.localProjects?.length || data?.tasks?.length || data?.people?.length;
 
-  // Form states
-  const [newProject, setNewProject] = useState({
-    id: '',
-    name: '',
-    description: '',
-    status: 'Active',
-    dueDate: ''
+      if (hasSavedData) {
+        setProjects(data.localProjects || []);
+        setTasks(data.tasks || []);
+        setPeople(data.people || []);
+      } else if (isDemoMode) {
+        setProjects(DEMO_PROJECTS);
+        setTasks(DEMO_TASKS);
+        setPeople(DEMO_PEOPLE);
+      } else {
+        setProjects([]);
+        setTasks([]);
+        setPeople([]);
+      }
+
+      if (shared && Object.keys(shared).length > 0) {
+        const agentNames = Object.keys(shared).join(', ');
+        console.log(`Shared data available from: ${agentNames}`);
+      }
+    },
   });
 
+  const selectedProjectId = useSelectedProjectId();
+
+  const [activeTab, setActiveTab] = useState('projects-tasks');
+
+  // Initialize with demo data if in demo mode
+  const initialDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+
+  const [projects, setProjects] = useState(() => initialDemoMode ? DEMO_PROJECTS : []);
+  const [tasks, setTasks] = useState(() => initialDemoMode ? DEMO_TASKS : []);
+  const [people, setPeople] = useState(() => initialDemoMode ? DEMO_PEOPLE : []);
+  const [showPersonForm, setShowPersonForm] = useState(false);
+
+  // Form states
   const [newTask, setNewTask] = useState({
     id: '',
     projectId: '',
@@ -78,95 +111,90 @@ function ExecutiveAssistantPage() {
     name: '',
     email: '',
     phone: '',
-    whatsappNumber: '',
     role: '',
     projects: []
   });
 
-  const [reminderMessage, setReminderMessage] = useState('');
-  const [reminderDetails, setReminderDetails] = useState({
-    person: '',
-    task: '',
-    project: '',
-    message: '',
-    sendTime: 'now'
-  });
+  // Drag state - track what we're dragging and where
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null); // 'column-Pending' | 'person-id123'
 
-  // Listen for mode changes
+  // Reminder modal state
+  const [reminderTask, setReminderTask] = useState(null);
+  const [reminderPerson, setReminderPerson] = useState(null);
+
+  // Listen for mode changes (storage event handles cross-tab changes)
   useEffect(() => {
     const handleModeChange = () => {
       const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
       setIsDemoMode(newMode);
     };
     window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
     return () => {
       window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
     };
   }, []);
 
-  // Load data when mode changes - using centralized storage
+  // Load demo data on mount if in demo mode, or clear if live mode with no project
   useEffect(() => {
-    const savedData = getAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, isDemoMode);
-
-    if (isDemoMode && (!savedData || !savedData.projects?.length)) {
-      // Demo mode with no saved data - load demo defaults
-      setProjects(DEMO_PROJECTS);
-      setTasks(DEMO_TASKS);
-      setPeople(DEMO_PEOPLE);
-    } else if (savedData) {
-      setProjects(savedData.projects || []);
-      setTasks(savedData.tasks || []);
-      setPeople(savedData.people || []);
-    } else {
-      // Live mode with no data - clear everything
-      setProjects([]);
-      setTasks([]);
-      setPeople([]);
+    if (!selectedProjectId) {
+      if (isDemoMode) {
+        setProjects(DEMO_PROJECTS);
+        setTasks(DEMO_TASKS);
+        setPeople(DEMO_PEOPLE);
+      } else {
+        setProjects([]);
+        setTasks([]);
+        setPeople([]);
+      }
     }
-  }, [isDemoMode]);
+  }, [selectedProjectId, isDemoMode]);
 
-  // Save to centralized storage whenever data changes
+  // Debounced save to prevent flicker from rapid re-renders
+  const saveTimeoutRef = useRef(null);
+  // Use ref for saveProjectData to avoid dependency instability
+  const saveProjectDataRef = useRef(saveProjectData);
+  saveProjectDataRef.current = saveProjectData;
+
   useEffect(() => {
+    if (!selectedProjectId) return;
     if (projects.length > 0 || tasks.length > 0 || people.length > 0) {
-      setAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, { projects, tasks, people }, isDemoMode);
+      // Clear previous timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Debounce save by 300ms
+      saveTimeoutRef.current = setTimeout(() => {
+        // Save to agent-specific storage
+        setAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, { projects, tasks, people }, isDemoMode);
+
+        // Also save to global project if one is selected
+        if (hasGlobalProject) {
+          saveProjectDataRef.current({
+            localProjects: projects,
+            tasks: tasks,
+            people: people,
+            lastUpdated: new Date().toISOString(),
+          });
+        }
+      }, 300);
     }
-  }, [projects, tasks, people, isDemoMode]);
 
-  useEffect(() => {
-    localStorage.setItem('ea_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    localStorage.setItem('ea_people', JSON.stringify(people));
-  }, [people]);
-
-  // Add Project
-  const handleAddProject = () => {
-    if (newProject.name.trim()) {
-      const project = {
-        ...newProject,
-        id: Date.now().toString()
-      };
-      setProjects([...projects, project]);
-      setNewProject({ id: '', name: '', description: '', status: 'Active', dueDate: '' });
-      setShowProjectForm(false);
-    }
-  };
-
-  // Delete Project
-  const handleDeleteProject = (id) => {
-    setProjects(projects.filter(p => p.id !== id));
-    setTasks(tasks.filter(t => t.projectId !== id));
-  };
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [projects, tasks, people, isDemoMode, hasGlobalProject, selectedProjectId]);
 
   // Add Task
   const handleAddTask = () => {
-    if (newTask.title.trim() && newTask.projectId) {
+    if (newTask.title.trim()) {
       const task = {
         ...newTask,
-        id: Date.now().toString()
+        id: Date.now().toString(),
+        projectId: selectedProjectId || 'default'
       };
       setTasks([...tasks, task]);
       setNewTask({
@@ -179,7 +207,6 @@ function ExecutiveAssistantPage() {
         priority: 'Medium',
         status: 'Pending'
       });
-      setShowTaskForm(false);
     }
   };
 
@@ -190,7 +217,7 @@ function ExecutiveAssistantPage() {
 
   // Add Person
   const handleAddPerson = () => {
-    if (newPerson.name.trim() && newPerson.whatsappNumber.trim()) {
+    if (newPerson.name.trim() && newPerson.email.trim()) {
       const person = {
         ...newPerson,
         id: Date.now().toString()
@@ -201,7 +228,6 @@ function ExecutiveAssistantPage() {
         name: '',
         email: '',
         phone: '',
-        whatsappNumber: '',
         role: '',
         projects: []
       });
@@ -214,437 +240,511 @@ function ExecutiveAssistantPage() {
     setPeople(people.filter(p => p.id !== id));
   };
 
-  // Send WhatsApp Reminder
-  const handleSendReminder = async () => {
-    if (!reminderDetails.person || !reminderDetails.message.trim()) {
-      showToast('Please select a person and enter a message', 'warning');
-      return;
-    }
-
-    const person = people.find(p => p.id === reminderDetails.person);
-    const task = tasks.find(t => t.id === reminderDetails.task);
-    const project = projects.find(p => p.id === reminderDetails.project);
-
-    let fullMessage = reminderDetails.message;
-    if (task) {
-      fullMessage = `Task Reminder: ${task.title}\n${reminderDetails.message}`;
-    }
-    if (project) {
-      fullMessage += `\nProject: ${project.name}`;
-    }
-
-    try {
-      // WhatsApp integration via Twilio or WhatsApp Business API
-      const response = await fetch(`${API_CONFIG.API_URL}/send-whatsapp-reminder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          whatsappNumber: person.whatsappNumber,
-          message: fullMessage,
-          personName: person.name,
-          sendTime: reminderDetails.sendTime,
-          taskId: task?.id,
-          projectId: project?.id
-        })
-      });
-
-      if (response.ok) {
-        showToast(`Reminder sent to ${person.name} via WhatsApp!`, 'info');
-        setReminderDetails({ person: '', task: '', project: '', message: '', sendTime: 'now' });
-        setShowWhatsAppReminder(false);
-      } else {
-        showToast('Failed to send reminder. Please try again.', 'error');
-      }
-    } catch (error) {
-      console.error('Error sending reminder:', error);
-      showToast('Error sending reminder. Make sure WhatsApp is configured.', 'error');
-    }
+  const getInitials = (name) => {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
   };
 
-  // Get tasks for selected project
-  const getProjectTasks = (projectId) => {
-    return tasks.filter(t => t.projectId === projectId);
-  };
-
-  // Get people for project
-  const getProjectPeople = (projectId) => {
-    return people.filter(p => p.projects.includes(projectId));
+  const getMonogramVariant = (id) => {
+    const variants = ['ember', 'ink', 'sage', 'slate'];
+    let hash = 0;
+    for (let i = 0; i < id.length; i += 1) {
+      hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return variants[Math.abs(hash) % variants.length];
   };
 
   return (
     <div className="executive-assistant-page">
       <Header />
 
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Executive Assistant</h1>
+            </div>
+            <p className="text-muted">
+              Manage projects, tasks, and team coordination. Send email reminders to keep stakeholders aligned.
+            </p>
+          </div>
+        </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="executiveAssistant"
+            onProjectChange={(project) => {
+              if (project) {
+                showToast(`Loaded project: ${project.name}`, 'success');
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/checklist.png', title: 'Track projects', description: 'Organize work by project with due dates and status.' },
+          { iconSrc: '/assets/icons/users.png', title: 'Assign tasks', description: 'Delegate tasks to team members and track progress.' },
+          { iconSrc: '/assets/icons/mail.png', title: 'Email reminders', description: 'Send reminders to stakeholders via email.' },
+        ]}
+      />
+
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample projects and tasks."
+      />
+
       <div className="ea-container">
-        {/* Tab Navigation - Consolidated from 4 to 2 tabs */}
-        <div className="module-tabs">
+        <div className="ea-tabs module-tabs">
           <button
+            type="button"
             className={`module-tab ${activeTab === 'projects-tasks' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('projects-tasks')}
           >
-            Projects & Tasks ({projects.length}/{tasks.length})
+            Task Board
           </button>
           <button
-            className={`module-tab ${activeTab === 'team' ? 'module-tab--active' : ''}`}
-            onClick={() => setActiveTab('team')}
+            type="button"
+            className={`module-tab ${activeTab === 'people' ? 'module-tab--active' : ''}`}
+            onClick={() => setActiveTab('people')}
           >
             Team ({people.length})
           </button>
         </div>
 
-        {/* Projects & Tasks Tab - Consolidated view with inline tasks */}
-        {activeTab === 'projects-tasks' && (
-          <div className="ea-content projects-tasks-section">
-            <div className="section-header">
-              <h2>Projects & Tasks</h2>
-              <div className="header-actions">
-                <button className="add-button" onClick={() => setShowProjectForm(!showProjectForm)}>
-                  + Project
-                </button>
-                <button className="add-button add-button-secondary" onClick={() => setShowTaskForm(!showTaskForm)}>
-                  + Task
-                </button>
-              </div>
+        <ProjectGate agentLabel="Executive Assistant workspace">
+        {/* Shared Context Banner - Shows when global project has data from other agents */}
+        {hasGlobalProject && Object.keys(sharedData).length > 0 && (
+          <div className="shared-context-banner">
+            <div className="shared-context-icon">
+              <img src="/assets/icons/integration.png" alt="" width={20} height={20} />
             </div>
-
-            {/* Inline Project Form */}
-            {showProjectForm && (
-              <div className="inline-form-card">
-                <h3>New Project</h3>
-                <div className="inline-form-row">
-                  <Input
-                    placeholder="Project Name"
-                    value={newProject.name}
-                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                  />
-                  <Input
-                    type="date"
-                    value={newProject.dueDate}
-                    onChange={(e) => setNewProject({ ...newProject, dueDate: e.target.value })}
-                  />
-                  <Select
-                    value={newProject.status}
-                    onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-                    variant="outlined"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="On Hold">On Hold</option>
-                    <option value="Completed">Completed</option>
-                  </Select>
-                </div>
-                <Textarea
-                  placeholder="Project Description"
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                />
-                <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddProject}>Save</button>
-                  <button className="btn btn-secondary" onClick={() => setShowProjectForm(false)}>Cancel</button>
-                </div>
+            <div className="shared-context-info">
+              <strong>Project Context Available</strong>
+              <span>
+                Data from: {Object.keys(sharedData).map(key => {
+                  const names = {
+                    salesHelper: 'Sales Helper',
+                    contentMarketing: 'Content Marketing',
+                    eventNetworking: 'Event Networking',
+                    communityNetwork: 'Community Network',
+                    dataInsights: 'Data Insights',
+                    marketResearch: 'Market Research',
+                  };
+                  return names[key] || key;
+                }).join(', ')}
+              </span>
+            </div>
+            {hasSharedData('salesHelper') && getSharedAgentData('salesHelper')?.totalPipeline && (
+              <div className="shared-stat">
+                <span className="stat-value">${(getSharedAgentData('salesHelper').totalPipeline / 1000).toFixed(0)}k</span>
+                <span className="stat-label">Pipeline</span>
               </div>
             )}
-
-            {/* Inline Task Form */}
-            {showTaskForm && (
-              <div className="inline-form-card">
-                <h3>New Task</h3>
-                <div className="inline-form-row">
-                  <Select
-                    value={newTask.projectId}
-                    onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
-                    variant="outlined"
-                  >
-                    <option value="">Select Project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </Select>
-                  <Input
-                    placeholder="Task Title"
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  />
-                  <Select
-                    value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                    variant="outlined"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </Select>
-                </div>
-                <div className="inline-form-row">
-                  <Select
-                    value={newTask.assignedTo}
-                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
-                    variant="outlined"
-                  >
-                    <option value="">Assign to</option>
-                    {people.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </Select>
-                  <Input
-                    type="date"
-                    value={newTask.dueDate}
-                    onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                  />
-                  <Select
-                    value={newTask.status}
-                    onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
-                    variant="outlined"
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                  </Select>
-                </div>
-                <Textarea
-                  placeholder="Task Description"
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                />
-                <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddTask}>Save</button>
-                  <button className="btn btn-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button>
-                </div>
+            {hasSharedData('salesHelper') && getSharedAgentData('salesHelper')?.leads && (
+              <div className="shared-stat">
+                <span className="stat-value">{getSharedAgentData('salesHelper').leads.length}</span>
+                <span className="stat-label">Leads</span>
               </div>
             )}
-
-            {/* Projects List with Expandable Tasks */}
-            <div className="projects-list">
-              {projects.length === 0 ? (
-                <p className="empty-state">No projects yet. Create one to get started!</p>
-              ) : (
-                projects.map((project) => {
-                  const projectTasks = getProjectTasks(project.id);
-                  const isExpanded = expandedProjects[project.id];
-                  return (
-                    <div key={project.id} className={`project-row ${isExpanded ? 'expanded' : ''}`}>
-                      <div className="project-header-row" onClick={() => toggleProjectExpand(project.id)}>
-                        <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
-                        <div className="project-info">
-                          <h3>{project.name}</h3>
-                          <span className="project-meta">
-                            {projectTasks.length} task{projectTasks.length !== 1 ? 's' : ''}
-                            {project.dueDate && ` · Due ${formatDate(project.dueDate)}`}
-                          </span>
-                        </div>
-                        <span className={`status-badge ${project.status.toLowerCase().replace(' ', '-')}`}>
-                          {project.status}
-                        </span>
-                        <button
-                          className="btn-delete-small"
-                          onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
-                        >
-                          ×
-                        </button>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="project-tasks-inline">
-                          {project.description && (
-                            <p className="project-description">{project.description}</p>
-                          )}
-                          {projectTasks.length === 0 ? (
-                            <p className="no-tasks-hint">No tasks yet</p>
-                          ) : (
-                            <div className="inline-tasks-list">
-                              {projectTasks.map((task) => {
-                                const assignedPerson = people.find(p => p.id === task.assignedTo);
-                                return (
-                                  <div key={task.id} className="inline-task-row">
-                                    <span className={`priority-dot ${task.priority.toLowerCase()}`}></span>
-                                    <span className="task-title">{task.title}</span>
-                                    {assignedPerson && <span className="task-assignee">{assignedPerson.name}</span>}
-                                    {task.dueDate && <span className="task-due">{formatDate(task.dueDate)}</span>}
-                                    <span className={`status-pill ${task.status.toLowerCase().replace(' ', '-')}`}>
-                                      {task.status}
-                                    </span>
-                                    <button
-                                      className="btn-delete-small"
-                                      onClick={() => handleDeleteTask(task.id)}
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            {hasSharedData('eventNetworking') && getSharedAgentData('eventNetworking')?.attendees && (
+              <div className="shared-stat">
+                <span className="stat-value">{getSharedAgentData('eventNetworking').attendees}</span>
+                <span className="stat-label">Attendees</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Team Tab - Consolidated People + WhatsApp Reminders */}
-        {activeTab === 'team' && (
-          <div className="ea-content team-section">
-            <div className="section-header">
-              <h2>Team Members</h2>
-              <button className="add-button" onClick={() => setShowPersonForm(!showPersonForm)}>
-                + Add Member
+        {/* Task Board */}
+        {activeTab === 'projects-tasks' && (
+          <div className="ea-content projects-tasks-section">
+            {/* Quick Add Bar */}
+            <div className="quick-add-bar">
+              <Input
+                placeholder="Add a new task..."
+                value={newTask.title}
+                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newTask.title.trim()) {
+                    handleAddTask();
+                  }
+                }}
+              />
+              {people.length > 0 && (
+                <div className="assignee-pills">
+                  {people.slice(0, 4).map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`assignee-pill ${newTask.assignedTo === p.id ? 'active' : ''}`}
+                      onClick={() => setNewTask({ ...newTask, assignedTo: newTask.assignedTo === p.id ? '' : p.id })}
+                      title={p.name}
+                    >
+                      {getInitials(p.name)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="priority-pills">
+                {['Low', 'Medium', 'High'].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`priority-pill ${p.toLowerCase()} ${newTask.priority === p ? 'active' : ''}`}
+                    onClick={() => setNewTask({ ...newTask, priority: p })}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn-add-task"
+                disabled={!newTask.title.trim()}
+                onClick={handleAddTask}
+              >
+                Add
               </button>
             </div>
 
-            {/* Inline Add Person Form */}
+            {/* Team Strip - Drag tasks here to assign */}
+            {people.length > 0 && (
+              <div className="team-strip">
+                <span className="team-strip-label">Drag to assign:</span>
+                <div className="team-strip-members">
+                  {people.map((person) => {
+                    const personTaskCount = tasks.filter(t => t.assignedTo === person.id && t.status !== 'Completed').length;
+                    const isDropTarget = dragOverTarget === `person-${person.id}`;
+                    return (
+                      <div
+                        key={person.id}
+                        className={`team-strip-member ${isDropTarget ? 'drag-over' : ''}`}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverTarget(`person-${person.id}`);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setDragOverTarget(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (draggedTaskId) {
+                            setTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, assignedTo: person.id } : t));
+                            showToast(`Assigned to ${person.name}`, 'success');
+                          }
+                          setDragOverTarget(null);
+                          setDraggedTaskId(null);
+                        }}
+                        title={`${person.name} • ${personTaskCount} open tasks`}
+                      >
+                        <div className={`team-strip-avatar ${getMonogramVariant(person.id)}`}>
+                          {getInitials(person.name)}
+                        </div>
+                        <span className="team-strip-name">{person.name.split(' ')[0]}</span>
+                        {personTaskCount > 0 && (
+                          <span className="team-strip-badge">{personTaskCount}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="team-strip-add"
+                  onClick={() => setActiveTab('people')}
+                  title="Add team member"
+                >
+                  +
+                </button>
+              </div>
+            )}
+
+            {people.length === 0 && (
+              <div className="team-strip team-strip--empty">
+                <span className="team-strip-hint">Add team members to assign tasks</span>
+                <button
+                  type="button"
+                  className="btn-compact"
+                  onClick={() => setActiveTab('people')}
+                >
+                  + Add Team
+                </button>
+              </div>
+            )}
+
+            {/* Kanban Board */}
+            <div className="kanban-board">
+              {['Pending', 'In Progress', 'Completed'].map((status) => {
+                const columnTasks = tasks.filter(t => t.status === status);
+                const isDropTarget = dragOverTarget === `column-${status}`;
+                return (
+                  <div
+                    key={status}
+                    className={`kanban-column ${status.toLowerCase().replace(' ', '-')} ${isDropTarget ? 'drag-over' : ''}`}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverTarget(`column-${status}`);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDragLeave={(e) => {
+                      // Only clear if leaving the column entirely (not entering a child)
+                      if (!e.currentTarget.contains(e.relatedTarget)) {
+                        setDragOverTarget(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (draggedTaskId) {
+                        setTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, status } : t));
+                        showToast(`Moved to ${status}`, 'success');
+                      }
+                      setDragOverTarget(null);
+                      setDraggedTaskId(null);
+                    }}
+                  >
+                    <div className="kanban-column-header">
+                      <span className="column-title">{status}</span>
+                      <span className="column-count">{columnTasks.length}</span>
+                    </div>
+                    <div className="kanban-column-body">
+                      {columnTasks.length === 0 && status === 'Pending' && tasks.length === 0 && (
+                        <p className="kanban-empty-hint">Type a task above and press Enter</p>
+                      )}
+                      {columnTasks.length === 0 && tasks.length > 0 && (
+                        <p className="kanban-empty-hint">Drop tasks here</p>
+                      )}
+                      {columnTasks.map((task) => {
+                        const assignedPerson = people.find(p => p.id === task.assignedTo);
+                        return (
+                          <article
+                            key={task.id}
+                            className={`kanban-card ${task.priority.toLowerCase()} ${draggedTaskId === task.id ? 'dragging' : ''}`}
+                            draggable="true"
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', task.id);
+                              e.dataTransfer.setDragImage(e.currentTarget, 50, 20);
+                              setDraggedTaskId(task.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedTaskId(null);
+                              setDragOverTarget(null);
+                            }}
+                          >
+                            <span className={`priority-dot ${task.priority.toLowerCase()}`} />
+                            <div className="kanban-card-content">
+                              <span className="kanban-card-title">{task.title}</span>
+                              <div className="kanban-card-meta">
+                                {assignedPerson ? (
+                                  <span
+                                    className="assignee-chip"
+                                    title={assignedPerson.name}
+                                  >
+                                    {getInitials(assignedPerson.name)}
+                                  </span>
+                                ) : (
+                                  <span className="unassigned-chip" title="Unassigned">—</span>
+                                )}
+                                {task.dueDate && <span className="kanban-due">{formatDate(task.dueDate)}</span>}
+                              </div>
+                            </div>
+                            {/* Card Actions */}
+                            <div className="kanban-card-actions">
+                              {assignedPerson && (
+                                <button
+                                  type="button"
+                                  className="card-action-btn remind"
+                                  draggable="false"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReminderTask(task);
+                                  }}
+                                  title={`Send reminder to ${assignedPerson.name}`}
+                                >
+                                  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                                  </svg>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="card-action-btn delete"
+                                draggable="false"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
+                                title="Delete task"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Reminder Modal - Multi-channel (Task) */}
+        <ReminderModal
+          isOpen={!!reminderTask}
+          onClose={() => setReminderTask(null)}
+          recipient={reminderTask ? people.find(p => p.id === reminderTask.assignedTo) : null}
+          context={reminderTask ? {
+            taskTitle: reminderTask.title,
+            taskDetails: {
+              status: reminderTask.status,
+              priority: reminderTask.priority,
+              dueDate: reminderTask.dueDate ? formatDate(reminderTask.dueDate) : null,
+            },
+          } : null}
+          isDemoMode={isDemoMode}
+        />
+
+        {/* Reminder Modal - Multi-channel (Person) */}
+        <ReminderModal
+          isOpen={!!reminderPerson}
+          onClose={() => setReminderPerson(null)}
+          recipient={reminderPerson}
+          context={reminderPerson ? {
+            taskTitle: null,
+            taskDetails: null,
+          } : null}
+          isDemoMode={isDemoMode}
+        />
+
+        {activeTab === 'people' && (
+          <div className="ea-content people-section">
+            <div className="section-header">
+              <h2>Team & Stakeholders</h2>
+              <div className="header-actions">
+                <button type="button" className="btn-compact" onClick={() => setShowPersonForm(v => !v)}>
+                  {showPersonForm ? 'Cancel' : '+ Person'}
+                </button>
+              </div>
+            </div>
+
             {showPersonForm && (
-              <div className="inline-form-card">
-                <h3>Add Team Member</h3>
-                <div className="inline-form-row">
-                  <Input
-                    placeholder="Full Name"
-                    value={newPerson.name}
-                    onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Role/Position"
-                    value={newPerson.role}
-                    onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })}
-                  />
+              <div className="inline-panel">
+                <div className="inline-panel-header"><h3>Add Person</h3></div>
+                <div className="inline-panel-body">
+                  <div className="field">
+                    <label className="input-label input-required">Name</label>
+                    <Input placeholder="Full name" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} />
+                  </div>
+                  <div className="field">
+                    <label className="input-label input-required">Email</label>
+                    <Input type="email" placeholder="email@company.com" value={newPerson.email} onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })} />
+                  </div>
+                  <div className="field-row">
+                    <div className="field">
+                      <label className="input-label">Role</label>
+                      <Input placeholder="e.g. Product Manager" value={newPerson.role} onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })} />
+                    </div>
+                    <div className="field">
+                      <label className="input-label">Phone (optional)</label>
+                      <Input placeholder="+1 555-0100" value={newPerson.phone} onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })} />
+                    </div>
+                  </div>
                 </div>
-                <div className="inline-form-row">
-                  <Input
-                    type="email"
-                    placeholder="Email"
-                    value={newPerson.email}
-                    onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
-                  />
-                  <Input
-                    type="tel"
-                    placeholder="Phone"
-                    value={newPerson.phone}
-                    onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
-                  />
-                  <Input
-                    type="tel"
-                    placeholder="WhatsApp (+1234567890)"
-                    value={newPerson.whatsappNumber}
-                    onChange={(e) => setNewPerson({ ...newPerson, whatsappNumber: e.target.value })}
-                  />
-                </div>
-                <div className="form-buttons">
-                  <button className="btn btn-primary" onClick={handleAddPerson}>Save</button>
-                  <button className="btn btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
+                <div className="inline-panel-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
+                  <button type="button" className="btn-primary" onClick={handleAddPerson}>Add Person</button>
                 </div>
               </div>
             )}
 
-            {/* Team Members Table with Inline Reminder */}
-            <div className="team-table-wrapper">
-              {people.length === 0 ? (
-                <p className="empty-state">No team members yet. Add one to get started!</p>
-              ) : (
-                <table className="team-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Contact</th>
-                      <th>WhatsApp</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {people.map((person) => (
-                      <React.Fragment key={person.id}>
-                        <tr className={inlineReminderPerson === person.id ? 'row-active' : ''}>
-                          <td className="name-cell">{person.name}</td>
-                          <td>{person.role || '-'}</td>
-                          <td>
-                            {person.email && <span className="contact-line">{person.email}</span>}
-                            {person.phone && <span className="contact-line">{person.phone}</span>}
-                          </td>
-                          <td>{person.whatsappNumber || '-'}</td>
-                          <td className="actions-cell">
-                            <button
-                              className={`btn-remind-inline ${inlineReminderPerson === person.id ? 'active' : ''}`}
-                              onClick={() => {
-                                if (inlineReminderPerson === person.id) {
-                                  setInlineReminderPerson(null);
-                                } else {
-                                  setInlineReminderPerson(person.id);
-                                  setReminderDetails({ ...reminderDetails, person: person.id });
-                                }
-                              }}
-                            >
-                              {inlineReminderPerson === person.id ? 'Close' : 'Message'}
-                            </button>
-                            <button
-                              className="btn-delete-small"
-                              onClick={() => handleDeletePerson(person.id)}
-                            >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
-                        {/* Inline Reminder Form Row */}
-                        {inlineReminderPerson === person.id && (
-                          <tr className="inline-reminder-row">
-                            <td colSpan="5">
-                              <div className="inline-reminder-form">
-                                <div className="reminder-form-row">
-                                  <Select
-                                    value={reminderDetails.task}
-                                    onChange={(e) => setReminderDetails({ ...reminderDetails, task: e.target.value })}
-                                    variant="outlined"
-                                  >
-                                    <option value="">Task (optional)</option>
-                                    {tasks.map((t) => (
-                                      <option key={t.id} value={t.id}>{t.title}</option>
-                                    ))}
-                                  </Select>
-                                  <Select
-                                    value={reminderDetails.project}
-                                    onChange={(e) => setReminderDetails({ ...reminderDetails, project: e.target.value })}
-                                    variant="outlined"
-                                  >
-                                    <option value="">Project (optional)</option>
-                                    {projects.map((p) => (
-                                      <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                  </Select>
-                                  <Select
-                                    value={reminderDetails.sendTime}
-                                    onChange={(e) => setReminderDetails({ ...reminderDetails, sendTime: e.target.value })}
-                                    variant="outlined"
-                                  >
-                                    <option value="now">Send Now</option>
-                                    <option value="tomorrow">Tomorrow</option>
-                                    <option value="next-day">Next Day</option>
-                                  </Select>
-                                </div>
-                                <div className="reminder-form-row">
-                                  <Textarea
-                                    placeholder="Your message..."
-                                    value={reminderDetails.message}
-                                    onChange={(e) => setReminderDetails({ ...reminderDetails, message: e.target.value })}
-                                    rows={2}
-                                  />
-                                  <button className="btn btn-primary btn-send" onClick={handleSendReminder}>
-                                    Send WhatsApp
-                                  </button>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            {people.length === 0 ? (
+              <EmptyState
+                iconType="data"
+                title="No people added"
+                description="Add team members with email addresses to send reminders."
+                action={{ label: 'Add person', onClick: () => setShowPersonForm(true) }}
+              />
+            ) : (
+              <div className="visiting-cards-grid">
+                {people.map((person) => (
+                  <article key={person.id} className="visiting-card">
+                    <button
+                      type="button"
+                      className="visiting-card-remove"
+                      aria-label={`Remove ${person.name}`}
+                      onClick={() => handleDeletePerson(person.id)}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+
+                    <div className="visiting-card-accent" aria-hidden="true" />
+
+                    <div className="visiting-card-top">
+                      <div className={`visiting-card-monogram visiting-card-monogram--${getMonogramVariant(person.id)}`}>
+                        {getInitials(person.name)}
+                      </div>
+                      <div className="visiting-card-identity">
+                        <h3 className="visiting-card-name">{person.name}</h3>
+                        <p className="visiting-card-role">{person.role || 'Team member'}</p>
+                      </div>
+                    </div>
+
+                    <div className="visiting-card-divider" aria-hidden="true" />
+
+                    <div className="visiting-card-contacts">
+                      {person.email && (
+                        <a className="visiting-card-contact" href={`mailto:${person.email}`}>
+                          <img src="/assets/icons/mail.png" alt="" className="visiting-card-contact-icon" />
+                          <span>{person.email}</span>
+                        </a>
+                      )}
+                      {person.phone && (
+                        <span className="visiting-card-contact">
+                          <img src="/assets/icons/mobile-data.png" alt="" className="visiting-card-contact-icon" />
+                          <span>{person.phone}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="visiting-card-action"
+                      onClick={() => setReminderPerson(person)}
+                    >
+                      Send reminder
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         )}
+
+
+        </ProjectGate>
+
       </div>
     </div>
   );

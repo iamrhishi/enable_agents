@@ -41,8 +41,8 @@ input:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12);
 }
 
-/* Base button styles (use .btn classes from tokens.css when possible) */
-button {
+/* Legacy form submit buttons only — do NOT apply width:100% to all buttons app-wide */
+form button {
   width: 100%;
   padding: var(--space-2) var(--space-3);
   background: var(--color-accent);
@@ -55,6 +55,6 @@ button {
   transition: background-color var(--transition-normal);
 }
 
-button:hover {
+form button:hover {
   background-color: var(--color-accent-dark);
 }

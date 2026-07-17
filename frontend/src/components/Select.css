@@ -33,6 +33,19 @@
   box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
+/* Style native dropdown options */
+.select option {
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2);
+}
+
+.select option:checked,
+.select option:hover {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+}
+
 /* Chevron icon */
 .select-chevron {
   position: absolute;

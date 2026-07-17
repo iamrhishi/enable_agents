@@ -27,6 +27,13 @@ export { default as Select } from './Select';
 // Navigation
 export { default as BackButton } from './BackButton';
 export { default as SkipLink } from './SkipLink';
+export { default as ProjectSelector } from './ProjectSelector';
+export { default as ProjectGate } from './ProjectGate';
+export { default as DemoModeBadge } from './DemoModeBadge';
+export { default as LiveModeHint } from './LiveModeHint';
+export { default as AgentOutcomesStrip } from './AgentOutcomesStrip';
+export { default as AgentPlaceholderShell } from './AgentPlaceholderShell';
+export { default as NetworkProfileCard, NetworkSearchResults, normalizeSearchProfile } from './NetworkProfileCard';
 
 // Accessibility
 export { default as VisuallyHidden } from './VisuallyHidden';
@@ -39,6 +46,9 @@ export { Modal, ModalTabs } from './Modal';
 
 // Dialogs
 export { ConfirmDialog, showConfirm, showAlert } from './ConfirmDialog';
+
+// Reminder
+export { default as ReminderModal } from './ReminderModal';
 
 // Layout
 export { PageLayout, PageSection } from './PageLayout';

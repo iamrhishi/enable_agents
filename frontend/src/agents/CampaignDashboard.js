@@ -1,9 +1,15 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../core/Header';
 import BackButton from '../components/BackButton';
+import { LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, EmptyState } from '../components';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { formatDate, formatDateTime } from '../utils/dateFormat';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+
+// Storage key for state persistence
+const STATE_KEY = 'campaignDashboardState';
 
 // Demo mock campaigns
 const DEMO_CAMPAIGNS = [
@@ -21,9 +27,25 @@ const DEMO_RECIPIENTS = [
 ];
 
 function CampaignDashboard() {
+  const navigate = useNavigate();
+  const selectedProjectId = useSelectedProjectId();
+  const [searchParams, setSearchParams] = useSearchParams();
   const userId = localStorage.getItem("firstName") || "";
+
+  // Load persisted state
+  const loadPersistedState = useCallback(() => {
+    try {
+      const saved = sessionStorage.getItem(STATE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, []);
+
   const [campaigns, setCampaigns] = useState([]);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [selectedCampaign, setSelectedCampaign] = useState(() => {
+    return searchParams.get('campaign') || loadPersistedState().selectedCampaign || null;
+  });
   const [recipients, setRecipients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -35,19 +57,44 @@ function CampaignDashboard() {
     return stored !== 'live';
   });
 
+  // Persist state
+  useEffect(() => {
+    const state = { selectedCampaign };
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+
+    const params = new URLSearchParams(searchParams);
+    if (selectedCampaign) {
+      params.set('campaign', selectedCampaign);
+    } else {
+      params.delete('campaign');
+    }
+    setSearchParams(params, { replace: true });
+  }, [selectedCampaign, searchParams, setSearchParams]);
+
+  // Clear state when project changes
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setCampaigns([]);
+      setSelectedCampaign(null);
+      setRecipients([]);
+    }
+  }, [selectedProjectId]);
+
   // Listen for mode changes
   useEffect(() => {
     const handleModeChange = () => {
       const stored = localStorage.getItem('enableAgentsMode');
-      setIsDemoMode(stored !== 'live');
+      const newMode = stored !== 'live';
+      if (newMode !== isDemoMode) {
+        setIsDemoMode(newMode);
+        setCampaigns([]);
+        setSelectedCampaign(null);
+        setRecipients([]);
+      }
     };
     window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
-  }, []);
+    return () => window.removeEventListener('storage', handleModeChange);
+  }, [isDemoMode]);
 
   useEffect(() => {
     fetchCampaigns();
@@ -141,13 +188,42 @@ function CampaignDashboard() {
   return (
     <div className="requirements-page">
       <Header />
-      <BackButton />
       <div className="requirements-container">
-        
+        <div className="agent-page-header">
+          <div className="agent-header-left">
+            <BackButton />
+            <div className="agent-header-content">
+              <div className="agent-title-row">
+                <h1>Campaign Dashboard</h1>
+              </div>
+              <p className="text-muted">
+                Track email campaign performance, reply rates, and recipient status.
+              </p>
+            </div>
+          </div>
+          <div className="agent-header-right">
+            <ProjectSelector agentKey="campaignDashboard" />
+          </div>
+        </div>
+
+        <AgentOutcomesStrip
+          items={[
+            { iconSrc: '/assets/icons/mail.png', title: 'Email campaigns', description: 'Send and track outbound email from Market Research.' },
+            { iconSrc: '/assets/icons/bar-chart.png', title: 'Reply metrics', description: 'Monitor sent, opened, and reply rates.' },
+            { iconSrc: '/assets/icons/reports.png', title: 'Recipient detail', description: 'Drill into per-campaign recipient status.' },
+          ]}
+        />
+
+        <LiveModeHint
+          requireProject
+          message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample campaigns."
+        />
+
+        <ProjectGate agentLabel="Campaign data">
         <div className="main-workspace-area">
           <div className="tabs-container">
-            <button className="workspace-tab" onClick={() => window.location.href='/market-research'}>Market Research</button>
-            <button className="workspace-tab active-tab">Campaign Dashboard</button>
+            <button type="button" className="workspace-tab" onClick={() => navigate('/market-research')}>Market Research</button>
+            <button type="button" className="workspace-tab active-tab">Campaign Dashboard</button>
           </div>
 
           <div className="workspace-content-box">
@@ -156,8 +232,16 @@ function CampaignDashboard() {
                 <div className="panel-content-flex">
                   <h2 className="section-title">Campaign Performance</h2>
                   <p className="section-subtitle">Reply data auto-refreshes every 30 seconds.</p>
-                  {isLoading ? <p>Loading...</p> : loadError ? (
+                  {isLoading ? (
+                    <p>Loading...</p>
+                  ) : loadError ? (
                     <p className="error-text">{loadError}</p>
+                  ) : campaigns.length === 0 ? (
+                    <EmptyState
+                      iconType="document"
+                      title="No campaigns yet"
+                      description="Email campaigns from Market Research will appear here. Create a campaign to get started."
+                    />
                   ) : (
                     <div className="table-wrapper">
                       {isRefreshingReplies && <p className="section-subtitle">Refreshing reply counts...</p>}
@@ -174,9 +258,7 @@ function CampaignDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {campaigns.length === 0 ? (
-                            <tr><td colSpan="7" className="text-center empty-row">No campaigns sent yet.</td></tr>
-                          ) : campaigns.map(c => (
+                          {campaigns.map(c => (
                             <tr key={c.id}>
                               <td>{formatDate(c.createdAt)}</td>
                               <td>{c.name}</td>
@@ -237,6 +319,7 @@ function CampaignDashboard() {
             </div>
           </div>
         </div>
+        </ProjectGate>
       </div>
     </div>
   );

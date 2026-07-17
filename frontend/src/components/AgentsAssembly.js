@@ -10,6 +10,7 @@ import { showConfirm, showAlert } from './ConfirmDialog';
 import { Modal, ModalTabs } from './Modal';
 import { CardGrid, StatusIndicator } from './Card';
 import Select from './Select';
+import LiveModeHint from './LiveModeHint';
 
 
 
@@ -64,7 +65,9 @@ function AgentsAssembly() {
   });
   const [isBuffering, setIsBuffering] = useState(false);
   const [recommendedModules, setRecommendedModules] = useState([]);
-  const [moduleTab, setModuleTab] = useState('business'); // 'business' or 'technical'
+  const [moduleTab, setModuleTab] = useState(() => {
+    return sessionStorage.getItem('agentsAssemblyModuleTab') || 'business';
+  });
   const [showChatbot, setShowChatbot] = useState(false);
   const [registryAgents, setRegistryAgents] = useState([]);
 
@@ -93,9 +96,22 @@ function AgentsAssembly() {
   const chatHistoryRef = useRef(null);
   const carouselRef = useRef(null);
 
-  // Carousel state
-  const [carouselIndex, setCarouselIndex] = useState(0);
+  // Carousel state - persist selected agent
+  const [carouselIndex, setCarouselIndex] = useState(() => {
+    const saved = sessionStorage.getItem('agentsAssemblySelectedAgent');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const cardsPerView = 4; // Number of cards visible at once
+
+  // Persist carousel index when it changes
+  useEffect(() => {
+    sessionStorage.setItem('agentsAssemblySelectedAgent', carouselIndex.toString());
+  }, [carouselIndex]);
+
+  // Persist module tab when it changes
+  useEffect(() => {
+    sessionStorage.setItem('agentsAssemblyModuleTab', moduleTab);
+  }, [moduleTab]);
 
   // Load enabled agents from the backend registry on mount
   useEffect(() => {
@@ -222,18 +238,18 @@ function AgentsAssembly() {
     },
     {
       name: 'Executive Assistant Agent',
-      icon: '/assets/icons/networking.png',
+      icon: '/assets/icons/checklist.png',
       price: 'Free',
       status: 'ready',
-      description: 'Your AI-powered executive assistant for task management, reminders, and stakeholder coordination via WhatsApp.',
-      keywords: ['executive assistant', 'task management', 'reminders', 'whatsapp', 'stakeholder updates'],
+      description: 'Your AI-powered executive assistant for task management, reminders, and stakeholder coordination via email.',
+      keywords: ['executive assistant', 'task management', 'reminders', 'email', 'stakeholder updates'],
       businessContext: ['executive', 'management', 'personal productivity', 'team coordination'],
       industries: ['all industries'],
-      useCases: ['task reminders', 'stakeholder follow-up', 'whatsapp integration', 'executive support']
+      useCases: ['task reminders', 'stakeholder follow-up', 'email integration', 'executive support']
     },
     {
       name: 'Event Networking Agent',
-      icon: '/assets/icons/event.png',
+      icon: '/assets/icons/networking.png',
       price: '$30/month',
       status: 'ready',
       description: 'Maximize event ROI with smart attendee matching and follow-up automation.',
@@ -243,6 +259,12 @@ function AgentsAssembly() {
       useCases: ['event networking', 'attendee engagement', 'follow-up automation']
     }
   ];
+
+  useEffect(() => {
+    if (selectedIndustry) {
+      setIndustryPrompted(true);
+    }
+  }, [selectedIndustry]);
 
   // Only show working technical modules
   const technicalModules = [
@@ -319,34 +341,13 @@ function AgentsAssembly() {
       }
     }
 
-    // No search - reset
-    if (!searchTerm.trim()) {
-      setCarouselIndex(0);
-    }
+    // No search - preserve sessionStorage index (don't reset)
   }, [searchTerm, selectedIndustry, selectedProcess, businessPage]);
-        {/* Businesses Pagination Section */}
-        {allBusinesses.length > 0 && (
-          <div className="businesses-pagination">
-            <h3>Businesses ({allBusinesses.length} found)</h3>
-            <ul>
-              {allBusinesses.slice((businessPage-1)*businessesPerPage, businessPage*businessesPerPage).map((biz, idx) => (
-                <li key={biz.id || idx}>
-                  <strong>{biz.name}</strong> - {biz.address} {biz.rating ? `(Rating: ${biz.rating})` : ''}
-                </li>
-              ))}
-            </ul>
-            <div className="pagination-controls">
-              <button disabled={businessPage === 1} onClick={() => setBusinessPage(businessPage-1)}>Previous</button>
-              <span>Page {businessPage} of {Math.ceil(allBusinesses.length/businessesPerPage)}</span>
-              <button disabled={businessPage === Math.ceil(allBusinesses.length/businessesPerPage)} onClick={() => setBusinessPage(businessPage+1)}>Next</button>
-            </div>
-          </div>
-        )}
 
   // Rest of your handlers remain the same...
   const handleCardClick = (moduleName) => {
-    if (moduleName === 'Data Discovery') {
-      navigate('/datainsights');
+    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
+      navigate('/data-insights');
     }
     else if (moduleName === 'Market Research') {
       navigate('/market-research');
@@ -381,10 +382,8 @@ function AgentsAssembly() {
   };
 
   const handleTryModule = (moduleName) => {
-    // console.log('Trying module:', module.name);
-    // alert(`Starting free trial for ${module.name}!\n\nDuration: 14 days\nPrice after trial: ${module.price}\n\nClick OK to begin your trial.`);
-    if (moduleName === 'Data Discovery') {
-      navigate('/datainsights');
+    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
+      navigate('/data-insights');
     }
     else if (moduleName === 'Market Research') {
       navigate('/market-research');
@@ -606,6 +605,9 @@ const handleEnterpriseChat = async (userInput) => {
     <div className="agents-page">
       <Header onProcessClick={handleProcessClick} />
       <div className="agents-assembly">
+        <div className="agents-hub-banner">
+          <LiveModeHint message="Browse agents below. Switch to Demo to explore sample data, or Live to connect your own." />
+        </div>
         {/* Process Map Modal */}
         <Modal
           open={showProcessMap}
@@ -665,7 +667,7 @@ const handleEnterpriseChat = async (userInput) => {
               title="Ask AI Assistant"
               aria-label="Ask AI Assistant"
             >
-              <span className="floating-chat-trigger-icon">?</span>
+              <img src="/assets/icons/chat.png" alt="" className="floating-chat-trigger-icon" />
             </button>
           )}
 
@@ -700,29 +702,7 @@ const handleEnterpriseChat = async (userInput) => {
                       <span>{nextQuestion}</span>
                     </div>
                   </div>
-                  {!industryPrompted && (
-                    <div className="chat-row system">
-                      <span className="chat-sender">AI Assistant</span>
-                      <div className="chat-message system">
-                        <span>Select your industry:</span>
-                        <div className="industry-options-list">
-                          {industryOptions.map((option, idx) => (
-                            <button
-                              key={option}
-                              className="industry-option-btn"
-                              onClick={() => {
-                                setInputValue(`We are in the ${option} industry`);
-                                setIndustryPrompted(true);
-                                setInputHighlighted(true);
-                              }}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+{/* Industry filter hint removed - filter always visible in toolbar */}
                 </>
               )}
               {chatHistory.map((msg, idx) => {
@@ -841,7 +821,7 @@ const handleEnterpriseChat = async (userInput) => {
                 title="Send message"
                 aria-label="Send message"
               >
-                ↑
+                Send
               </button>
             </div>
           </div>
@@ -1138,9 +1118,15 @@ const handleEnterpriseChat = async (userInput) => {
           if (total === 0) {
             return (
               <div className="no-results">
-                <h3>No modules found</h3>
-                <p>Try adjusting your search or browse all available modules.</p>
-                <button onClick={() => setSearchTerm('')}>Clear Search</button>
+                <h3>{moduleTab === 'technical' ? 'More technical agents coming soon' : 'No modules found'}</h3>
+                <p>
+                  {moduleTab === 'technical'
+                    ? 'Data Insights is available today. Additional technical agents (AI Chatbot, Invest, Supply Chain) are in preview.'
+                    : 'Try adjusting your search or browse all available modules.'}
+                </p>
+                {moduleTab !== 'technical' && (
+                  <button type="button" onClick={() => setSearchTerm('')}>Clear Search</button>
+                )}
               </div>
             );
           }
@@ -1203,6 +1189,7 @@ const handleEnterpriseChat = async (userInput) => {
           return (
             <div className="carousel-3d-container">
               <button
+                type="button"
                 className="carousel-nav carousel-nav--left"
                 onClick={() => scrollCarousel('left')}
                 aria-label="Previous agent"
@@ -1215,7 +1202,7 @@ const handleEnterpriseChat = async (userInput) => {
                     if (!style.visible) return null;
 
                     const isReady = module.status === 'ready';
-                    const isNotReady = !isReady; // Disable buttons for non-ready agents
+                    const isNotReady = !isReady;
                     const isActive = style.offset === 0;
 
                     return (
@@ -1238,9 +1225,7 @@ const handleEnterpriseChat = async (userInput) => {
                         <div className="card-inner">
                           <div className="card-header">
                             <img src={module.icon} alt={module.name} />
-                            <StatusIndicator
-                              status={isReady ? 'ready' : 'in-progress'}
-                            />
+                            <StatusIndicator status={isReady ? 'ready' : 'in-progress'} />
                           </div>
                           <p className="card-title">{module.name}</p>
                           <p className="card-description">
@@ -1249,6 +1234,7 @@ const handleEnterpriseChat = async (userInput) => {
                           <div className="card-price">{module.price}</div>
                           <div className="card-buttons">
                             <button
+                              type="button"
                               className="try-button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1259,6 +1245,7 @@ const handleEnterpriseChat = async (userInput) => {
                               {isNotReady ? 'Coming Soon' : 'Try Free'}
                             </button>
                             <button
+                              type="button"
                               className="buy-button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1277,12 +1264,11 @@ const handleEnterpriseChat = async (userInput) => {
               </div>
 
               <button
+                type="button"
                 className="carousel-nav carousel-nav--right"
                 onClick={() => scrollCarousel('right')}
                 aria-label="Next agent"
               />
-
-{/* Dots removed - cleaner UI with just arrow navigation */}
             </div>
           );
         })()}

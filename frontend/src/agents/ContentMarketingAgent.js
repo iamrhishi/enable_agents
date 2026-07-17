@@ -1,23 +1,34 @@
 import { API_CONFIG } from '../config/apiConfig';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
-import { BackButton, Input, Textarea, Select } from '../components';
+import { BackButton, Textarea, ProjectSelector, LiveModeHint, AgentOutcomesStrip, ProjectGate, Modal } from '../components';
 import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+
+// Storage key for state persistence
+const STATE_KEY = 'contentMarketingState';
+
+// Demo campaigns from Market Research
+const DEMO_CAMPAIGNS = [
+  { id: 'camp-1', name: 'Q2 Outreach', subject: 'Partnership Opportunity', lead_count: 45, status: 'draft' },
+  { id: 'camp-2', name: 'Product Launch', subject: 'New Features', lead_count: 32, status: 'draft' },
+  { id: 'camp-3', name: 'Enterprise Prospects', subject: 'Enterprise Solutions', lead_count: 28, status: 'active' },
+];
 
 // Demo content templates
 const DEMO_GENERATED_CONTENT = {
   linkedin: {
-    post: `🚀 Excited to share our latest innovation in AI-powered business automation!
+    post: `Excited to share our latest innovation in AI-powered business automation!
 
 At Enable Agents, we're transforming how businesses operate with intelligent automation that adapts to your needs.
 
 Key highlights:
-✅ 50% reduction in manual tasks
-✅ Real-time insights and analytics
-✅ Seamless integration with existing tools
+- 50% reduction in manual tasks
+- Real-time insights and analytics
+- Seamless integration with existing tools
 
 The future of work is here. Are you ready?
 
@@ -35,12 +46,12 @@ In today's rapidly evolving business landscape, automation isn't just a luxury�
 The journey to automation begins with understanding your processes...`
   },
   twitter: {
-    post: `🤖 AI automation is changing the game for businesses.
+    post: `AI automation is changing the game for businesses.
 
 Our latest update brings:
-• 50% faster workflows
-• Smart task prioritization
-• Real-time collaboration
+- 50% faster workflows
+- Smart task prioritization
+- Real-time collaboration
 
 The future is automated. #AI #BusinessTech`
   },
@@ -64,40 +75,73 @@ Best regards,
 };
 
 function ContentMarketingAgent() {
-  // Demo mode detection with change listener
+  const selectedProjectId = useSelectedProjectId();
+  const projectId = selectedProjectId;
+
+  // Load persisted state
+  const loadPersistedState = useCallback(() => {
+    try {
+      const saved = sessionStorage.getItem(STATE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, []);
+
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return localStorage.getItem('enableAgentsMode') !== 'live';
   });
-  const [step, setStep] = useState('project'); // project, upload, generate, chat
-  const [projectId, setProjectId] = useState(null);
-  const [projectName, setProjectName] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [sector, setSector] = useState('');
-  
+
+  const savedState = loadPersistedState();
+  const [step, setStep] = useState(savedState.step || 'upload'); // upload | generate
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [knowledgeGraph, setKnowledgeGraph] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [domainContext, setDomainContext] = useState(null);
-  
-  const [selectedChannel, setSelectedChannel] = useState('linkedin');
-  const [contentType, setContentType] = useState('post');
+
+  const [selectedChannel, setSelectedChannel] = useState(savedState.selectedChannel || 'linkedin');
+  const [contentType, setContentType] = useState(savedState.contentType || 'post');
   const [userContext, setUserContext] = useState('');
   const [generatedContent, setGeneratedContent] = useState(null);
-  
+
   const [inputMessage, setInputMessage] = useState('');
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
-      sender: 'agent',
-      timestamp: new Date().toISOString(),
-      format: 'markdown'
+  const defaultMessages = [{
+    id: 1,
+    text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
+    sender: 'agent',
+    timestamp: new Date().toISOString(),
+    format: 'markdown'
+  }];
+  const [messages, setMessages] = useState(savedState.messages || defaultMessages);
+
+  // Persist state
+  useEffect(() => {
+    const state = { step, selectedChannel, contentType, messages };
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+  }, [step, selectedChannel, contentType, messages]);
+
+  // Clear state when project changes
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setMessages(defaultMessages);
+      setStep('upload');
+      setGeneratedContent(null);
     }
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
   
   const [isLoading, setIsLoading] = useState(false);
   const [showKGVisualization, setShowKGVisualization] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Campaign integration state
+  const [availableCampaigns, setAvailableCampaigns] = useState([]);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [isSendingToCampaign, setIsSendingToCampaign] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -106,6 +150,122 @@ function ContentMarketingAgent() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Fetch available campaigns from Market Research
+  const fetchCampaigns = async () => {
+    if (isDemoMode) {
+      setAvailableCampaigns(DEMO_CAMPAIGNS);
+      return;
+    }
+
+    try {
+      const userId = localStorage.getItem('userEmail') || 'user_001';
+      const response = await fetch(`${API_CONFIG.API_URL}/api/campaigns?username=${encodeURIComponent(userId)}`);
+      const data = await response.json();
+      if (data.success) {
+        setAvailableCampaigns(data.campaigns || []);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+    }
+  };
+
+  // Load campaigns when content is generated
+  useEffect(() => {
+    if (generatedContent) {
+      fetchCampaigns();
+    }
+  }, [generatedContent, isDemoMode]);
+
+  // Send content to campaign
+  const handleSendToCampaign = async () => {
+    if (!selectedCampaignId || !generatedContent) {
+      showToast('Please select a campaign', 'warning');
+      return;
+    }
+
+    if (isDemoMode) {
+      const campaign = availableCampaigns.find(c => c.id === selectedCampaignId);
+      showToast(`Content sent to "${campaign?.name}" campaign (Demo Mode)`, 'info');
+      addMessage(
+        `**Content linked to campaign:** ${campaign?.name}\n\nThe email content has been set for this campaign. You can now send it from the Market Research agent.`,
+        'agent'
+      );
+      setShowCampaignModal(false);
+      setSelectedCampaignId('');
+      return;
+    }
+
+    try {
+      setIsSendingToCampaign(true);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/campaigns/${selectedCampaignId}/content`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email_body: generatedContent.content,
+          content_type: contentType,
+          channel: selectedChannel,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        const campaign = availableCampaigns.find(c => c.id === selectedCampaignId);
+        showToast(`Content sent to "${campaign?.name}" campaign`, 'success');
+        addMessage(
+          `**Content linked to campaign:** ${campaign?.name}\n\nThe email content has been set for this campaign. You can now send it from the Market Research agent.`,
+          'agent'
+        );
+        setShowCampaignModal(false);
+        setSelectedCampaignId('');
+      } else {
+        showToast(data.error || 'Failed to send content', 'error');
+      }
+    } catch (error) {
+      console.error('Error sending to campaign:', error);
+      showToast('Error sending content to campaign', 'error');
+    } finally {
+      setIsSendingToCampaign(false);
+    }
+  };
+
+  // Sync workspace when global project changes
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setStep('upload');
+      setUploadedFiles([]);
+      setKnowledgeGraph(null);
+      setGeneratedContent(null);
+      setMessages([]);
+      return;
+    }
+
+    if (isDemoMode) {
+      setAvailableCampaigns(DEMO_CAMPAIGNS);
+      setStep('generate');
+      setMessages([
+        {
+          id: 1,
+          text: 'Demo project loaded. Choose a channel and content type, then generate sample marketing content.',
+          sender: 'agent',
+          timestamp: new Date().toISOString(),
+          format: 'markdown',
+        },
+      ]);
+      return;
+    }
+
+    setStep('upload');
+    setMessages([
+      {
+        id: 1,
+        text: "Welcome! Upload your documents to build a knowledge base, then generate content for any channel.",
+        sender: 'agent',
+        timestamp: new Date().toISOString(),
+        format: 'markdown',
+      },
+    ]);
+  }, [isDemoMode, selectedProjectId]);
 
   // Listen for mode changes and clear demo data when switching to live
   useEffect(() => {
@@ -131,55 +291,6 @@ function ContentMarketingAgent() {
       clearInterval(interval);
     };
   }, [isDemoMode]);
-
-  // ============= PROJECT CREATION =============
-  const handleCreateProject = async () => {
-    if (!projectName.trim()) {
-      showToast('Please enter a project name', 'warning');
-      return;
-    }
-
-    // Demo mode: simulate project creation
-    if (isDemoMode) {
-      setProjectId('demo-project-1');
-      addMessage(
-        `✅ Project "${projectName}" created successfully! (Demo Mode)\n\nYou can skip document upload and go directly to content generation, or upload sample documents.`,
-        'agent'
-      );
-      setStep('upload');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: 'user_001',
-          project_name: projectName,
-          industry: industry || 'General',
-          sector: sector || 'Technology'
-        })
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setProjectId(data.project_id);
-        addMessage(
-          `✅ Project "${projectName}" created successfully! Now let's upload your documents.`,
-          'agent'
-        );
-        setStep('upload');
-      } else {
-        addMessage(`❌ Error: ${data.error}`, 'agent');
-      }
-    } catch (error) {
-      addMessage(`❌ Connection error: ${error.message}`, 'agent');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // ============= FILE UPLOAD =============
   const handleFileSelect = async (e) => {
@@ -210,7 +321,7 @@ function ContentMarketingAgent() {
         });
 
         addMessage(
-          `✅ Uploaded ${data.uploaded_files} files and created knowledge graph!\n\n` +
+          `Uploaded ${data.uploaded_files} files and created knowledge graph!\n\n` +
           `**Domain Context:**\n` +
           `- Industry: ${data.domain_specialization.industry}\n` +
           `- Sector: ${data.domain_specialization.sector}\n` +
@@ -222,10 +333,10 @@ function ContentMarketingAgent() {
         
         setStep('generate');
       } else {
-        addMessage(`❌ Error: ${data.error}`, 'agent');
+        addMessage(`Error: ${data.error}`, 'agent');
       }
     } catch (error) {
-      addMessage(`❌ Upload error: ${error.message}`, 'agent');
+      addMessage(`Upload error: ${error.message}`, 'agent');
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -256,11 +367,11 @@ function ContentMarketingAgent() {
 
       setGeneratedContent(demoData);
       addMessage(
-        `✅ Content generated for **${selectedChannel}** (${contentType})! (Demo Mode)\n\n` +
+        `Content generated for **${selectedChannel}** (${contentType})! (Demo Mode)\n\n` +
         `---\n\n` +
         `${demoData.content}\n\n` +
         `---\n\n` +
-        `✨ I also generated ${demoData.variations.length} variations. Type 'show variations' to see them.`,
+        `I also generated ${demoData.variations.length} variations. Type 'show variations' to see them.`,
         'agent'
       );
       return;
@@ -283,18 +394,18 @@ function ContentMarketingAgent() {
       if (data.success) {
         setGeneratedContent(data);
         addMessage(
-          `✅ Content generated for **${selectedChannel}** (${contentType})!\n\n` +
+          `Content generated for **${selectedChannel}** (${contentType})!\n\n` +
           `---\n\n` +
           `${data.content}\n\n` +
           `---\n\n` +
-          `✨ I also generated ${data.variations.length} variations. Type 'show variations' to see them.`,
+          `I also generated ${data.variations.length} variations. Type 'show variations' to see them.`,
           'agent'
         );
       } else {
-        addMessage(`❌ Error: ${data.error}`, 'agent');
+        addMessage(`Error: ${data.error}`, 'agent');
       }
     } catch (error) {
-      addMessage(`❌ Generation error: ${error.message}`, 'agent');
+      addMessage(`Generation error: ${error.message}`, 'agent');
     } finally {
       setIsLoading(false);
     }
@@ -334,10 +445,10 @@ function ContentMarketingAgent() {
       if (data.success) {
         addMessage(data.response, 'agent');
       } else {
-        addMessage(`❌ Error: ${data.error}`, 'agent');
+        addMessage(`Error: ${data.error}`, 'agent');
       }
     } catch (error) {
-      addMessage(`❌ Error: ${error.message}`, 'agent');
+      addMessage(`Error: ${error.message}`, 'agent');
     } finally {
       setIsLoading(false);
     }
@@ -345,180 +456,128 @@ function ContentMarketingAgent() {
 
   // ============= RENDER FUNCTIONS =============
   const MessageContent = ({ message }) => {
-    if (message.format === 'html') {
-      return (
-        <div 
-          className="message-text"
-          dangerouslySetInnerHTML={{ __html: message.text }}
-        />
-      );
-    } else {
-      return (
-        <div className="message-text">
-          <ReactMarkdown>{message.text}</ReactMarkdown>
-        </div>
-      );
-    }
+    // Always use ReactMarkdown for safe rendering - no dangerouslySetInnerHTML
+    return (
+      <div className="message-text">
+        <ReactMarkdown>{message.text}</ReactMarkdown>
+      </div>
+    );
   };
 
-  const renderProjectSetup = () => (
-    <div className="content-marketing-container">
-      <div className="setup-panel">
-        <h2>Create New Project</h2>
-        <div className="form-group">
-          <label>Project Name *</label>
-          <Input
-            placeholder="e.g., Q1 Marketing Campaign"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
+  // Combined view - no more tabs
+
+  const renderWorkspace = () => (
+    <div className="cma-workspace">
+      {/* Left: Configuration */}
+      <div className="cma-config-panel">
+        <h3>Content Settings</h3>
+
+        {/* Channel Selection */}
+        <div className="config-section">
+          <label className="config-label">Channel</label>
+          <div className="pill-group">
+            {['LinkedIn', 'Email', 'Social', 'Ads'].map(channel => (
+              <button
+                key={channel}
+                type="button"
+                className={`config-pill ${selectedChannel === channel.toLowerCase() ? 'selected' : ''}`}
+                onClick={() => setSelectedChannel(channel.toLowerCase())}
+              >
+                {channel}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content Type */}
+        <div className="config-section">
+          <label className="config-label">Type</label>
+          <div className="pill-group">
+            {['Post', 'Article', 'Ad Copy', 'Email'].map(type => (
+              <button
+                key={type}
+                type="button"
+                className={`config-pill ${contentType === type.toLowerCase().replace(' ', '_') ? 'selected' : ''}`}
+                onClick={() => setContentType(type.toLowerCase().replace(' ', '_'))}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Knowledge Base - Documents */}
+        <div className="config-section">
+          <div className="docs-header-inline">
+            <label className="config-label">Knowledge Base</label>
+            <span className="docs-count">{uploadedFiles.length} docs</span>
+          </div>
+
+          <div className="docs-upload-inline" onClick={() => fileInputRef.current?.click()}>
+            <img src="/assets/icons/document.png" alt="" className="docs-upload-icon" />
+            <span>Add documents</span>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.docx,.txt,.xlsx,.html,.md"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
           />
-        </div>
 
-        <div className="form-group">
-          <label>Industry</label>
-          <Select value={industry} onChange={(e) => setIndustry(e.target.value)} variant="outlined">
-            <option value="">Select Industry</option>
-            <option value="Technology">Technology</option>
-            <option value="Healthcare">Healthcare</option>
-            <option value="Finance">Finance</option>
-            <option value="Retail">Retail & Ecommerce</option>
-            <option value="Manufacturing">Manufacturing</option>
-            <option value="Real Estate">Real Estate</option>
-            <option value="Education">Education</option>
-          </Select>
-        </div>
-
-        <div className="form-group">
-          <label>Sector</label>
-          <Input
-            placeholder="e.g., SaaS, B2B, D2C"
-            value={sector}
-            onChange={(e) => setSector(e.target.value)}
-          />
-        </div>
-
-        <button
-          className="btn btn-primary"
-          onClick={handleCreateProject}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Creating...' : 'Create Project'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderUploadStep = () => (
-    <div className="content-marketing-container">
-      <div className="upload-panel">
-        <h2>📤 Upload Your Documents</h2>
-        <p>Upload product docs, marketing materials, website content, sales info, etc.</p>
-        
-        <div className="upload-area" onClick={() => fileInputRef.current?.click()}>
-          <div className="upload-icon">📁</div>
-          <p>Drag files here or click to select</p>
-          <p className="upload-hint">PDF, DOCX, TXT, XLSX, HTML, MD (max 50MB each)</p>
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".pdf,.docx,.txt,.xlsx,.html,.md"
-          onChange={handleFileSelect}
-          style={{ display: 'none' }}
-        />
-
-        {uploadedFiles.length > 0 && (
-          <div className="uploaded-files">
-            <h3>Uploaded Files ({uploadedFiles.length})</h3>
-            <div className="file-list">
+          {uploadedFiles.length > 0 && (
+            <div className="docs-list">
               {uploadedFiles.map((fileId, idx) => (
-                <div key={fileId} className="file-item">
-                  ✓ Document {idx + 1}
+                <div key={fileId} className="doc-chip">
+                  Document {idx + 1}
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {knowledgeGraph && (
-          <button 
-            className="btn btn-secondary"
-            onClick={() => setShowKGVisualization(!showKGVisualization)}
-          >
-            {showKGVisualization ? '🔍 Hide' : '🔍 View'} Knowledge Graph
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderGenerateStep = () => (
-    <div className="content-marketing-container">
-      <div className="generate-panel">
-        <h2>Generate Marketing Content</h2>
-
-        <div className="form-row">
-          <div className="form-group">
-            <label>Channel</label>
-            <Select
-              value={selectedChannel}
-              onChange={(e) => setSelectedChannel(e.target.value)}
-              variant="outlined"
-            >
-              <option value="linkedin">LinkedIn</option>
-              <option value="email">Email</option>
-              <option value="social">Social Media</option>
-              <option value="google_ads">Google Ads</option>
-            </Select>
-          </div>
-
-          <div className="form-group">
-            <label>Content Type</label>
-            <Select
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-              variant="outlined"
-            >
-              <option value="post">Post</option>
-              <option value="article">Article</option>
-              <option value="ad">Ad Copy</option>
-              <option value="email_campaign">Email Campaign</option>
-              <option value="case_study">Case Study</option>
-            </Select>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label>Additional Context/Guidance</label>
-          <Textarea
-            placeholder="e.g., Focus on cost savings, target CTOs, emphasize ROI..."
-            value={userContext}
-            onChange={(e) => setUserContext(e.target.value)}
-            rows={3}
-          />
+          )}
         </div>
 
         <button
-          className="btn btn-primary"
+          className="generate-btn"
           onClick={handleGenerateContent}
           disabled={isLoading}
         >
           {isLoading ? 'Generating...' : 'Generate Content'}
         </button>
+      </div>
+
+      {/* Right: Context & Output */}
+      <div className="cma-output-panel">
+        {/* Context Section - expandable */}
+        <div className="context-section">
+          <label className="config-label">Context / Instructions</label>
+          <Textarea
+            placeholder="Describe your target audience, key messages, tone, campaign goals, specific talking points..."
+            value={userContext}
+            onChange={(e) => setUserContext(e.target.value)}
+            rows={6}
+            className="context-textarea-large"
+          />
+        </div>
 
         {generatedContent && (
           <div className="content-preview">
-            <h3>📝 Generated Content</h3>
+            <h3>Generated Content</h3>
             <div className="content-box">
               <ReactMarkdown>{generatedContent.content}</ReactMarkdown>
             </div>
-            {generatedContent.variations.length > 0 && (
-              <div className="variations">
+            <div className="content-actions">
+              {generatedContent.variations.length > 0 && (
                 <p className="hint">{generatedContent.variations.length} variations available in chat</p>
-              </div>
-            )}
+              )}
+              <button
+                className="btn btn-send-campaign"
+                onClick={() => setShowCampaignModal(true)}
+              >
+                Send to Email Campaign
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -529,17 +588,57 @@ function ContentMarketingAgent() {
   return (
     <div className="content-marketing-agent">
       <Header />
-      <BackButton />
 
-      <div className="cma-main-content">
-        <div className="cma-left-panel">
-          {step === 'project' && renderProjectSetup()}
-          {step === 'upload' && renderUploadStep()}
-          {step === 'generate' && renderGenerateStep()}
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Content Marketing</h1>
+            </div>
+            <p className="text-muted">
+              Create engaging content for all channels using AI and your knowledge base.
+            </p>
+          </div>
         </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="contentMarketing"
+            onProjectChange={(project) => {
+              if (project) {
+                console.log('Project selected:', project.name);
+              }
+            }}
+          />
+        </div>
+      </div>
 
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/copy.png', title: 'Multi-channel content', description: 'LinkedIn, email, Twitter posts from your docs.' },
+          { iconSrc: '/assets/icons/retrieval.png', title: 'Knowledge-powered', description: 'Uses uploaded documents and brand context.' },
+          { iconSrc: '/assets/icons/bullhorn.png', title: 'Campaign ready', description: 'Send content to Market Research campaigns.' },
+        ]}
+      />
+
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo to explore a sample campaign."
+      />
+
+      <ProjectGate agentLabel="Content Marketing workspace">
+      <div className="cma-main-content">
+        {renderWorkspace()}
+
+        {isChatOpen && (
         <div className="cma-right-panel">
           <div className="chat-container">
+            <div className="chat-panel-header">
+              <h3>Content Assistant</h3>
+              <button type="button" className="chat-close-btn" onClick={() => setIsChatOpen(false)} aria-label="Close chat">
+                ×
+              </button>
+            </div>
             <div className="messages-container">
               {messages.map((msg, index) => {
                 const prevMessage = messages[index - 1];
@@ -584,7 +683,62 @@ function ContentMarketingAgent() {
             )}
           </div>
         </div>
+        )}
+
+        {!isChatOpen && projectId && (
+          <button type="button" className="floating-chat-btn" onClick={() => setIsChatOpen(true)} aria-label="Open chat">
+            <img src="/assets/icons/chat.png" alt="" className="chat-btn-icon" />
+          </button>
+        )}
       </div>
+      </ProjectGate>
+
+      <Modal
+        open={showCampaignModal}
+        onClose={() => setShowCampaignModal(false)}
+        title="Send to Email Campaign"
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowCampaignModal(false)}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSendToCampaign}
+              disabled={!selectedCampaignId || isSendingToCampaign}
+            >
+              {isSendingToCampaign ? 'Sending...' : 'Send to Campaign'}
+            </button>
+          </>
+        }
+      >
+        <p className="modal-hint">Select a campaign from Market Research to use this content:</p>
+        {availableCampaigns.length === 0 ? (
+          <div className="no-campaigns">
+            <p>No campaigns found. Create a campaign in Market Research first.</p>
+          </div>
+        ) : (
+          <div className="campaign-list">
+            {availableCampaigns.map(campaign => (
+              <label
+                key={campaign.id}
+                className={`campaign-option ${selectedCampaignId === campaign.id ? 'selected' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="campaign"
+                  value={campaign.id}
+                  checked={selectedCampaignId === campaign.id}
+                  onChange={(e) => setSelectedCampaignId(e.target.value)}
+                />
+                <div className="campaign-option-info">
+                  <span className="campaign-name">{campaign.name}</span>
+                  <span className="campaign-meta">{campaign.lead_count} leads · {campaign.status}</span>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -50,24 +50,31 @@ class DocumentService:
         self,
         file,
         user_id: str,
+        project_id: str,
         document_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Upload and validate a document.
+        Upload and validate a document to a project.
+
+        Documents are project-scoped and shared among all project members.
 
         Args:
             file: Werkzeug FileStorage object
-            user_id: User ID
+            user_id: User ID (who uploaded)
+            project_id: Project ID (document owner)
             document_type: Optional document category
 
         Returns:
-            Dict with document_id and status
+            Dict with document_id, project_id, and status
         """
         from core.database import db
         from agents.document_intelligence.models import ProcessedDocument
 
         if not file or not file.filename:
             raise ValueError("No file provided")
+
+        if not project_id:
+            raise ValueError("project_id is required")
 
         filename = secure_filename(file.filename)
         if not allowed_file(filename):
@@ -77,12 +84,12 @@ class DocumentService:
         document_id = str(uuid4())
         file_ext = get_file_extension(filename)
 
-        # Create user-specific upload directory
-        user_dir = os.path.join(self.upload_dir, user_id)
-        os.makedirs(user_dir, exist_ok=True)
+        # Create project-specific upload directory
+        project_dir = os.path.join(self.upload_dir, project_id)
+        os.makedirs(project_dir, exist_ok=True)
 
         # Save file
-        file_path = os.path.join(user_dir, f"{document_id}.{file_ext}")
+        file_path = os.path.join(project_dir, f"{document_id}.{file_ext}")
         file.save(file_path)
 
         # Get file size
@@ -94,7 +101,8 @@ class DocumentService:
         # Create database record
         doc = ProcessedDocument(
             document_id=document_id,
-            user_id=user_id,
+            project_id=project_id,
+            uploaded_by=user_id,
             file_name=filename,
             file_type=file_ext,
             file_size=file_size,
@@ -105,10 +113,11 @@ class DocumentService:
         db.session.add(doc)
         db.session.commit()
 
-        logger.info(f"Document uploaded: {document_id} for user {user_id}")
+        logger.info(f"Document uploaded: {document_id} to project {project_id} by {user_id}")
 
         return {
             "document_id": document_id,
+            "project_id": project_id,
             "file_name": filename,
             "file_size": file_size,
             "status": "pending",
@@ -302,7 +311,7 @@ class DocumentService:
             # Stage 3: Generate and store embeddings
             vector_store = VectorStore()
             chunk_dicts = [{"content": c["content"], "metadata": c} for c in chunks]
-            chunk_ids = vector_store.store_chunks(document_id, chunk_dicts, user_id=doc.user_id)
+            chunk_ids = vector_store.store_chunks(document_id, chunk_dicts, user_id=doc.project_id)
 
             doc.processing_stage = "entities"
             doc.processing_progress = 0.8
@@ -394,17 +403,22 @@ class DocumentService:
         """
         Update ContextStore with document metadata for cross-agent access.
 
+        Documents are project-scoped, so context is stored per project.
         Other agents can read this context to:
-        - Know what documents are available
+        - Know what documents are available in a project
         - Get document summaries without re-querying
         - Access extracted entities for their workflows
         """
         try:
             ctx = ContextStore()
 
+            # Use project_id for context scoping (documents are project-owned)
+            scope_id = doc.project_id or doc.uploaded_by
+
             # Store individual document metadata
             doc_context = {
                 "document_id": doc.document_id,
+                "project_id": doc.project_id,
                 "file_name": doc.file_name,
                 "file_type": doc.file_type,
                 "document_type": doc.document_type,
@@ -431,14 +445,14 @@ class DocumentService:
             doc_context["entities"] = entity_summary
 
             ctx.set(
-                user_id=doc.user_id,
+                user_id=scope_id,
                 agent_id=AGENT_ID,
                 key=f"document:{doc.document_id}",
                 value=doc_context,
             )
 
-            # Update user's document index (list of available docs)
-            existing_index = ctx.get(doc.user_id, AGENT_ID, "documents:index", default=[])
+            # Update project's document index (list of available docs)
+            existing_index = ctx.get(scope_id, AGENT_ID, "documents:index", default=[])
             # Add or update this document in the index
             doc_entry = {
                 "document_id": doc.document_id,
@@ -454,37 +468,51 @@ class DocumentService:
             existing_index = existing_index[:50]
 
             ctx.set(
-                user_id=doc.user_id,
+                user_id=scope_id,
                 agent_id=AGENT_ID,
                 key="documents:index",
                 value=existing_index,
             )
 
-            logger.info(f"Updated ContextStore for document {doc.document_id}")
+            logger.info(f"Updated ContextStore for document {doc.document_id} (project: {doc.project_id})")
 
         except Exception as e:
             # Don't fail document processing if context update fails
             logger.warning(f"Failed to update context for document {doc.document_id}: {e}")
 
-    def get_document_status(self, document_id: str, user_id: str) -> Dict[str, Any]:
-        """Get document processing status."""
+    def get_document_status(
+        self, document_id: str, project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get document processing status.
+
+        Args:
+            document_id: Document ID
+            project_id: Optional project ID to verify ownership
+        """
         from agents.document_intelligence.models import ProcessedDocument
 
-        doc = ProcessedDocument.query.filter_by(
-            document_id=document_id, user_id=user_id
-        ).first()
+        doc = ProcessedDocument.query.get(document_id)
 
         if not doc:
             raise ValueError(f"Document not found: {document_id}")
 
+        # Verify project ownership if project_id provided
+        if project_id and doc.project_id != project_id:
+            raise ValueError(f"Document not found in project: {document_id}")
+
         return doc.to_dict()
 
-    def list_documents(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """List user's documents."""
+    def list_documents(
+        self, project_id: str, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """List project's documents.
+
+        Documents are project-scoped and shared among all project members.
+        """
         from agents.document_intelligence.models import ProcessedDocument
 
         docs = (
-            ProcessedDocument.query.filter_by(user_id=user_id)
+            ProcessedDocument.query.filter_by(project_id=project_id)
             .order_by(ProcessedDocument.created_at.desc())
             .limit(limit)
             .all()
@@ -492,14 +520,19 @@ class DocumentService:
 
         return [doc.to_dict() for doc in docs]
 
-    def delete_document(self, document_id: str, user_id: str) -> bool:
-        """Delete a document and all associated data."""
+    def delete_document(self, document_id: str, project_id: str) -> bool:
+        """Delete a document and all associated data.
+
+        Args:
+            document_id: Document ID
+            project_id: Project ID (for ownership verification)
+        """
         from core.database import db
         from core.vector_store import VectorStore
         from agents.document_intelligence.models import ProcessedDocument
 
         doc = ProcessedDocument.query.filter_by(
-            document_id=document_id, user_id=user_id
+            document_id=document_id, project_id=project_id
         ).first()
 
         if not doc:
@@ -517,7 +550,7 @@ class DocumentService:
         db.session.delete(doc)
         db.session.commit()
 
-        logger.info(f"Document deleted: {document_id}")
+        logger.info(f"Document deleted: {document_id} from project {project_id}")
         return True
 
     def chat(
@@ -612,54 +645,68 @@ Answer based on the context above:"""
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def get_user_documents(user_id: str) -> List[Dict[str, Any]]:
+def get_project_documents(project_id: str) -> List[Dict[str, Any]]:
     """
-    Get list of user's processed documents from ContextStore.
+    Get list of project's processed documents from ContextStore.
+
+    Documents are project-scoped and shared among all project members.
 
     Usage in other agents:
-        from agents.document_intelligence.service import get_user_documents
-        docs = get_user_documents(user_id)
+        from agents.document_intelligence.service import get_project_documents
+        docs = get_project_documents(project_id)
     """
     ctx = ContextStore()
-    return ctx.get(user_id, AGENT_ID, "documents:index", default=[])
+    return ctx.get(project_id, AGENT_ID, "documents:index", default=[])
 
 
-def get_document_context(user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+# Alias for backwards compatibility
+def get_user_documents(user_id: str) -> List[Dict[str, Any]]:
+    """Deprecated: Use get_project_documents instead."""
+    return get_project_documents(user_id)
+
+
+def get_document_context(project_id: str, document_id: str) -> Optional[Dict[str, Any]]:
     """
     Get document metadata and entity summary from ContextStore.
+
+    Args:
+        project_id: Project ID that owns the document
+        document_id: Document ID
 
     Returns None if document not found or not accessible.
     """
     ctx = ContextStore()
-    return ctx.get(user_id, AGENT_ID, f"document:{document_id}", default=None)
+    return ctx.get(project_id, AGENT_ID, f"document:{document_id}", default=None)
 
 
 def search_documents(
-    user_id: str,
+    project_id: str,
     query: str,
     document_ids: Optional[List[str]] = None,
     top_k: int = 5,
 ) -> List[Dict[str, Any]]:
     """
-    Search user's documents for relevant content.
+    Search project's documents for relevant content.
+
+    Documents are project-scoped.
 
     Usage in other agents:
         from agents.document_intelligence.service import search_documents
-        results = search_documents(user_id, "What is our pricing?")
+        results = search_documents(project_id, "What is our pricing?")
     """
     from agents.document_intelligence.retrieval import DocumentRetriever
 
     retriever = DocumentRetriever()
     return retriever.search(
         query=query,
-        user_id=user_id,
+        user_id=project_id,  # project_id used as scope
         document_ids=document_ids,
         top_k=top_k,
     )
 
 
 def get_document_context_for_prompt(
-    user_id: str,
+    project_id: str,
     query: str,
     document_ids: Optional[List[str]] = None,
     max_tokens: int = 2000,
@@ -669,7 +716,7 @@ def get_document_context_for_prompt(
 
     Usage in other agents:
         from agents.document_intelligence.service import get_document_context_for_prompt
-        context = get_document_context_for_prompt(user_id, query)
+        context = get_document_context_for_prompt(project_id, query)
         prompt = f"Based on these documents:\n{context}\n\nAnswer: {query}"
     """
     from agents.document_intelligence.retrieval import DocumentRetriever
@@ -677,7 +724,7 @@ def get_document_context_for_prompt(
     retriever = DocumentRetriever()
     result = retriever.get_context_for_query(
         query=query,
-        user_id=user_id,
+        user_id=project_id,  # project_id used as scope
         document_ids=document_ids,
         max_tokens=max_tokens,
     )

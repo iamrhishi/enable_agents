@@ -1,0 +1,238 @@
+/* ReminderModal - Multi-channel reminder modal */
+
+.reminder-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.reminder-modal {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reminder-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.reminder-modal-header h3 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+.reminder-modal-header .btn-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-page-title);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.reminder-modal-header .btn-close:hover {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.reminder-modal-body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.reminder-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-right: var(--space-2);
+}
+
+.reminder-recipient,
+.reminder-context {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body);
+}
+
+.reminder-recipient strong,
+.reminder-context strong {
+  color: var(--color-text);
+}
+
+.reminder-context .priority-tag {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  margin-left: var(--space-2);
+}
+
+.priority-tag.high {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.priority-tag.medium {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.priority-tag.low {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+/* Channel Selection */
+.reminder-channels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.channel-options {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.channel-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-background);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-btn:hover {
+  border-color: var(--color-primary);
+  background: rgba(30, 58, 95, 0.05);
+}
+
+.channel-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.channel-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.channel-btn.active .channel-icon {
+  filter: brightness(0) invert(1);
+}
+
+.no-channels {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Message Input */
+.reminder-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reminder-message .textarea-wrapper {
+  max-width: 100%;
+}
+
+/* Footer */
+.reminder-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.reminder-modal-footer .btn-secondary {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.reminder-modal-footer .btn-secondary:hover {
+  border-color: var(--color-text-muted);
+}
+
+.reminder-modal-footer .btn-primary {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.reminder-modal-footer .btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.reminder-modal-footer .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

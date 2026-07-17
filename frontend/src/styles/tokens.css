@@ -32,6 +32,7 @@
   /* Surfaces */
   --color-surface: #FFFFFF;
   --color-surface-elevated: #FFFFFF;
+  --color-surface-alt: #F8F9FA;
   --color-background: #F1EAE4;
   --color-background-subtle: #E8DDD5;
 
@@ -56,6 +57,12 @@
   --color-error-bg-hover: #FECACA;
   --color-warning: #F59E0B;
   --color-warning-bg: #FEF3C7;
+
+  /* Team role badge colors */
+  --role-owner: #CA8A04;
+  --role-admin: #7C3AED;
+  --role-member: #2563EB;
+  --role-viewer: #64748B;
 
   /* Focus & Interactive */
   --color-focus-ring: rgba(194, 65, 12, 0.4);
@@ -94,10 +101,13 @@
   /* 4. Body text, descriptions, subtitles */
   --text-body: 0.875rem;        /* 14px */
 
+  /* 5. Small text - badges, labels, captions */
+  --text-caption: 0.75rem;      /* 12px */
+
   /* Legacy aliases (map to new sizes) */
   --text-title: var(--text-page-title);
   --text-small: var(--text-body);
-  --text-xs: var(--text-body);
+  --text-xs: var(--text-caption);  /* Badges, labels - 12px */
   --text-sm: var(--text-body);
   --text-base: var(--text-heading);
   --text-lg: var(--text-heading);
@@ -227,13 +237,13 @@
 }
 
 .btn-secondary {
-  background: var(--color-background);
+  background: var(--color-surface);
   color: var(--color-text);
   border: 1.5px solid var(--color-border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--color-background-subtle);
+  background: var(--color-surface-alt);
   border-color: var(--color-accent);
 }
 

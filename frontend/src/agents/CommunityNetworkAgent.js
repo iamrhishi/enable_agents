@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
-import { BackButton, Input, Textarea, ConfirmDialog } from '../components';
+import { BackButton, Input, Textarea, ConfirmDialog, ProjectSelector, LiveModeHint, AgentOutcomesStrip, ProjectGate, NetworkSearchResults } from '../components';
 import '../styles/CommunityNetworkAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 
 // Demo network data
 const DEMO_NETWORK_DATA = [
@@ -17,6 +18,8 @@ const DEMO_NETWORK_DATA = [
 ];
 
 function CommunityNetworkAgent() {
+  const selectedProjectId = useSelectedProjectId();
+
   // Demo mode detection with change listener
   const [isDemoMode, setIsDemoMode] = React.useState(() => {
     return localStorage.getItem('enableAgentsMode') !== 'live';
@@ -38,7 +41,8 @@ function CommunityNetworkAgent() {
   const csvFileRef = useRef(null);
   const cvFileRef = useRef(null);
   const [existingFiles, setExistingFiles] = useState(new Map());
-  const [currentUserId] = useState('user_001');
+  // Use user email as ID, with project scoping
+  const currentUserId = localStorage.getItem('userEmail') || 'anonymous';
   const [userFavorites, setUserFavorites] = useState([]);
 
   // Listen for mode changes and clear demo data when switching to live
@@ -59,6 +63,21 @@ function CommunityNetworkAgent() {
     };
   }, [isDemoMode, clearChat]);
 
+  // Preload demo network data when a project is selected in demo mode
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setCsvData(null);
+      setUserProfile(null);
+      return;
+    }
+    if (isDemoMode) {
+      setCsvData(DEMO_NETWORK_DATA);
+    } else {
+      setCsvData(null);
+      setUserProfile(null);
+    }
+  }, [isDemoMode, selectedProjectId]);
+
   // Function to save JSON data to file
   // Enhanced handleSearch function with better user feedback
   const handleSearch = async (query) => {
@@ -72,8 +91,10 @@ function CommunityNetworkAgent() {
         person.skills.some(s => s.toLowerCase().includes(query.toLowerCase()))
       );
       const results = filteredResults.length > 0 ? filteredResults : DEMO_NETWORK_DATA.slice(0, 3);
-      const resultsHtml = results.map(p => `<strong>${p.name}</strong> - ${p.role} at ${p.company}<br>📧 ${p.email} | 🔗 ${p.linkedin}`).join('<br><br>');
-      addMessage(`<strong>Search Results</strong> (${results.length} found)<br><br>${resultsHtml}`, 'agent', null, 'html');
+      addMessage(`**Search Results** (${results.length} found)`, 'agent', {
+        type: 'search_results',
+        data: { results, total_found: results.length, query },
+      }, 'markdown');
       return;
     }
 
@@ -98,19 +119,21 @@ function CommunityNetworkAgent() {
             .filter(([key, values]) => values && values.length > 0)
             .map(([key, values]) => `${key}: ${values.join(', ')}`)
             .join(' | ');
-          
-          const resultsText = formatResults(result.results);
-          
-          // Use HTML format for search results with formatted profiles
-          addMessage(`<strong>Search Results</strong> (${result.total_found} found)<br><br><strong>Keywords extracted:</strong> ${keywordsText}<br><br>${resultsText}`, 'agent', {
-            type: 'search_results',
-            data: {
-              query: query,
-              results: result.results,
-              total_found: result.total_found,
-              keywords: result.keywords
-            }
-          }, 'html');
+
+          addMessage(
+            `**Search Results** (${result.total_found} found)\n\n**Keywords extracted:** ${keywordsText}`,
+            'agent',
+            {
+              type: 'search_results',
+              data: {
+                query,
+                results: result.results,
+                total_found: result.total_found,
+                keywords: result.keywords,
+              },
+            },
+            'markdown'
+          );
           
           // Show more results option if there are many
           if (result.total_found > 5) {
@@ -545,6 +568,7 @@ function CommunityNetworkAgent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: currentUserId,
+          project_id: selectedProjectId,
           profile_data: profileData
         })
       });
@@ -552,7 +576,7 @@ function CommunityNetworkAgent() {
       const result = await response.json();
       
       if (result.success) {
-        addMessage(`✅ **Profile saved to favorites!**\n\n**${profileData.full_name}** from **${profileData.company}** added to your favorites.\n\n**Total favorites:** ${result.favorites_count}`, 'agent', null, 'markdown');
+        addMessage(`**Profile saved to favorites!**\n\n**${profileData.full_name || profileData.name}** from **${profileData.company}** added to your favorites.\n\n**Total favorites:** ${result.favorites_count}`, 'agent', null, 'markdown');
         // Refresh favorites list
         loadUserFavorites();
       } else {
@@ -571,7 +595,8 @@ function CommunityNetworkAgent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: currentUserId
+          user_id: currentUserId,
+          project_id: selectedProjectId
         })
       });
 
@@ -585,162 +610,29 @@ function CommunityNetworkAgent() {
     }
   };
 
-  // Updated formatResults function with PNG icons and adjusted card height
-  const formatResults = (results) => {
-    return results.slice(0, 5).map((result, index) => {
-      const name = result.name || result.Name || result.full_name || 'Unknown';
-      const lastname = result.Surname || '';
-      const company = result.company || result.Company || result.organization || 'Unknown';
-      const title = result['Job title'] || result.title || result.Title || result.position || result.role || 'Unknown';
-      const location = result.location || result.Location || result.city || result.City || '';
-      
-      const full_name = `${name} ${lastname}`.trim(); 
-
-      // Create LinkedIn search URL
-      const linkedinSearchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(full_name)}`;
-
-      // Create unique ID for this result
-      const resultId = `result_${Date.now()}_${index}`;
-
-      let profileText = `<div style="margin-bottom: 16px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; position: relative; background: #fafafa;">
-    <!-- Header Section with Name and Action Icons -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <div style="flex: 1;">
-        <strong style="font-size: 16px; color: #1f2937;">${full_name}</strong>
-      </div>
-      
-      <!-- Action Icons in One Line -->
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <a href="${linkedinSearchUrl}" target="_blank" style="text-decoration: none;" title="Search on LinkedIn">
-          <img src="/assets/icons/linkedin.png" alt="LinkedIn" style="width:20px; height:20px; cursor:pointer; opacity:0.7; transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'" />
-        </a>
-        
-        <img src="/assets/icons/save.png" alt="Save" 
-            onclick="window.saveProfileToFavorites('${resultId}')" 
-            style="width:20px; height:20px; cursor:pointer; opacity:0.7; transition:opacity 0.2s;" 
-            onmouseover="this.style.opacity='1'" 
-            onmouseout="this.style.opacity='0.7'" 
-            title="Save to favorites" />
-        
-        <img src="/assets/icons/message.png" alt="Message" 
-            onclick="window.showMessageOptions('${JSON.stringify({full_name, company, title, location}).replace(/"/g, "&quot;")}')" 
-            style="width:20px; height:20px; cursor:pointer; opacity:0.7; transition:opacity 0.2s;" 
-            onmouseover="this.style.opacity='1'" 
-            onmouseout="this.style.opacity='0.7'" 
-            title="Generate outreach message" />
-      </div>
-    </div>
-    
-    <!-- Profile Information -->
-    <div style="display: grid; grid-template-columns: 1fr; gap: 4px;">
-      <div style="display: flex; align-items: center;">
-        <span style="font-weight: 500; color: #374151; min-width: 70px; font-size: 14px;">Company:</span>
-        <span style="color: #6b7280; font-size: 14px;">${company}</span>
-      </div>
-      
-      <div style="display: flex; align-items: center;">
-        <span style="font-weight: 500; color: #374151; min-width: 70px; font-size: 14px;">Title:</span>
-        <span style="color: #6b7280; font-size: 14px;">${title}</span>
-      </div>`;
-
-      if (location) {
-        profileText += `
-      <div style="display: flex; align-items: center;">
-        <span style="font-weight: 500; color: #374151; min-width: 70px; font-size: 14px;">Location:</span>
-        <span style="color: #6b7280; font-size: 14px;">📍 ${location}</span>
-      </div>`;
-      }
-      
-      // Add skills if available
-      const skills = result.skills || result.Skills || result.required_skills || result.technologies;
-      if (skills) {
-        const skillsText = typeof skills === 'string' ? skills : skills.join(', ');
-        if (skillsText.length < 60) {
-          profileText += `
-      <div style="display: flex; align-items: flex-start; margin-top: 2px;">
-        <span style="font-weight: 500; color: #374151; min-width: 70px; font-size: 14px;">Skills:</span>
-        <span style="color: #6b7280; font-size: 13px;">🔧 ${skillsText}</span>
-      </div>`;
-        }
-      }
-      
-      profileText += `
-    </div>
-  </div>`;
-      
-      // Store the result data for the save function
-      if (!window.searchResults) window.searchResults = {};
-      window.searchResults[resultId] = {
-        name: name,
-        lastname: lastname,
-        company: company,
-        title: title,
-        location: location,
-        skills: skills,
-        full_name: full_name,
-        // Include all original data
-        ...result
-      };
-      
-      return profileText;
-    }).join('');
-  };
-
-  // Make save function available globally and load favorites on mount
   useEffect(() => {
-    // Make save function available globally
-    window.saveProfileToFavorites = (resultId) => {
-      const profileData = window.searchResults[resultId];
-      if (profileData) {
-        saveToFavorites(profileData);
-      } else {
-        console.error('Profile data not found for ID:', resultId);
-        addMessage("**Error:** Profile data not found. Please try again.", 'agent', null, 'markdown');
-      }
-    };
-
-    // Make remove function available globally
-    window.removeFromFavorites = removeFromFavorites;
-    
-    // Load user favorites when component mounts
     loadUserFavorites();
-    
-    return () => {
-      delete window.saveProfileToFavorites;
-      delete window.removeFromFavorites;
-      delete window.searchResults;
-    };
   }, [currentUserId]);
 
-  // Add function to show favorites (optional - for viewing saved favorites)
+  const handleGenerateOutreach = (profile) => {
+    addMessage(
+      `**Outreach draft for ${profile.full_name}**\n\nHi ${profile.full_name.split(' ')[0]},\n\nI noticed your work as ${profile.title} at ${profile.company}. I'd love to connect and explore whether there's mutual value in collaborating.\n\nWould you be open to a brief call next week?`,
+      'agent',
+      null,
+      'markdown'
+    );
+  };
+
   const showUserFavorites = () => {
     if (userFavorites.length === 0) {
-      addMessage("📭 **No favorites saved yet!**\n\nSave profiles by clicking the ❤️ **Mark as favorite** button in search results.", 'agent', null, 'markdown');
+      addMessage('**No favorites saved yet.**\n\nSave profiles using the save icon on search result cards.', 'agent', null, 'markdown');
       return;
     }
 
-    const favoritesHtml = userFavorites.map((favorite, index) => {
-      const full_name = favorite.full_name || `${favorite.name || ''} ${favorite.lastname || ''}`.trim();
-      const company = favorite.company || favorite.Company || 'Unknown';
-      const title = favorite.title || favorite['Job title'] || favorite.Title || 'Unknown';
-      const savedDate = formatDate(favorite.saved_at);
-      
-      // Create LinkedIn search URL
-      const linkedinSearchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(full_name)}`;
-
-      return `<div style="margin-bottom: 16px; padding: 12px; border: 1px; border-radius: 8px;">
-<strong>Name:</strong> ${full_name} <a href="${linkedinSearchUrl}" target="_blank" style="margin-left: 8px;"><img src="/assets/icons/linkedin.png" alt="LinkedIn" style="width:16px;height:16px;display:inline;vertical-align:middle;" /></a><br>
-<strong>Company:</strong> ${company}<br>
-<strong>Title:</strong> ${title}<br>
-<small style="color: #666;">Saved on: ${savedDate}</small><br>
-<button onclick="window.removeFromFavorites(${favorite.favorite_id})" style="background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 12px;">Remove</button>
-</div>`;
-    }).join('');
-
-    addMessage(`<strong>Your Favorites</strong> (${userFavorites.length} saved)<br><br>${favoritesHtml}`, 'agent', {
+    addMessage(`**Your Favorites** (${userFavorites.length} saved)`, 'agent', {
       type: 'user_favorites',
-      data: { favorites: userFavorites, count: userFavorites.length }
-    }, 'html');
+      data: { favorites: userFavorites, count: userFavorites.length },
+    }, 'markdown');
   };
 
   // Fix 3: Add the missing handleKeyPress function
@@ -759,6 +651,7 @@ function CommunityNetworkAgent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: currentUserId,
+          project_id: selectedProjectId,
           favorite_id: favoriteId
         })
       });
@@ -766,7 +659,7 @@ function CommunityNetworkAgent() {
       const result = await response.json();
       
       if (result.success) {
-        addMessage(`✅ **Profile removed from favorites!**\n\n**Total favorites:** ${result.favorites_count}`, 'agent', null, 'markdown');
+        addMessage(`**Profile removed from favorites.**\n\n**Total favorites:** ${result.favorites_count}`, 'agent', null, 'markdown');
         // Refresh favorites list
         loadUserFavorites();
       } else {
@@ -781,8 +674,45 @@ function CommunityNetworkAgent() {
   return (
     <div className="community-network-agent">
       <Header />
-      <BackButton />
 
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Community Network</h1>
+            </div>
+            <p className="text-muted">
+              Discover connections, find warm intros, and grow your professional network.
+            </p>
+          </div>
+        </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="communityNetwork"
+            onProjectChange={(project) => {
+              if (project) {
+                console.log('Project selected:', project.name);
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/search-analysis.png', title: 'Search your network', description: 'Find people by role, company, or skills.' },
+          { iconSrc: '/assets/icons/networking.png', title: 'Warm intros', description: 'Identify the best connections for your goals.' },
+          { iconSrc: '/assets/icons/saved.png', title: 'Save favorites', description: 'Bookmark profiles for follow-up.' },
+        ]}
+      />
+
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for a sample network dataset."
+      />
+
+      <ProjectGate agentLabel="Community Network workspace">
       <div className="main-container">
         {/* Left Section - File Uploads */}
         <div className="upload-section">
@@ -792,11 +722,14 @@ function CommunityNetworkAgent() {
           <div className="upload-card">
             <div className="upload-header">
               <h4>Network Data</h4>
-              <span className="status-indicator">
-                {csvData ? `${csvData.length} profiles loaded` : 'No data'}
+              <span className="status-badge">
+                {csvData ? `${csvData.length} loaded` : 'No data'}
               </span>
             </div>
             <p>Upload network data or ask the Admin for access. Write at <strong>engineering@enableyou.co</strong> for data access</p>
+            {isDemoMode && csvData && (
+              <p className="demo-data-banner">Sample network loaded ({csvData.length} profiles) — try asking &quot;Find engineers in technology&quot;</p>
+            )}
             <button 
               onClick={() => csvFileRef.current?.click()} 
               className="upload-btn csv-btn"
@@ -813,39 +746,43 @@ function CommunityNetworkAgent() {
             />
           </div>
 
-          {/* Data Preview Table */}
+          {/* Data Preview - Compact List */}
           {csvData && csvData.length > 0 && (
             <div className="data-preview">
-              <h4>Data Preview</h4>
-              
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      {Object.keys(csvData[0]).map((column, index) => (
-                        <th key={index} title={column}>{column}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {csvData.slice(0, 5).map((row, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {Object.keys(csvData[0]).map((column, colIndex) => (
-                          <td key={colIndex} title={row[column]}>
-                            {row[column] || '-'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                
-                {csvData.length > 5 && (
-                  <div className="table-footer">
-                    <span>Showing 5 of {csvData.length} records</span>
-                  </div>
-                )}
+              <div className="data-preview-header">
+                <h4>Network</h4>
+                <span className="preview-count">{csvData.length}</span>
               </div>
+
+              <ul className="profile-list-compact">
+                {csvData.slice(0, 5).map((row, rowIndex) => {
+                  const name = row.name || row.Name || row.full_name || `Profile ${rowIndex + 1}`;
+                  const company = row.company || row.Company || row.organization || '';
+                  const role = row.role || row.title || row.Title || row['Job title'] || '';
+                  const location = row.location || row.Location || row.city || '';
+                  const email = row.email || row.Email || '';
+                  const skills = row.skills || [];
+
+                  const handleProfileClick = () => {
+                    addMessage('', 'agent', {
+                      type: 'profile_detail',
+                      data: { name, role, company, location, email, skills: Array.isArray(skills) ? skills : [] }
+                    }, 'markdown');
+                  };
+
+                  return (
+                    <li key={rowIndex} className="profile-list-item" onClick={handleProfileClick}>
+                      <span className="profile-list-avatar">{name.charAt(0)}</span>
+                      <span className="profile-list-name">{name}</span>
+                      {role && <span className="profile-list-role">{role}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {csvData.length > 5 && (
+                <p className="preview-hint">+{csvData.length - 5} more. Use chat to search.</p>
+              )}
             </div>
           )}
 
@@ -877,7 +814,7 @@ function CommunityNetworkAgent() {
           {/* Profile Summary */}
           {userProfile && (
             <div className="profile-summary">
-              <h4>👤 Your Profile</h4>
+              <h4>Your Profile</h4>
               <div className="profile-item">
                 <strong>Industry:</strong> {userProfile.industry}
               </div>
@@ -901,8 +838,10 @@ function CommunityNetworkAgent() {
           <div className="chat-header">
             <h3> Professional Network Agent</h3>
             <div className="chat-status">
-              {csvData && userProfile ? '🟢 Connected to data source' : 
-               csvData ? '🟡 Upload CV to continue' : '🔴 Upload data to start'}
+              <span className={`status-dot ${csvData && userProfile ? 'status-dot--ready' : csvData ? 'status-dot--warn' : 'status-dot--error'}`}>
+                {csvData && userProfile ? 'Connected to data source' :
+                 csvData ? 'Upload CV to continue' : 'Upload data to start'}
+              </span>
             </div>
           </div>
 
@@ -918,11 +857,74 @@ function CommunityNetworkAgent() {
                     </div>
                   )}
                   <div className={`message ${message.sender}`}>
-                    <div className="message-content">
-                      <MessageContent message={message} />
-                      <span className="message-time">{formatTime(message.timestamp)}</span>
+                    <div className={`message-content ${message.data?.type === 'profile_detail' ? 'has-card' : ''}`}>
+                      {message.text && !message.data?.type && <MessageContent message={message} />}
 
                       {/* CV Analysis visualization */}
+                      {message.data && message.data.type === 'search_results' && (
+                        <NetworkSearchResults
+                          results={message.data.data?.results || []}
+                          onSave={(profile) => saveToFavorites({ ...profile.raw, full_name: profile.full_name, company: profile.company, title: profile.title })}
+                          onMessage={handleGenerateOutreach}
+                        />
+                      )}
+
+                      {message.data && message.data.type === 'user_favorites' && (
+                        <div className="network-favorites-list">
+                          {(message.data.data?.favorites || []).map((favorite) => {
+                            const full_name = favorite.full_name || `${favorite.name || ''} ${favorite.lastname || ''}`.trim();
+                            return (
+                              <div key={favorite.favorite_id} className="network-favorite-item">
+                                <strong>{full_name}</strong>
+                                <div className="network-favorite-meta">{favorite.company || favorite.Company} · {favorite.title || favorite['Job title'] || favorite.Title}</div>
+                                {favorite.saved_at && <div className="network-favorite-meta">Saved {formatDate(favorite.saved_at)}</div>}
+                                <button type="button" className="network-favorite-remove" onClick={() => removeFromFavorites(favorite.favorite_id)}>Remove</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {message.data && message.data.type === 'profile_detail' && (
+                        <div className="profile-detail-card">
+                          <div className="profile-detail-header">
+                            <span className="profile-detail-avatar">{message.data.data.name?.charAt(0) || '?'}</span>
+                            <div className="profile-detail-title">
+                              <h4>{message.data.data.name}</h4>
+                              <p>{message.data.data.role}{message.data.data.company && ` at ${message.data.data.company}`}</p>
+                            </div>
+                          </div>
+                          <div className="profile-detail-body">
+                            {message.data.data.location && (
+                              <div className="profile-detail-row">
+                                <span className="profile-detail-label">Location:</span>
+                                <span>{message.data.data.location}</span>
+                              </div>
+                            )}
+                            {message.data.data.email && (
+                              <div className="profile-detail-row">
+                                <span className="profile-detail-label">Email:</span>
+                                <a href={`mailto:${message.data.data.email}`}>{message.data.data.email}</a>
+                              </div>
+                            )}
+                            {message.data.data.skills?.length > 0 && (
+                              <div className="profile-detail-skills">
+                                {message.data.data.skills.map((skill, idx) => (
+                                  <span key={idx} className="skill-tag">{skill}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="profile-detail-footer">
+                            <div className="profile-detail-actions">
+                              <button type="button" className="btn-text" onClick={() => handleGenerateOutreach(message.data.data)}>Draft Message</button>
+                              <button type="button" className="btn-text" onClick={() => saveToFavorites(message.data.data)}>Save</button>
+                            </div>
+                            <span className="profile-detail-time">{formatTime(message.timestamp)}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {message.data && message.data.type === 'cv_analysis' && (
                         <div className="profile-viz">
                           <h4>Extracted Skills</h4>
@@ -933,6 +935,9 @@ function CommunityNetworkAgent() {
                           </div>
                         </div>
                       )}
+
+                      {/* Time for text-only messages */}
+                      {!message.data?.type && <span className="message-time">{formatTime(message.timestamp)}</span>}
                     </div>
                   </div>
                 </React.Fragment>
@@ -975,6 +980,7 @@ function CommunityNetworkAgent() {
           </div>
         </div>
       </div>
+      </ProjectGate>
 
       {/* Chat History Confirmation Dialog */}
       <ConfirmDialog

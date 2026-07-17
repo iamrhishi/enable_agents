@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from '../core/Header';
+import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal } from '../components';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
@@ -1553,19 +1554,50 @@ ${getCurrentUsername() || 'Your Name'}`);
     <div className="requirements-page">
       <Header />
       <div className="requirements-container">
-        
+
+        <div className="agent-page-header">
+          <div className="agent-header-left">
+            <BackButton />
+            <div className="agent-header-content">
+              <div className="agent-title-row">
+                <h1>Market Research</h1>
+              </div>
+              <p className="text-muted">
+                Discover leads, competitors, and market opportunities for your product or service.
+              </p>
+            </div>
+          </div>
+          <div className="agent-header-right">
+            <ProjectSelector agentKey="marketResearch" />
+          </div>
+        </div>
+
+        <AgentOutcomesStrip
+          items={[
+            { iconSrc: '/assets/icons/search-analysis.png', title: 'Lead lists', description: 'Find prospects matched to your product and region.' },
+            { iconSrc: '/assets/icons/bar-chart.png', title: 'Market analysis', description: 'Competitors, trends, and industry use cases.' },
+            { iconSrc: '/assets/icons/document.png', title: 'Export formats', description: 'PRD, supplier research, competitive reports.' },
+          ]}
+        />
+
+        <LiveModeHint
+          requireProject
+          message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample research outputs."
+        />
+
+        <ProjectGate agentLabel="Market Research workspace">
         <div className="requirements-header-bar">
           <div className="header-bar-top">
             <div className="overview-title">
-              <span>Market Research Agent</span>
+              <span>Research configuration</span>
             </div>
             <div className="integration-badge">
-              <span className="dot"></span> 3RD PARTY INTEGRATION READY
+              <span className="dot"></span> 3rd-party integration ready
             </div>
           </div>
           <div className="header-bar-inputs">
             <div className="input-block flex-grow">
-              <label>PROJECT CONTEXT & DESCRIPTION</label>
+              <label>Project context & description</label>
               <input
                 type="text"
                 placeholder="What is the product or service you need research on?"
@@ -1574,7 +1606,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               />
             </div>
             <div className="input-block">
-              <label>INDUSTRY</label>
+              <label>Industry</label>
               <input
                 type="text"
                 placeholder="e.g., Fintech"
@@ -1583,7 +1615,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               />
             </div>
             <div className="input-block">
-              <label>REGION</label>
+              <label>Region</label>
               <input
                 type="text"
                 placeholder="e.g., North America"
@@ -1592,7 +1624,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               />
             </div>
             <div className="input-block">
-              <label>FORMAT</label>
+              <label>Format</label>
               <select
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
@@ -1632,55 +1664,59 @@ ${getCurrentUsername() || 'Your Name'}`);
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <div className="view-filter-group">
-              <label className="view-filter-label">View:</label>
-              <select
-                className="view-filter-select"
-                value={showSavedListsView ? 'saved' : 'results'}
-                onChange={(e) => {
-                  if (e.target.value === 'saved') {
-                    setShowSavedListsView(true);
-                    fetchSavedLists();
-                  } else {
-                    setShowSavedListsView(false);
-                    setActiveSavedList(null);
-                    setActiveSavedListLeads([]);
-                  }
+            <div className="workspace-view-tabs module-tabs">
+              <button
+                type="button"
+                className={`module-tab ${!showSavedListsView ? 'module-tab--active' : ''}`}
+                onClick={() => {
+                  setShowSavedListsView(false);
+                  setActiveSavedList(null);
+                  setActiveSavedListLeads([]);
                 }}
               >
-                <option value="results">{responseFormat === 'Supplier Research' ? 'All Vendors' : 'All Leads'}</option>
-                <option value="saved">{responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}</option>
-              </select>
+                {responseFormat === 'Supplier Research' ? 'All Vendors' : 'All Leads'}
+              </button>
+              <button
+                type="button"
+                className={`module-tab ${showSavedListsView ? 'module-tab--active' : ''}`}
+                onClick={() => {
+                  setShowSavedListsView(true);
+                  fetchSavedLists();
+                }}
+              >
+                {responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}
+              </button>
             </div>
             <a href="/market-research/campaigns" className="workspace-link">
               Campaign Dashboard →
             </a>
           </div>
 
-          <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>
+          <div className="workspace-content-box workspace-content-box--flex">
              {showSavedListsView ? (
-               <div className="saved-lists-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
+               <div className="saved-lists-container">
                  {activeSavedList && (
-                    <button 
-                      onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }} 
-                       style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
+                    <button
+                      type="button"
+                      className="saved-lists-back-btn"
+                      onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }}
                     >
-                       ← Back to All Lists
+                      Back to all lists
                     </button>
                  )}
                  {activeSavedList && (
-                   <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 20px 0', color: '#1E3A5F' }}>
+                   <h2 className="saved-lists-detail-title">
                      {activeSavedList.name}
                    </h2>
                  )}
                  {isLoadingSavedLists ? (
-                    <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
+                    <div className="saved-lists-loading"><span className="spinner"></span> Loading lists...</div>
                  ) : !activeSavedList ? (
                     savedLists.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                      <div className="saved-lists-empty">No saved lists found.</div>
                     ) : (
                       <div className="saved-lists-table-scroll">
-                        <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table className="businesses-table saved-lists-table">
                           <thead>
                             <tr>
                               <th style={{ textAlign: 'left' }}>List Name</th>
@@ -1700,15 +1736,16 @@ ${getCurrentUsername() || 'Your Name'}`);
                                 <td>
                                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                     <button
+                                      type="button"
+                                      className="btn-open-list"
                                       onClick={() => loadSavedListDetails(list.id)}
-                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#284A7A', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
                                     >
                                       Open List
                                     </button>
                                     <button
                                       onClick={() => handleDeleteSavedList(list.id)}
                                       disabled={deletingListId === list.id}
-                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#b42318', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: deletingListId === list.id ? 0.7 : 1 }}
+                                      className="btn-delete-list"
                                     >
                                       {deletingListId === list.id ? 'Deleting...' : 'Delete'}
                                     </button>
@@ -1743,15 +1780,15 @@ ${getCurrentUsername() || 'Your Name'}`);
                               <td>{business.address || 'N/A'}</td>
                               <td>{business.phone || 'N/A'}</td>
                               <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} className="table-btn-primary">{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span className="text-na">N/A</span>}</td>
+                              <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="link-profile">View Profile</a> : <span className="text-na-italic">Not Found</span>) : <span className="text-na">N/A</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} className="table-btn-primary">{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span className="text-na">-</span>}</td>
                               <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                 {business.match_score != null ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
+                                    <div className={`match-score ${business.match_score >= 70 ? 'match-score--high' : (business.match_score >= 40 ? 'match-score--medium' : 'match-score--low')}`}>{business.match_score}%</div>
                                   </div>
-                                ) : <span style={{ color: '#999' }}>-</span>}
+                                ) : <span className="text-na">-</span>}
                               </td>
                               <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
                             </tr>
@@ -1764,26 +1801,25 @@ ${getCurrentUsername() || 'Your Name'}`);
             ) : (
             <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
               {isLoadingResearch ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
-                    <div className="loader" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #ff725e', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
-                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing {getResearchEntityMeta().plural}... please wait...</p>
-                    <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+                  <div className="research-loader">
+                    <div className="research-spinner" />
+                    <p className="research-loader-text">Scraping and analyzing {getResearchEntityMeta().plural}... please wait...</p>
                   </div>
               ) : (!aiRequirements && !customerResearchResults) ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px' }}>
-                  <div style={{ background: '#EAE1D9', borderRadius: '12px', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8E9BAb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div className="awaiting-config">
+                  <div className="awaiting-config-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                     </svg>
                   </div>
-                  <h2 style={{ color: '#0D2644', fontSize: '1.5rem', marginBottom: '12px' }}>Awaiting Configuration</h2>
-                  <p style={{ color: '#6C7F99', textAlign: 'center', maxWidth: '400px', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '16px' }}>
+                  <h2>Awaiting Configuration</h2>
+                  <p>
                     Refine the requirements in the bar above to generate structured architectural specifications. Our AI will analyze your context, industry, and region to produce a precise specification.
                   </p>
-                  <div style={{ display: 'flex', gap: '16px' }}>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>READY TO ANALYZE</div>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>SECURE END-TO-END</div>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>ENTERPRISE LLM</div>
+                  <div className="awaiting-config-badges">
+                    <div className="awaiting-badge">READY TO ANALYZE</div>
+                    <div className="awaiting-badge">SECURE END-TO-END</div>
+                    <div className="awaiting-badge">ENTERPRISE LLM</div>
                   </div>
                 </div>
               ) : (
@@ -2003,7 +2039,9 @@ ${getCurrentUsername() || 'Your Name'}`);
 
                   {aiRequirements.length === 0 && !customerResearchResults && (
                     <div className="empty-state-container">
-                      <div className="empty-state-icon">🔍</div>
+                      <div className="empty-state-icon">
+                        <img src="/assets/icons/search-analysis.png" alt="" width={48} height={48} />
+                      </div>
                       <h3 className="empty-state-title">Ready to Research</h3>
                       <p className="empty-state-description">
                         Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.
@@ -2046,140 +2084,95 @@ ${getCurrentUsername() || 'Your Name'}`);
           )}
           </div>
 
-          {/* Google Business Integration Modal */}
-          {showIntegrationModal && (
-            <div className="popup-overlay">
-              <div className="popup-content integration-modal">
-                <h3>{googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}</h3>
-                <div className="integration-form">
-                  <div className="form-group">
-                    <label>Client ID</label>
-                    <input
-                      type="text"
-                      name="clientId"
-                      value={googleBusinessForm.clientId}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Client ID"
-                    />
-                  </div>
-                  {/* Client Secret is configured server-side in .env for security */}
-                  <div className="form-group">
-                    <label>Redirect URI</label>
-                    <input
-                      type="text"
-                      name="redirectUri"
-                      value={googleBusinessForm.redirectUri}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Redirect URI"
-                    />
-                  </div>
-                </div>
-                <div className="modal-buttons">
-                  <button className="connect-submit-button" onClick={handleGoogleBusinessConnect}>
-                    Connect
-                  </button>
-                  <button className="close-popup-button" onClick={() => setShowIntegrationModal(false)}>
-                    Cancel
-                  </button>
-                </div>
+          <Modal
+            open={showIntegrationModal}
+            onClose={() => setShowIntegrationModal(false)}
+            title={googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setShowIntegrationModal(false)}>Cancel</button>
+                <button type="button" className="connect-submit-button" onClick={handleGoogleBusinessConnect}>Connect</button>
+              </>
+            }
+          >
+            <div className="integration-form">
+              <div className="form-group">
+                <label>Client ID</label>
+                <input type="text" name="clientId" value={googleBusinessForm.clientId} onChange={handleGoogleBusinessInputChange} placeholder="Enter Client ID" />
+              </div>
+              <div className="form-group">
+                <label>Redirect URI</label>
+                <input type="text" name="redirectUri" value={googleBusinessForm.redirectUri} onChange={handleGoogleBusinessInputChange} placeholder="Enter Redirect URI" />
               </div>
             </div>
-          )}
+          </Modal>
 
-          {/* Popup for Export Options */}
-          {showPopup && (
-            <div className="popup-overlay">
-              <div className="popup-content">
-                <h3>Export Options</h3>
-                <div className="export-icons">
-                  <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
-                  <img src="/assets/icons/word.png" alt="Word" title="Word" />
-                  <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
-                  <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
-                  <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
-                  <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
-                </div>
-                <button className="close-popup-button" onClick={closePopup}>
-                  Close
+          <Modal open={showPopup} onClose={closePopup} title="Export Options" footer={<button type="button" className="btn-secondary" onClick={closePopup}>Close</button>}>
+            <div className="export-icons">
+              <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
+              <img src="/assets/icons/word.png" alt="Word" title="Word" />
+              <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
+              <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
+              <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
+              <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
+            </div>
+          </Modal>
+
+          <Modal open={showPromptsPopup} onClose={() => setShowPromptsPopup(false)} title="Previous Prompts" size="lg" footer={<button type="button" className="btn-secondary" onClick={() => setShowPromptsPopup(false)}>Close</button>}>
+            <ul className="prompts-list">
+              {previousPrompts.map((prompt, index) => (
+                <li key={index}>
+                  <strong>Prompt ID:</strong> {prompt.id}<br />
+                  <strong>Overview:</strong> {prompt.overview}<br />
+                  <strong>Context:</strong> {prompt.context}<br />
+                  <strong>Countries:</strong> {prompt.countries}<br />
+                  <strong>Industries:</strong> {prompt.industries}<br />
+                  <strong>Business Functions:</strong> {prompt.businessFunctions}<br />
+                  <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}<br />
+                  <strong>Response Format:</strong> {prompt.responseFormat}
+                </li>
+              ))}
+            </ul>
+          </Modal>
+
+          <Modal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            title="Export Market Research"
+            footer={<button type="button" className="btn-secondary" onClick={() => setShowExportModal(false)}>Close</button>}
+          >
+            <div className="export-options-grid">
+              <button type="button" onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
+              <button type="button" onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
+              <button type="button" onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
+              <button type="button" onClick={() => handleExport('json')}>Download JSON (.json)</button>
+              <button type="button" onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
+            </div>
+          </Modal>
+          <Modal
+            open={showEmailModal}
+            onClose={() => {
+              setShowEmailModal(false);
+              setSelectedLead(null);
+              setEmailImages([]);
+              setIsAddingNewCampaign(false);
+            }}
+            title="Draft Email Campaign"
+            size="xl"
+            footer={
+              <>
+                <button type="button" className="email-cancel-button" onClick={() => {
+                  setShowEmailModal(false);
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}>Cancel</button>
+                <button type="button" className="email-send-button" onClick={handleSendEmails} disabled={isSendingEmails}>
+                  {isSendingEmails ? 'Sending...' : 'Send Email'}
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* Customer Research Results Table - removed popup modal, now shown inline only */}
-
-
-          {showPromptsPopup && (
-            <div className="popup-overlay">
-              <div className="popup-content">
-                <h3>Previous Prompts</h3>
-                <ul>
-                  {previousPrompts.map((prompt, index) => (
-                    <li key={index}>
-                      <strong>Prompt ID:</strong> {prompt.id}
-                      <br />
-                      <strong>Overview:</strong> {prompt.overview}
-                      <br />
-                      <strong>Context:</strong> {prompt.context}
-                      <br />
-                      <strong>Countries:</strong> {prompt.countries}
-                      <br />
-                      <strong>Industries:</strong> {prompt.industries}
-                      <br />
-                      <strong>Business Functions:</strong> {prompt.businessFunctions}
-                      <br />
-                      <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}
-                      <br />
-                      <strong>Response Format:</strong> {prompt.responseFormat}
-                    </li>
-                  ))}
-                </ul>
-                <button className="close-popup-button" onClick={() => setShowPromptsPopup(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
-
-          {showExportModal && (
-            <div className="popup-overlay">
-              <div className="popup-content export-options-modal">
-                <h3>Export Market Research</h3>
-                <div className="export-options-grid">
-                  <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
-                  <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
-                  <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
-                  <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
-                  <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
-                </div>
-                <div className="modal-buttons">
-                  <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-            {showEmailModal && (
-            <div className="popup-overlay">
-              <div className="popup-content email-modal-large">
-                <div className="email-modal-header">
-                  <h3>Draft Email Campaign</h3>
-                  <button 
-                    className="modal-close-btn"
-                    onClick={() => { 
-                      setShowEmailModal(false); 
-                      setSelectedLead(null);
-                      setEmailImages([]);
-                      setIsAddingNewCampaign(false);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-
+              </>
+            }
+          >
                 <div className="email-modal-body">
                   {/* Campaign Name - Dropdown with Add New Option */}
                   {!selectedLead && (
@@ -2317,108 +2310,71 @@ ${getCurrentUsername() || 'Your Name'}`);
                     </div>
                   </div>
                 </div>
+          </Modal>
 
-                {/* Footer with Improved Buttons */}
-                <div className="email-modal-footer">
-                  <button 
-                    className="email-cancel-button" 
-                    onClick={() => { 
-                      setShowEmailModal(false); 
-                      setSelectedLead(null);
-                      setEmailImages([]);
-                      setIsAddingNewCampaign(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    className="email-send-button" 
-                    onClick={handleSendEmails} 
-                    disabled={isSendingEmails}
-                  >
-                    {isSendingEmails ? 'Sending...' : 'Send Email'}
-                  </button>
-                </div>
-              </div>
+          <Modal
+            open={showSaveListModal}
+            onClose={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }}
+            title={`${getResearchEntityMeta().title} List`}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)}>
+                  {isSavingList ? 'Saving...' : (saveListMode === 'append' ? `Append ${getResearchEntityMeta().title}` : `Save ${getResearchEntityMeta().title} List`)}
+                </button>
+              </>
+            }
+          >
+            <div className="field">
+              <label>Action</label>
+              <select value={saveListMode} onChange={(e) => setSaveListMode(e.target.value)}>
+                <option value="create">Create new list</option>
+                <option value="append">Append to existing list</option>
+              </select>
             </div>
-          )}
-
-          {/* Saved List Modal */}
-          {showSaveListModal && (
-            <div className="popup-overlay" style={{ zIndex: 3000 }}>
-              <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>{`${getResearchEntityMeta().title} List`}</h2>
-                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Action</label>
-                  <select
-                    value={saveListMode}
-                    onChange={(e) => setSaveListMode(e.target.value)}
-                    style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
-                  >
-                    <option value="create">Create new list</option>
-                    <option value="append">Append to existing list</option>
+            {saveListMode === 'append' ? (
+              <>
+                <div className="field">
+                  <label>Select List to Append</label>
+                  <select value={selectedAppendProjectId} onChange={(e) => setSelectedAppendProjectId(e.target.value)}>
+                    <option value="">Choose a saved list...</option>
+                    {savedLists.map((list) => (
+                      <option key={list.id} value={list.id}>{list.name}</option>
+                    ))}
                   </select>
                 </div>
-                {saveListMode === 'append' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select List to Append</label>
-                    <select
-                      value={selectedAppendProjectId}
-                      onChange={(e) => setSelectedAppendProjectId(e.target.value)}
-                      style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
-                    >
-                      <option value="">Choose a saved list...</option>
-                      {savedLists.map((list) => (
-                        <option key={list.id} value={list.id}>
-                          {list.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                      Duplicate {getResearchEntityMeta().plural} are removed automatically when appending.
-                    </div>
-                  </div>
-                ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
-                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="e.g., NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
-                </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                    {isSavingList ? 'Saving...' : (saveListMode === 'append' ? `Append ${getResearchEntityMeta().title}` : `Save ${getResearchEntityMeta().title} List`)}
-                  </button>
-                </div>
+                <p className="field-hint">Duplicate {getResearchEntityMeta().plural} are removed automatically when appending.</p>
+              </>
+            ) : (
+              <div className="field">
+                <label>List Name</label>
+                <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="e.g., NY Dentists Campaign" autoFocus />
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
-          {/* Score Leads Modal */}
-          {showScoreModal && (
-            <div className="popup-overlay" style={{ zIndex: 3100 }}>
-              <div className="popup-content" style={{ width: '520px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>{`Score ${getResearchEntityMeta().title}`}</h2>
-                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
-                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g., We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
-                  <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
-                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleScoreLeads} disabled={isScoring} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>{isScoring ? 'Scoring...' : `Score ${getResearchEntityMeta().title}`}</button>
-                </div>
-              </div>
+          <Modal
+            open={showScoreModal}
+            onClose={() => { setShowScoreModal(false); setScoreQueryText(''); }}
+            title={`Score ${getResearchEntityMeta().title}`}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleScoreLeads} disabled={isScoring}>
+                  {isScoring ? 'Scoring...' : `Score ${getResearchEntityMeta().title}`}
+                </button>
+              </>
+            }
+          >
+            <div className="field">
+              <label>Describe what you're trying to sell or match</label>
+              <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g., We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" />
+              <p className="field-hint">A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</p>
             </div>
-          )}
+          </Modal>
 
-        </div>   
+        </div>
+        </ProjectGate>   
       </div>
     </div>
   );

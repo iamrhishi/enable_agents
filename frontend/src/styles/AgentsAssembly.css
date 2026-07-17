@@ -48,7 +48,7 @@
 .detailed-report-integration-data .detailed-report-badge {
   background: var(--color-warning-bg);
   color: var(--color-accent-dark);
-  font-size: 0.88rem;
+  font-size: var(--text-body);
   font-weight: 600;
   padding: 3px 10px;
   border-radius: var(--radius-full);
@@ -79,7 +79,7 @@
 .company-pill {
   background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-text-muted) 100%);
   color: var(--color-background);
-  font-size: 0.92rem;
+  font-size: var(--text-body);
   font-weight: 600;
   padding: 4px 14px;
   border-radius: 16px;
@@ -88,7 +88,7 @@
   display: inline-block;
   border: 1.5px solid var(--color-text-muted);
   transition: background 0.2s, color 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
 }
 .company-pill[title]:hover {
   background: linear-gradient(90deg, var(--color-text-muted) 0%, var(--color-primary) 100%);
@@ -158,7 +158,7 @@
   color: var(--color-accent);
 }
 .detailed-report-tool-icon {
-  font-size: 1.5rem;
+  font-size: var(--text-page-title);
 }
 .detailed-report-tool-name {
   font-size: var(--text-body);
@@ -212,7 +212,7 @@
   color: var(--color-accent);
 }
 .detailed-report-integration-icon {
-  font-size: 1.4rem;
+  font-size: var(--text-page-title);
 }
 .detailed-report-integration-tool {
   font-size: var(--text-body);
@@ -356,7 +356,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 1.25rem;
+  font-size: var(--text-page-title);
   font-weight: var(--font-bold);
   color: var(--color-text-muted);
   transition: all var(--transition-fast);
@@ -393,6 +393,7 @@
 
 .chat-history {
   flex: 1;
+  min-height: 0; /* Critical for flex child to respect overflow */
   overflow-y: auto;
   padding: var(--space-4);
   padding-bottom: var(--space-3);
@@ -503,7 +504,7 @@
 
 /* Timestamp */
 .floating-chat-panel .chat-timestamp {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: var(--color-text-muted);
   margin-top: var(--space-1);
   padding: 0 var(--space-1);
@@ -614,7 +615,7 @@
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-muted);
-  font-size: 1.25rem;
+  font-size: var(--text-page-title);
   font-weight: var(--font-normal);
   cursor: pointer;
   display: flex;
@@ -638,7 +639,7 @@
   border: none;
   background: var(--color-border);
   color: var(--color-text-muted);
-  font-size: 1.1rem;
+  font-size: var(--text-heading);
   font-weight: var(--font-bold);
   cursor: not-allowed;
   display: flex;
@@ -682,7 +683,7 @@
   top: 10px;
   background: var(--gradient-accent);
   color: var(--color-text-inverse);
-  font-size: 0.85rem;
+  font-size: var(--text-body);
   font-weight: 600;
   padding: 4px 12px;
   border-radius: var(--radius-md);
@@ -973,9 +974,9 @@
 }
 
 .floating-chat-trigger-icon {
-  font-size: 1.5rem;
-  font-weight: var(--font-bold);
-  font-family: var(--font-display);
+  width: 28px;
+  height: 28px;
+  filter: brightness(0) invert(1);
 }
 
 /* Floating chat panel */
@@ -1035,7 +1036,7 @@
   border: none;
   background: rgba(255, 255, 255, 0.2);
   color: var(--color-text-inverse);
-  font-size: 1.1rem;
+  font-size: var(--text-heading);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1044,7 +1045,7 @@
 }
 
 .floating-chat-close {
-  font-size: 1.25rem;
+  font-size: var(--text-page-title);
 }
 
 .floating-chat-clear:hover,
@@ -1214,7 +1215,7 @@
   border: none;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 20px;
+  font-size: var(--text-page-title);
   line-height: 1;
   padding: 0;
   width: 26px;
@@ -1241,7 +1242,7 @@
   border-radius: var(--radius-full);
   background: var(--color-surface);
   color: var(--color-text-muted);
-  font-size: 1.1rem;
+  font-size: var(--text-heading);
   font-weight: var(--font-medium);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1261,10 +1262,36 @@
 .modules-container {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  grid-auto-rows: 1fr; /* All rows same height */
+  grid-auto-rows: 1fr;
   gap: var(--space-4);
   padding: var(--space-2) 0;
   width: 100%;
+  margin-top: var(--space-4);
+}
+
+.catalog-grid {
+  padding: var(--space-2) 0 var(--space-6);
+}
+
+.catalog-module-card {
+  cursor: default;
+}
+
+.catalog-module-card .card-inner {
+  height: 100%;
+}
+
+.agents-hub-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.agents-hub-banner .live-mode-hint {
+  flex: 1;
+  margin: 0;
 }
 
 /* Updated module cards for responsive layout */
@@ -1297,7 +1324,7 @@
 .status-badge {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  font-size: 0.65rem;
+  font-size: var(--text-caption);
   font-weight: var(--font-semibold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1361,7 +1388,7 @@
 .buy-button {
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  font-size: 0.8rem;
+  font-size: var(--text-body);
   font-weight: var(--font-semibold);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1488,7 +1515,7 @@
     width: 36px !important;
     height: 36px !important;
     min-width: 36px !important;
-    font-size: 1rem !important;
+    font-size: var(--text-heading) !important;
   }
 
   .industry-options-list {
@@ -1498,7 +1525,7 @@
 
   .industry-option-btn {
     padding: 8px 12px;
-    font-size: 0.82rem;
+    font-size: var(--text-body);
     border-radius: 6px;
   }
 
@@ -1665,10 +1692,7 @@
 .carousel-3d-card--active {
   border: 3px solid var(--color-accent);
   background: linear-gradient(145deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
-  box-shadow:
-    0 0 30px rgba(191, 87, 0, 0.4),
-    0 0 60px rgba(191, 87, 0, 0.25),
-    0 25px 50px rgba(30, 58, 95, 0.2);
+  box-shadow: var(--shadow-accent-md);
 }
 
 .carousel-3d-card--active::before {
@@ -1678,8 +1702,8 @@
   border-radius: calc(var(--radius-xl) + 4px);
   background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark), var(--color-accent));
   z-index: -1;
-  opacity: 0.5;
-  filter: blur(12px);
+  opacity: 0.25;
+  filter: blur(6px);
 }
 
 /* Active card - remove any internal borders/lines */
@@ -1945,7 +1969,7 @@
 
 .carousel-dot-ellipsis {
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: var(--text-caption);
   letter-spacing: 1px;
   padding: 0 var(--space-1);
   user-select: none;
@@ -2132,7 +2156,7 @@
   .carousel-nav {
     width: 44px;
     height: 44px;
-    font-size: 26px;
+    font-size: var(--text-brand);
   }
 
   .carousel-3d-container .carousel-nav--left { left: 0; }
@@ -2255,7 +2279,7 @@
 }
 
 .toggle-label {
-  font-size: 0.9rem;
+  font-size: var(--text-body);
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -2345,7 +2369,7 @@
 
 .process-map-steps h4 {
   margin: 0 0 var(--space-3, 12px);
-  font-size: 1rem;
+  font-size: var(--text-heading);
   font-weight: 600;
   color: var(--color-text, #1f2937);
 }
@@ -2364,7 +2388,7 @@
 .process-step-owner {
   margin-left: var(--space-2, 8px);
   color: var(--color-text-subtle, #64748b);
-  font-size: 0.9em;
+  font-size: var(--text-body);
 }
 
 .process-map-json {
@@ -2373,7 +2397,7 @@
   border-radius: var(--radius-md, 8px);
   padding: var(--space-4, 16px);
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   color: var(--color-text, #334155);
   overflow: auto;
   max-height: 320px;

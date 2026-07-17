@@ -1,24 +1,26 @@
 import React from 'react';
-import Header from '../core/Header';
-import BackButton from '../components/BackButton';
-import '../styles/AgentsAssembly.css';
+import { AgentPlaceholderShell } from '../components';
 
 function SupplyChainAgent() {
   return (
-    <>
-      <Header />
-      <BackButton />
-      <div className="agent-dashboard supply-chain-agent-dashboard">
-        <h2 className="dashboard-title">Supply Chain Agent Dashboard</h2>
-        <div className="supply-chain-visual-section">
-          <h3>Visualize Supply Chain Impact</h3>
-          <div className="supply-chain-dashboard-placeholder">
-            <p>This dashboard will visually show the impact of different events on your supply lines.</p>
-            <p>(Interactive visualizations and event impact analysis coming soon.)</p>
-          </div>
+    <AgentPlaceholderShell
+      title="Supply Chain"
+      subtitle="Visualize supply chain impact and event-driven disruption analysis."
+      outcomes={[
+        { iconSrc: '/assets/icons/supply-chain-management.png', title: 'Supply lines', description: 'Map suppliers, routes, and dependencies.' },
+        { iconSrc: '/assets/icons/alerts.png', title: 'Event impact', description: 'Simulate how disruptions affect your network.' },
+        { iconSrc: '/assets/icons/monitoring.png', title: 'Live monitoring', description: 'Track risk signals across your chain.' },
+      ]}
+    >
+      <div className="agent-placeholder-card">
+        <span className="agent-placeholder-badge">Coming soon</span>
+        <h2>Supply Chain Dashboard</h2>
+        <p>Interactive visualizations and event impact analysis are under development. This preview shows the planned workspace layout.</p>
+        <div className="supply-chain-dashboard-placeholder">
+          <p>Network graph and scenario modeling will appear here.</p>
         </div>
       </div>
-    </>
+    </AgentPlaceholderShell>
   );
 }
 

@@ -1,10 +1,13 @@
 """
 Document Intelligence Agent — Flask routes.
 
+Documents are PROJECT-SCOPED: they belong to a project and can be
+accessed by any team member with project access.
+
 Endpoints:
-- POST /upload — upload a document
+- POST /upload — upload a document to a project
 - GET /status/<document_id> — get processing status
-- GET /documents — list user's documents
+- GET /documents — list project's documents
 - DELETE /documents/<document_id> — delete a document
 - POST /process/<document_id> — trigger processing (or auto on upload)
 - POST /chat — query documents
@@ -31,16 +34,39 @@ def get_user_id() -> str:
     return request.headers.get("X-User-Id", "anonymous")
 
 
+def get_project_id() -> str:
+    """Get project ID from request (query param, form data, or JSON body)."""
+    # Check query params first
+    project_id = request.args.get("project_id")
+    if project_id:
+        return project_id
+
+    # Check form data (for file uploads)
+    project_id = request.form.get("project_id")
+    if project_id:
+        return project_id
+
+    # Check JSON body
+    data = request.get_json(silent=True) or {}
+    return data.get("project_id")
+
+
 @bp.route("/upload", methods=["POST"])
 def upload_document():
     """
-    Upload a document for processing.
+    Upload a document to a project for processing.
 
-    Request: multipart/form-data with 'file' and optional 'document_type'
-    Response: { document_id, file_name, status }
+    Request: multipart/form-data with 'file', 'project_id', and optional 'document_type'
+    Response: { document_id, file_name, project_id, status }
+
+    Documents are project-scoped and shared among all project members.
     """
     try:
         user_id = get_user_id()
+        project_id = get_project_id()
+
+        if not project_id:
+            return jsonify({"error": "project_id is required"}), 400
 
         if "file" not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -51,6 +77,7 @@ def upload_document():
         result = service.upload_document(
             file=file,
             user_id=user_id,
+            project_id=project_id,
             document_type=document_type,
         )
 
@@ -73,11 +100,14 @@ def get_status(document_id: str):
     """
     Get document processing status.
 
+    Query params:
+    - project_id (optional): verify document belongs to project
+
     Response: { document_id, status, processing_stage, processing_progress, ... }
     """
     try:
-        user_id = get_user_id()
-        result = service.get_document_status(document_id, user_id)
+        project_id = get_project_id()
+        result = service.get_document_status(document_id, project_id=project_id)
         return jsonify(result), 200
 
     except ValueError as e:
@@ -90,16 +120,23 @@ def get_status(document_id: str):
 @bp.route("/documents", methods=["GET"])
 def list_documents():
     """
-    List user's documents.
+    List project's documents.
 
-    Query params: limit (default 50)
+    Query params:
+    - project_id (required): filter by project
+    - limit (default 50): max results
+
     Response: { documents: [...] }
     """
     try:
-        user_id = get_user_id()
+        project_id = get_project_id()
+
+        if not project_id:
+            return jsonify({"error": "project_id is required"}), 400
+
         limit = request.args.get("limit", 50, type=int)
 
-        documents = service.list_documents(user_id, limit=limit)
+        documents = service.list_documents(project_id=project_id, limit=limit)
         return jsonify({"documents": documents}), 200
 
     except Exception as e:
@@ -112,11 +149,18 @@ def delete_document(document_id: str):
     """
     Delete a document and all associated data.
 
+    Query params:
+    - project_id (required): verify document belongs to project
+
     Response: { success: true }
     """
     try:
-        user_id = get_user_id()
-        service.delete_document(document_id, user_id)
+        project_id = get_project_id()
+
+        if not project_id:
+            return jsonify({"error": "project_id is required"}), 400
+
+        service.delete_document(document_id, project_id=project_id)
         return jsonify({"success": True}), 200
 
     except ValueError as e:

@@ -6,6 +6,8 @@ import Login from './core/Login';
 import SkipLink from './components/SkipLink';
 import RegisterUser from './core/RegisterUser';
 import Settings from './settings/Settings';
+import Team from './team/Team';
+import Projects from './projects/Projects';
 
 // Agent components
 import AgentsAssembly from './components/AgentsAssembly';
@@ -49,16 +51,20 @@ function App() {
           <Route path="/campaign-dashboard" element={<Navigate to="/market-research/campaigns" replace />} />
           <Route path="/agents" element={<AgentsAssembly />} />
           <Route path="/agents-assembly" element={<AgentsAssembly />} />
-          <Route path="/datainsights" element={<DataInsights />} /> 
+          <Route path="/data-insights" element={<DataInsights />} />
+          <Route path="/datainsights" element={<Navigate to="/data-insights" replace />} /> 
           <Route path="/aichatbot" element={<Chatbot />} />
           <Route path="/community-network" element={<CommunityNetworkAgent />} />
           <Route path="/sales-helper" element={<SalesHelperAgent />} />
           <Route path="/content-marketing" element={<ContentMarketingAgent />} />
+          <Route path="/event-networking" element={<EventNetworkingAgent />} />
           <Route path="/event-networking-agent" element={<EventNetworkingAgent />} />
           <Route path="/invest-agent" element={<InvestAgent />} />
           <Route path="/supply-chain-agent" element={<SupplyChainAgent />} />
           <Route path="/executive-assistant" element={<ExecutiveAssistantPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/team" element={<Team />} />
+          <Route path="/projects" element={<Projects />} />
         </Routes>
         </main>
       </div>
