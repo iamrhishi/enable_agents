@@ -20,7 +20,8 @@ nltk
 pandas
 typing-extensions
 Werkzeug
-mysql-connector-python
+psycopg2-binary
+pgvector
 boto3
 python-docx
 networkx
@@ -28,7 +29,6 @@ selenium
 webdriver-manager
 openpyxl
 duckduckgo-search
-twilio
 google-auth-oauthlib
 google-auth
 google-api-python-client

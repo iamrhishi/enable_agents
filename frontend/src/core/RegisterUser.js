@@ -3,18 +3,31 @@ import '../styles/Login.css';
 import { useNavigate } from 'react-router-dom';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from './toast';
+import FormField from '../components/FormField';
+import useValidation, { validators } from '../hooks/useValidation';
 
 function RegisterUser() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [company, setCompany] = useState('');
-  const [linkedin, setLinkedin] = useState('');
-  const [shortIntro, setShortIntro] = useState('');
-  const [companyIntro, setCompanyIntro] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Form validation
+  const {
+    values,
+    errors,
+    touched,
+    handleChange,
+    handleBlur,
+    validate
+  } = useValidation({
+    firstName: { value: '', validators: [validators.required('First name is required')] },
+    lastName: { value: '', validators: [validators.required('Last name is required')] },
+    email: { value: '', validators: [validators.required('Email is required'), validators.email()] },
+    password: { value: '', validators: [validators.required('Password is required'), validators.minLength(8, 'Password must be at least 8 characters')] },
+    company: { value: '', validators: [] },
+    linkedin: { value: '', validators: [] },
+    shortIntro: { value: '', validators: [] },
+    companyIntro: { value: '', validators: [] }
+  });
 
   const bgImages = [
     `${process.env.PUBLIC_URL}/assets/background_images/pexels-googledeepmind-17483867.jpg`,
@@ -32,32 +45,57 @@ function RegisterUser() {
     return () => clearInterval(interval);
   }, [bgImages.length]);
 
+  const handleGoogleRegister = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_CONFIG.API_URL}/auth/google/start`);
+      const data = await response.json();
+      if (!response.ok) {
+        showToast(data.error || 'Google sign-up is not configured.', 'error');
+        setLoading(false);
+        return;
+      }
+      if (data.auth_url) {
+        window.location.href = data.auth_url;
+      } else {
+        showToast('Google sign-up is not available right now.', 'warning');
+        setLoading(false);
+      }
+    } catch {
+      showToast('Could not reach the server. Please try again.', 'error');
+      setLoading(false);
+    }
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      showToast('Email and password are required.', 'warning');
-      return;
-    }
+    if (!validate()) return;
+
     setLoading(true);
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          password,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          company,
-          linkedin,
-          short_intro: shortIntro,
-          company_intro: companyIntro,
+          password: values.password,
+          first_name: values.firstName,
+          last_name: values.lastName,
+          email: values.email,
+          company: values.company,
+          linkedin: values.linkedin,
+          short_intro: values.shortIntro,
+          company_intro: values.companyIntro,
         }),
       });
       const data = await response.json();
       if (response.ok) {
-        showToast('Account created! Please sign in.', 'success');
-        navigate('/login');
+        if (data.session_token) {
+          localStorage.setItem('sessionToken', data.session_token);
+        }
+        localStorage.setItem('userEmail', values.email.trim());
+        localStorage.setItem('firstName', values.firstName || values.email.trim().split('@')[0] || 'User');
+        showToast('Account created. You are signed in.', 'success');
+        navigate('/agents');
       } else {
         showToast(data.error || 'Registration failed. Please try again.', 'error');
       }
@@ -91,44 +129,57 @@ function RegisterUser() {
           Enable<span className="dot">.</span>
         </div>
 
-        <form onSubmit={handleRegister} className="login-form">
+        <form onSubmit={handleRegister} className="login-form" noValidate>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', width: '100%' }}>
-            <input type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required className="styled-input centered-placeholder" disabled={loading} />
-            <input type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required className="styled-input centered-placeholder" disabled={loading} />
+            <FormField htmlFor="firstName" error={touched.firstName && errors.firstName}>
+              <input type="text" name="firstName" id="firstName" placeholder="First Name" value={values.firstName} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="First name" />
+            </FormField>
+            <FormField htmlFor="lastName" error={touched.lastName && errors.lastName}>
+              <input type="text" name="lastName" id="lastName" placeholder="Last Name" value={values.lastName} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Last name" />
+            </FormField>
           </div>
 
-          <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} required className="styled-input centered-placeholder" disabled={loading} />
-          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required className="styled-input centered-placeholder" disabled={loading} />
+          <FormField htmlFor="email" error={touched.email && errors.email}>
+            <input type="email" name="email" id="email" placeholder="Email Address" value={values.email} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Email address" />
+          </FormField>
+          <FormField htmlFor="password" error={touched.password && errors.password}>
+            <input type="password" name="password" id="password" placeholder="Password (min 8 characters)" value={values.password} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Password" />
+          </FormField>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', width: '100%' }}>
-            <input type="text" placeholder="Company Name" value={company} onChange={e => setCompany(e.target.value)} className="styled-input centered-placeholder" disabled={loading} />
-            <input type="text" placeholder="LinkedIn Profile" value={linkedin} onChange={e => setLinkedin(e.target.value)} className="styled-input centered-placeholder" disabled={loading} />
+            <input type="text" name="company" placeholder="Company Name" value={values.company} onChange={handleChange} className="styled-input centered-placeholder" disabled={loading} aria-label="Company name" />
+            <input type="text" name="linkedin" placeholder="LinkedIn Profile" value={values.linkedin} onChange={handleChange} className="styled-input centered-placeholder" disabled={loading} aria-label="LinkedIn profile URL" />
           </div>
 
-          <input type="text" placeholder="Short Personal Intro" value={shortIntro} onChange={e => setShortIntro(e.target.value)} className="styled-input centered-placeholder" disabled={loading} />
-          <textarea placeholder="Company Intro" value={companyIntro} onChange={e => setCompanyIntro(e.target.value)} className="styled-input centered-placeholder" style={{ minHeight: '80px', resize: 'vertical' }} disabled={loading} />
+          <input type="text" name="shortIntro" placeholder="Short Personal Intro" value={values.shortIntro} onChange={handleChange} className="styled-input centered-placeholder" disabled={loading} aria-label="Short personal introduction" />
+          <textarea name="companyIntro" placeholder="Company Intro" value={values.companyIntro} onChange={handleChange} className="styled-input centered-placeholder" style={{ minHeight: '80px', resize: 'vertical' }} disabled={loading} aria-label="Company introduction" />
 
           <button
             type="submit"
             disabled={loading}
-            style={{
-              marginTop: '15px',
-              width: '100%',
-              padding: '14px',
-              background: loading ? '#6b9fff' : '#0066FF',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              fontSize: '1.1rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
+            className="primary-button"
           >
             {loading ? 'Creating account…' : 'Create Account'}
           </button>
 
-          <div className="new-user-link" onClick={() => !loading && navigate('/login')}>
-            Already have an account? Login
-          </div>
+          <div className="form-divider">OR</div>
+
+          <button
+            type="button"
+            onClick={handleGoogleRegister}
+            disabled={loading}
+            className="google-button"
+          >
+            <img src="/assets/icons/google.png" alt="Google" className="google-icon" />
+            {loading ? 'Redirecting…' : 'Sign up with Google'}
+          </button>
+
+          <p className="login-footer-text">
+            Already have an account?{' '}
+            <button type="button" className="new-user-link" onClick={() => navigate('/login')} disabled={loading} aria-label="Go to login page">
+              Login
+            </button>
+          </p>
         </form>
       </div>
 

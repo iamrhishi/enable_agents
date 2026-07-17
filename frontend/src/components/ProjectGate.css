@@ -1,0 +1,5 @@
+.project-gate {
+  padding: var(--space-6) var(--space-5);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+}

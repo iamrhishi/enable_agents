@@ -102,6 +102,7 @@ export const API_CONFIG = {
   GET_CAMPAIGNS:            `${API_URL}/api/campaigns`,
   GET_CAMPAIGNS_STATS:      `${API_URL}/api/campaigns/stats`,
   GET_CAMPAIGN_RECIPIENTS:  `${API_URL}/api/campaigns/{campaignId}/recipients`,
+  RANK_CAMPAIGN_VENDORS:    `${API_URL}/api/campaigns/{campaignId}/rank-vendors`,
 
   // Saved leads
   SAVE_PROJECT:          `${API_URL}/api/save-project`,

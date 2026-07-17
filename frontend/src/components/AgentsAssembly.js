@@ -4,39 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
 import '../styles/AgentsAssembly.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { getRouteByModuleName } from '../config/agentsConfig';
 import { fetchAgents } from '../agents/agentRegistry';
+import { showConfirm, showAlert } from './ConfirmDialog';
+import { Modal, ModalTabs } from './Modal';
+import { CardGrid, StatusIndicator } from './Card';
+import Select from './Select';
+import LiveModeHint from './LiveModeHint';
 
 
-
-
-// Utility: Analyze requirements from a query string (stub)
-const analyzeBusinessRequirements = (query) => {
-  // This should return an object like { confidence: 1, needs: [], businessTypes: [] }
-  return { confidence: 1, needs: [], businessTypes: [] };
-};
-
-// Utility: Filter modules by requirements (basic implementation)
-function filterModulesByRequirements(modules, requirements) {
-  // Example: filter by needs and businessTypes if present
-  if (!requirements) return modules;
-  let filtered = modules;
-  if (requirements.needs && requirements.needs.length > 0) {
-    filtered = filtered.filter(module =>
-      requirements.needs.some(need =>
-        module.name.toLowerCase().includes(need.toLowerCase()) ||
-        (module.keywords && module.keywords.some(k => k.toLowerCase().includes(need.toLowerCase())))
-      )
-    );
-  }
-  if (requirements.businessTypes && requirements.businessTypes.length > 0) {
-    filtered = filtered.filter(module =>
-      module.businessContext && requirements.businessTypes.some(type =>
-        module.businessContext.includes(type.toLowerCase())
-      )
-    );
-  }
-  return filtered;
-}
 
 
 function AgentsAssembly() {
@@ -44,19 +20,22 @@ function AgentsAssembly() {
   const departmentOptions = [
     'Sales', 'Marketing', 'Finance', 'Operations', 'HR', 'Customer Service', 'Product', 'IT', 'Legal', 'Procurement', 'R&D', 'Strategy', 'Supply Chain', 'Admin', 'Executive'
   ];
-  const [departmentPrompted, setDepartmentPrompted] = useState(false);
+  const [departmentPrompted, setDepartmentPrompted] = useState(() => {
+    return localStorage.getItem('agentsAssemblyDeptPrompted') === 'true';
+  });
   // Industry options for initial selection
   const industryOptions = [
     'Retail', 'Food Service', 'Manufacturing', 'Healthcare', 'Finance', 'Technology', 'Consulting',
     'Education', 'Transportation', 'Hospitality', 'Real Estate', 'Media', 'Nonprofit', 'Legal', 'Construction'
   ];
-  const [industryPrompted, setIndustryPrompted] = useState(false);
+  const [industryPrompted, setIndustryPrompted] = useState(() => {
+    return localStorage.getItem('agentsAssemblyIndPrompted') === 'true';
+  });
   const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [detailedReportData, setDetailedReportData] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [selectedProcess, setSelectedProcess] = useState('');
-  const [searchResults, setSearchResults] = useState(null);
   const [businessPage, setBusinessPage] = useState(1);
   const [businessesPerPage] = useState(50); // Show 50 per page
   const [allBusinesses, setAllBusinesses] = useState([]);
@@ -64,19 +43,75 @@ function AgentsAssembly() {
   const [userMessage, setUserMessage] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [inputHighlighted, setInputHighlighted] = useState(false);
-  const [chatState, setChatState] = useState({});
-  const [chatHistory, setChatHistory] = useState([]);
-  const [nextQuestion, setNextQuestion] = useState("Tell us more about your business to get agent recommendations");
-  const [nextQuestionKey, setNextQuestionKey] = useState("");
-  const [completed, setCompleted] = useState(false);
+  const [chatState, setChatState] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyChatState');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [chatHistory, setChatHistory] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyChatHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [nextQuestion, setNextQuestion] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyNextQuestion');
+    return saved || "Tell us more about your business to get agent recommendations";
+  });
+  const [nextQuestionKey, setNextQuestionKey] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyNextQuestionKey');
+    return saved || "";
+  });
+  const [completed, setCompleted] = useState(() => {
+    const saved = localStorage.getItem('agentsAssemblyCompleted');
+    return saved === 'true';
+  });
   const [isBuffering, setIsBuffering] = useState(false);
   const [recommendedModules, setRecommendedModules] = useState([]);
-  const [moduleTab, setModuleTab] = useState('business'); // 'business' or 'technical'
+  const [moduleTab, setModuleTab] = useState(() => {
+    return sessionStorage.getItem('agentsAssemblyModuleTab') || 'business';
+  });
   const [showChatbot, setShowChatbot] = useState(false);
   const [registryAgents, setRegistryAgents] = useState([]);
 
+  // Live/Demo mode - read from localStorage (synced with Header and Settings)
+  const [isLiveMode, setIsLiveMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored === 'live';
+  });
+
+  // Listen for mode changes from Header toggle
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsLiveMode(stored === 'live');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // Also poll for changes (for same-tab updates)
+    const interval = setInterval(handleStorageChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   const navigate = useNavigate();
   const chatHistoryRef = useRef(null);
+  const carouselRef = useRef(null);
+
+  // Carousel state - persist selected agent
+  const [carouselIndex, setCarouselIndex] = useState(() => {
+    const saved = sessionStorage.getItem('agentsAssemblySelectedAgent');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const cardsPerView = 4; // Number of cards visible at once
+
+  // Persist carousel index when it changes
+  useEffect(() => {
+    sessionStorage.setItem('agentsAssemblySelectedAgent', carouselIndex.toString());
+  }, [carouselIndex]);
+
+  // Persist module tab when it changes
+  useEffect(() => {
+    sessionStorage.setItem('agentsAssemblyModuleTab', moduleTab);
+  }, [moduleTab]);
 
   // Load enabled agents from the backend registry on mount
   useEffect(() => {
@@ -85,15 +120,55 @@ function AgentsAssembly() {
     });
   }, []);
 
-  // Auto-scroll chat history to bottom when new messages arrive
+  // Persist chat state to localStorage
   useEffect(() => {
-    if (chatHistoryRef.current) {
-      // Use setTimeout to ensure DOM has updated before scrolling
-      setTimeout(() => {
-        chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-      }, 0);
-    }
-  }, [chatHistory, isBuffering]);
+    localStorage.setItem('agentsAssemblyChatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyChatState', JSON.stringify(chatState));
+  }, [chatState]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyNextQuestion', nextQuestion);
+  }, [nextQuestion]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyNextQuestionKey', nextQuestionKey);
+  }, [nextQuestionKey]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyCompleted', completed.toString());
+  }, [completed]);
+
+  // Clear chat session
+  const clearChatSession = () => {
+    setChatHistory([]);
+    setChatState({});
+    setNextQuestion("Tell us more about your business to get agent recommendations");
+    setNextQuestionKey("");
+    setCompleted(false);
+    setIndustryPrompted(false);
+    setDepartmentPrompted(false);
+    setRecommendedModules([]);
+    setDetailedReportData(null);
+    localStorage.removeItem('agentsAssemblyChatHistory');
+    localStorage.removeItem('agentsAssemblyChatState');
+    localStorage.removeItem('agentsAssemblyNextQuestion');
+    localStorage.removeItem('agentsAssemblyNextQuestionKey');
+    localStorage.removeItem('agentsAssemblyCompleted');
+    localStorage.removeItem('agentsAssemblyIndPrompted');
+    localStorage.removeItem('agentsAssemblyDeptPrompted');
+  };
+
+  // Persist industry/department prompted state
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyIndPrompted', industryPrompted.toString());
+  }, [industryPrompted]);
+
+  useEffect(() => {
+    localStorage.setItem('agentsAssemblyDeptPrompted', departmentPrompted.toString());
+  }, [departmentPrompted]);
 
   // Auto-scroll chat history to bottom when new messages arrive
   useEffect(() => {
@@ -105,22 +180,24 @@ function AgentsAssembly() {
     }
   }, [chatHistory, isBuffering]);
 
+  // Auto-scroll chat history to bottom when new messages arrive
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      // Use setTimeout to ensure DOM has updated before scrolling
+      setTimeout(() => {
+        chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      }, 0);
+    }
+  }, [chatHistory, isBuffering]);
+
+  // Only show working/functional modules
   const businessModules = [
     {
-      name: 'Executive Assistant Agent',
-      icon: '/assets/icons/networking.png',
-      price: 'Free',
-      status: 'in-progress',
-      keywords: ['executive assistant', 'task management', 'reminders', 'whatsapp', 'stakeholder updates'],
-      businessContext: ['executive', 'management', 'personal productivity', 'team coordination'],
-      industries: ['all industries'],
-      useCases: ['task reminders', 'stakeholder follow-up', 'whatsapp integration', 'executive support']
-    },
-    { 
-      name: 'Market Research', 
-      icon: '/assets/icons/search-analysis.png', 
+      name: 'Market Research',
+      icon: '/assets/icons/search-analysis.png',
       price: '$29/month',
       status: 'ready',
+      description: 'Discover market trends, analyze competitors, and gather customer insights to make data-driven decisions.',
       keywords: ['market analysis', 'competitor research', 'customer insights', 'business intelligence', 'market trends'],
       businessContext: ['retail', 'ecommerce', 'startup', 'product launch', 'competitive analysis'],
       industries: ['retail', 'technology', 'healthcare', 'finance', 'manufacturing'],
@@ -130,7 +207,8 @@ function AgentsAssembly() {
       name: 'Sales Helper Agent',
       icon: '/assets/icons/increase.png',
       price: '$45/month',
-      status: 'in-progress',
+      status: 'ready',
+      description: 'Supercharge your sales with lead management, CRM integration, and intelligent sales strategy recommendations.',
       keywords: ['sales', 'sales enablement', 'CRM', 'lead management', 'sales strategy'],
       businessContext: ['sales', 'lead generation', 'customer acquisition', 'sales optimization', 'business growth'],
       industries: ['retail', 'technology', 'ecommerce', 'services', 'consulting'],
@@ -140,178 +218,67 @@ function AgentsAssembly() {
       name: 'Content Marketing Agent',
       icon: '/assets/icons/bullhorn.png',
       price: '$49/month',
-      status: 'in-progress',
+      status: 'ready',
+      description: 'Create compelling content, manage campaigns, and boost your brand presence with AI-powered marketing.',
       keywords: ['content marketing', 'content creation', 'marketing strategy', 'brand content', 'SEO'],
       businessContext: ['content marketing', 'brand building', 'digital marketing', 'social media', 'marketing strategy'],
       industries: ['retail', 'technology', 'media', 'education', 'ecommerce'],
       useCases: ['creating marketing content', 'content strategy', 'brand engagement', 'digital marketing']
     },
-    { 
-      name: 'Hiring & Onboarding', 
-      icon: '/assets/icons/hr.png', 
-      price: '$45/month',
-      status: 'in-progress',
-      keywords: ['recruitment', 'hiring process', 'employee onboarding', 'HR management', 'talent acquisition'],
-      businessContext: ['growing business', 'startup', 'scaling team', 'remote work', 'human resources'],
-      industries: ['all industries', 'technology', 'consulting', 'healthcare', 'finance'],
-      useCases: ['hiring employees', 'team expansion', 'recruitment process', 'employee management']
-    },
-    { 
-      name: 'Documents', 
-      icon: '/assets/icons/document.png', 
-      price: '$22/month',
-      status: 'in-progress',
-      keywords: ['document management', 'file storage', 'document workflow', 'paperwork automation'],
-      businessContext: ['office management', 'legal compliance', 'document processing', 'administrative tasks'],
-      industries: ['all industries', 'legal', 'healthcare', 'finance', 'consulting'],
-      useCases: ['managing documents', 'file organization', 'document workflow', 'compliance']
-    },
-    { 
-      name: 'Supplier Tracking', 
-      icon: '/assets/icons/agreement.png', 
-      price: '$32/month',
-      status: 'in-progress',
-      keywords: ['supplier management', 'vendor tracking', 'procurement', 'supply chain', 'vendor relations'],
-      businessContext: ['manufacturing', 'retail', 'food delivery', 'restaurant', 'supply chain management'],
-      industries: ['manufacturing', 'retail', 'food service', 'construction', 'healthcare'],
-      useCases: ['managing suppliers', 'vendor relationships', 'procurement process', 'supply chain']
-    },
-    { 
-      name: 'Invoices', 
-      icon: '/assets/icons/invoices.png', 
-      price: '$26/month',
-      status: 'in-progress',
-      keywords: ['invoice management', 'billing', 'accounts receivable', 'payment processing', 'financial management'],
-      businessContext: ['food delivery', 'service business', 'freelancing', 'small business', 'accounting'],
-      industries: ['all industries', 'professional services', 'retail', 'food service', 'consulting'],
-      useCases: ['billing customers', 'invoice processing', 'payment tracking', 'financial management']
-    },
     {
-      name: 'Supply Chain Agent',
-      icon: '/assets/icons/supply-chain-management.png',
-      price: 'Custom',
-      status: 'in-progress',
-      keywords: ['supply chain', 'impact analysis', 'dashboard', 'visualization', 'logistics'],
-      businessContext: ['supply chain', 'logistics', 'operations', 'risk management'],
-      industries: ['manufacturing', 'retail', 'logistics', 'operations'],
-      useCases: ['visualize supply chain impact', 'event impact analysis', 'dashboard visualization']
-    },
-    { 
-      name: 'Inventory', 
-      icon: '/assets/icons/inventory.png', 
-      price: '$25/month',
-      status: 'in-progress',
-      keywords: ['stock management', 'inventory tracking', 'warehouse management', 'stock levels', 'supply chain'],
-      businessContext: ['food delivery', 'restaurant', 'retail', 'ecommerce', 'manufacturing', 'warehouse'],
-      industries: ['food service', 'retail', 'manufacturing', 'wholesale', 'logistics'],
-      useCases: ['tracking stock', 'inventory control', 'supply management', 'warehouse operations']
-    },
-    { 
-      name: 'Orders', 
-      icon: '/assets/icons/orders.png', 
-      price: '$35/month',
-      status: 'in-progress',
-      keywords: ['order management', 'order processing', 'order tracking', 'sales orders', 'purchase orders'],
-      businessContext: ['food delivery', 'ecommerce', 'retail', 'restaurant', 'online store', 'marketplace'],
-      industries: ['food service', 'retail', 'ecommerce', 'manufacturing', 'wholesale'],
-      useCases: ['managing orders', 'order fulfillment', 'delivery tracking', 'sales processing']
-    },
-    { 
-      name: 'Travel Agent', 
-      icon: '/assets/icons/travel.png', 
-      price: '$42/month',
-      status: 'in-progress',
-      keywords: ['travel management', 'trip planning', 'travel booking', 'expense management', 'business travel'],
-      businessContext: ['business travel', 'remote work', 'consulting', 'sales team', 'client meetings'],
-      industries: ['consulting', 'sales', 'technology', 'professional services', 'field service'],
-      useCases: ['managing business travel', 'trip planning', 'travel expenses', 'team travel']
-    },
-    { 
-      name: 'Community Network', 
-      icon: '/assets/icons/community.png', 
+      name: 'Community Network',
+      icon: '/assets/icons/community.png',
       price: '$38/month',
-      status: 'in-progress',
+      status: 'ready',
+      description: 'Build and engage your community, manage relationships, and grow customer loyalty organically.',
       keywords: ['community management', 'network building', 'customer engagement', 'social platform', 'relationship management'],
       businessContext: ['customer engagement', 'brand building', 'social media', 'community building', 'customer loyalty'],
       industries: ['retail', 'technology', 'media', 'nonprofit', 'education'],
       useCases: ['building community', 'customer engagement', 'network management', 'brand loyalty']
     },
     {
-      name: 'Invest Agent',
-      icon: '/assets/icons/save-money.png',
-      price: 'Custom',
-      status: 'in-progress',
-      keywords: ['investment', 'financial instruments', 'assessment', 'parameters', 'finance'],
-      businessContext: ['finance', 'investment', 'portfolio management', 'financial analysis'],
-      industries: ['finance', 'investment', 'banking', 'wealth management'],
-      useCases: ['assess financial instruments', 'investment analysis', 'parameter dashboard']
+      name: 'Executive Assistant Agent',
+      icon: '/assets/icons/checklist.png',
+      price: 'Free',
+      status: 'ready',
+      description: 'Your AI-powered executive assistant for task management, reminders, and stakeholder coordination via email.',
+      keywords: ['executive assistant', 'task management', 'reminders', 'email', 'stakeholder updates'],
+      businessContext: ['executive', 'management', 'personal productivity', 'team coordination'],
+      industries: ['all industries'],
+      useCases: ['task reminders', 'stakeholder follow-up', 'email integration', 'executive support']
     },
-    { 
-      name: 'Reports', 
-      icon: '/assets/icons/reports.png', 
-      price: '$28/month',
-      status: 'in-progress',
-      keywords: ['business reporting', 'analytics', 'data visualization', 'business intelligence', 'KPI tracking'],
-      businessContext: ['business analysis', 'performance monitoring', 'decision making', 'data-driven insights'],
-      industries: ['all industries', 'finance', 'retail', 'manufacturing', 'technology'],
-      useCases: ['business reporting', 'performance analysis', 'data insights', 'decision support']
-    },
-    { 
-      name: 'Team Performance', 
-      icon: '/assets/icons/performance.png', 
-      price: '$39/month',
-      status: 'in-progress',
-      keywords: ['performance management', 'employee evaluation', 'productivity tracking', 'team analytics'],
-      businessContext: ['management', 'team leadership', 'performance review', 'productivity improvement'],
-      industries: ['all industries', 'consulting', 'technology', 'finance', 'healthcare'],
-      useCases: ['managing team performance', 'employee evaluation', 'productivity monitoring']
+    {
+      name: 'Event Networking Agent',
+      icon: '/assets/icons/networking.png',
+      price: '$30/month',
+      status: 'ready',
+      description: 'Maximize event ROI with smart attendee matching and follow-up automation.',
+      keywords: ['event networking', 'attendee matching', 'follow-up', 'event ROI'],
+      businessContext: ['events', 'networking', 'conferences', 'trade shows'],
+      industries: ['all industries'],
+      useCases: ['event networking', 'attendee engagement', 'follow-up automation']
     }
   ];
 
-  // Enhanced technical modules with required fields
+  useEffect(() => {
+    if (selectedIndustry) {
+      setIndustryPrompted(true);
+    }
+  }, [selectedIndustry]);
+
+  // Only show working technical modules
   const technicalModules = [
-    { 
-      name: 'Testing AI', 
-      icon: '/assets/icons/checklist.png', 
-      price: '$55/month',
-      status: 'in-progress',
-      keywords: ['automated testing', 'quality assurance', 'test automation', 'bug detection'],
-      businessContext: ['software development', 'quality control', 'testing'],
-      industries: ['technology', 'software', 'development'],
-      useCases: ['automated testing', 'quality assurance', 'bug detection']
-    },
-    { 
-      name: 'LLM Benchmarking', 
-      icon: '/assets/icons/bar-chart.png', 
-      price: '$65/month',
-      status: 'in-progress',
-      keywords: ['AI performance', 'model evaluation', 'benchmarking', 'AI testing'],
-      businessContext: ['AI development', 'machine learning', 'model evaluation'],
-      industries: ['technology', 'AI', 'research'],
-      useCases: ['AI model evaluation', 'performance testing', 'benchmarking']
-    },
-    { 
-      name: 'Data Discovery', 
-      icon: '/assets/icons/data-discovery.png', 
+    {
+      name: 'Data Insights',
+      icon: '/assets/icons/data-discovery.png',
       price: '$48/month',
       status: 'ready',
-      keywords: ['data analysis', 'data mining', 'insights', 'data exploration'],
+      description: 'Explore your data, uncover hidden patterns, and generate actionable business insights with AI-powered document analysis.',
+      keywords: ['data analysis', 'data mining', 'insights', 'data exploration', 'RAG'],
       businessContext: ['data analysis', 'business intelligence', 'analytics'],
       industries: ['all industries', 'technology', 'finance'],
-      useCases: ['data exploration', 'business insights', 'data analysis']
-    },
-    // Simple modules without enhanced fields
-    { name: 'Users', icon: '/assets/icons/users.png', price: '$35/month', status: 'in-progress' },
-    { name: 'Data Security', icon: '/assets/icons/data-security.png', price: '$75/month', status: 'in-progress' },
-    { name: 'Alerts', icon: '/assets/icons/alerts.png', price: '$22/month', status: 'in-progress' },
-    { name: 'Notifications', icon: '/assets/icons/notifications.png', price: '$18/month', status: 'in-progress' },
-    { name: 'Dashboards', icon: '/assets/icons/dashboards.png', price: '$45/month', status: 'in-progress' },
-    { name: 'AI Chatbot', icon: '/assets/icons/ai-chatbots.png', price: '$52/month', status: 'in-progress' },
-    { name: 'Monitoring', icon: '/assets/icons/monitoring.png', price: '$38/month', status: 'in-progress' },
-    { name: 'Analytics', icon: '/assets/icons/analytics.png', price: '$58/month', status: 'in-progress' },
-    { name: 'Data Transformation', icon: '/assets/icons/data-transformation.png', price: '$68/month', status: 'in-progress' },
-    { name: 'Integration', icon: '/assets/icons/integration.png', price: '$62/month', status: 'in-progress' },
-    { name: 'Automation', icon: '/assets/icons/automation.png', price: '$55/month', status: 'in-progress' }
+      useCases: ['data exploration', 'business insights', 'data analysis', 'document Q&A']
+    }
   ];
 
   // FIXED: Use useEffect to handle filtering instead of calling setState during render
@@ -336,62 +303,54 @@ function AgentsAssembly() {
     if (searchTerm.trim() || selectedIndustry) {
       fetchBusinesses();
     }
-    // Filtering modules logic remains unchanged
-    let modules = [...businessModules, ...technicalModules];
+    // Keep all modules
+    const allModules = [...businessModules, ...technicalModules];
+    setFilteredModules(allModules);
+
+    // Sort function (same as displayModules sort)
+    const sortByStatus = (a, b) => {
+      if (a.status === 'ready' && b.status !== 'ready') return -1;
+      if (a.status !== 'ready' && b.status === 'ready') return 1;
+      return 0;
+    };
+
     if (searchTerm.trim()) {
-      const requirements = analyzeBusinessRequirements(searchTerm);
-      setSearchResults(requirements);
-      if (requirements.confidence > 0.2) {
-        modules = filterModulesByRequirements(modules, requirements);
-      } else {
-        modules = modules.filter(module =>
-          module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (module.keywords && module.keywords.some(keyword => 
-            keyword.toLowerCase().includes(searchTerm.toLowerCase())
-          )) ||
-          (module.businessContext && module.businessContext.some(context =>
-            context.toLowerCase().includes(searchTerm.toLowerCase())
-          ))
-        );
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (module) =>
+        module.name.toLowerCase().includes(term) ||
+        (module.keywords && module.keywords.some(k => k.toLowerCase().includes(term)));
+
+      // Sort business modules same as carousel
+      const sortedBusiness = [...businessModules].sort(sortByStatus);
+      const businessIdx = sortedBusiness.findIndex(matchesSearch);
+
+      if (businessIdx !== -1) {
+        setModuleTab('business');
+        setCarouselIndex(businessIdx);
+        return;
       }
-    } else if (selectedIndustry) {
-      modules = modules.filter(module => 
-        module.industries && (
-          module.industries.includes(selectedIndustry.toLowerCase()) ||
-          module.industries.includes('all industries')
-        )
-      );
-    } else {
-      modules = [...businessModules, ...technicalModules];
+
+      // Sort technical modules same as carousel
+      const sortedTech = [...technicalModules].sort(sortByStatus);
+      const techIdx = sortedTech.findIndex(matchesSearch);
+
+      if (techIdx !== -1) {
+        setModuleTab('technical');
+        setCarouselIndex(techIdx);
+        return;
+      }
     }
-    setFilteredModules(modules);
+
+    // No search - preserve sessionStorage index (don't reset)
   }, [searchTerm, selectedIndustry, selectedProcess, businessPage]);
-        {/* Businesses Pagination Section */}
-        {allBusinesses.length > 0 && (
-          <div className="businesses-pagination">
-            <h3>Businesses ({allBusinesses.length} found)</h3>
-            <ul>
-              {allBusinesses.slice((businessPage-1)*businessesPerPage, businessPage*businessesPerPage).map((biz, idx) => (
-                <li key={biz.id || idx}>
-                  <strong>{biz.name}</strong> - {biz.address} {biz.rating ? `(Rating: ${biz.rating})` : ''}
-                </li>
-              ))}
-            </ul>
-            <div className="pagination-controls">
-              <button disabled={businessPage === 1} onClick={() => setBusinessPage(businessPage-1)}>Prev</button>
-              <span>Page {businessPage} of {Math.ceil(allBusinesses.length/businessesPerPage)}</span>
-              <button disabled={businessPage === Math.ceil(allBusinesses.length/businessesPerPage)} onClick={() => setBusinessPage(businessPage+1)}>Next</button>
-            </div>
-          </div>
-        )}
 
   // Rest of your handlers remain the same...
   const handleCardClick = (moduleName) => {
-    if (moduleName === 'Data Discovery') {
-      navigate('/datainsights');
+    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
+      navigate('/data-insights');
     }
     else if (moduleName === 'Market Research') {
-      navigate('/requirements');
+      navigate('/market-research');
     }
     else if (moduleName === 'AI Chatbot') {
       navigate('/aichatbot');
@@ -423,13 +382,11 @@ function AgentsAssembly() {
   };
 
   const handleTryModule = (moduleName) => {
-    // console.log('Trying module:', module.name);
-    // alert(`Starting free trial for ${module.name}!\n\nDuration: 14 days\nPrice after trial: ${module.price}\n\nClick OK to begin your trial.`);
-    if (moduleName === 'Data Discovery') {
-      navigate('/datainsights');
+    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
+      navigate('/data-insights');
     }
     else if (moduleName === 'Market Research') {
-      navigate('/requirements');
+      navigate('/market-research');
     }
     else if (moduleName === 'AI Chatbot') {
       navigate('/aichatbot');
@@ -465,14 +422,19 @@ function AgentsAssembly() {
     }
   };
 
-  const handleBuyModule = (module) => {
+  const handleBuyModule = async (module) => {
     console.log('Buying module:', module.name);
-    const confirmPurchase = window.confirm(
-      `Purchase ${module.name}?\n\nPrice: ${module.price}\nBilling: Monthly subscription\n\nClick OK to proceed to checkout.`
-    );
-    
+    const confirmPurchase = await showConfirm({
+      title: `Purchase ${module.name}?`,
+      message: `Price: ${module.price}\nBilling: Monthly subscription`,
+      confirmLabel: 'Proceed to Checkout',
+      cancelLabel: 'Cancel',
+      variant: 'primary',
+    });
+
     if (confirmPurchase) {
-      alert(`Redirecting to checkout for ${module.name}...`);
+      await showAlert(`Redirecting to checkout for ${module.name}...`, 'Processing');
+      // TODO: Implement actual checkout redirect
     }
   };
 
@@ -507,21 +469,23 @@ const handleEnterpriseChat = async (userInput) => {
       // Remove buffering message
       setChatHistory(prev => prev.filter(msg => msg.type !== 'buffer'));
 
+      const now = new Date().toISOString();
+
       // If there was a system prompt before, add the user reply after it
       if (updatedChatHistory.length > 0 && lastAnswer) {
         let lastSystemIdx = updatedChatHistory.map(msg => msg.type).lastIndexOf('system');
         if (lastSystemIdx !== -1) {
-          updatedChatHistory.splice(lastSystemIdx + 1, 0, { type: 'user', text: lastAnswer });
+          updatedChatHistory.splice(lastSystemIdx + 1, 0, { type: 'user', text: lastAnswer, timestamp: now });
         } else {
-          updatedChatHistory.push({ type: 'user', text: lastAnswer });
+          updatedChatHistory.push({ type: 'user', text: lastAnswer, timestamp: now });
         }
       } else if (lastAnswer) {
-        updatedChatHistory.push({ type: 'user', text: lastAnswer });
+        updatedChatHistory.push({ type: 'user', text: lastAnswer, timestamp: now });
       }
 
       // Add next system prompt if not completed
       if (data.next_question && !data.completed) {
-        updatedChatHistory.push({ type: 'system', text: data.next_question });
+        updatedChatHistory.push({ type: 'system', text: data.next_question, timestamp: now });
         // Insert department options marker only if the question asks about role or department
         if (
           (data.next_question.toLowerCase().includes('role') || data.next_question.toLowerCase().includes('department')) &&
@@ -533,7 +497,7 @@ const handleEnterpriseChat = async (userInput) => {
 
       // Add summary if completed
       if (data.completed && data.search_summary) {
-        updatedChatHistory.push({ type: 'system', text: data.search_summary });
+        updatedChatHistory.push({ type: 'system', text: data.search_summary, timestamp: now });
       }
 
       setChatHistory(updatedChatHistory);
@@ -571,7 +535,7 @@ const handleEnterpriseChat = async (userInput) => {
           if (!toolNames.length) {
             setChatHistory((prev) => [
               ...prev,
-              { type: 'system', text: 'We could not identify recommended modules from the response. Please try refining your answers.' }
+              { type: 'system', text: 'We could not identify recommended modules from the response. Please try refining your answers.', timestamp: new Date().toISOString() }
             ]);
           }
         } catch (recErr) {
@@ -579,7 +543,7 @@ const handleEnterpriseChat = async (userInput) => {
           setDetailedReportData(null);
           setChatHistory((prev) => [
             ...prev.filter(msg => msg.type !== 'buffer'),
-            { type: 'system', text: 'Recommendation service is currently unavailable. Please try again shortly.' }
+            { type: 'system', text: 'Recommendation service is currently unavailable. Please try again shortly.', timestamp: new Date().toISOString() }
           ]);
         }
 
@@ -593,7 +557,7 @@ const handleEnterpriseChat = async (userInput) => {
         break; // Exit loop, wait for next user input
       }
     } catch (err) {
-      setChatHistory(prev => [...prev.filter(msg => msg.type !== 'buffer'), { type: 'system', text: "Error contacting chat API." }]);
+      setChatHistory(prev => [...prev.filter(msg => msg.type !== 'buffer'), { type: 'system', text: "Error contacting chat API.", timestamp: new Date().toISOString() }]);
       setIsBuffering(false);
       break;
     }
@@ -641,124 +605,131 @@ const handleEnterpriseChat = async (userInput) => {
     <div className="agents-page">
       <Header onProcessClick={handleProcessClick} />
       <div className="agents-assembly">
-        {/* Process Map Popup */}
-        {showProcessMap && (
-          <div className="modal-overlay">
-            <div className="modal-content" style={{ width: '650px', maxWidth: '98vw', minHeight: '420px', borderRadius: '18px', zIndex: 999 }}>
-              <div className="detailed-report-tool-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ fontSize: '1.25em', fontWeight: 600 }}>Process Map</h2>
-                <div>
-                  <button className={processMapTab === 'visual' ? 'active-tab' : ''} onClick={() => setProcessMapTab('visual')}>Visual</button>
-                  <button className={processMapTab === 'json' ? 'active-tab' : ''} onClick={() => setProcessMapTab('json')}>JSON</button>
-                  <button className="modal-close" onClick={handleCloseProcessMap} style={{ marginLeft: '18px', fontSize: '1.5em' }}>×</button>
-                </div>
-              </div>
-              <div className="process-map-content" style={{ marginTop: '18px' }}>
-                {processMapTab === 'visual' ? (
-                  <div style={{ padding: '12px' }}>
-                    <div><strong>Industry:</strong> {processMapData.industry}</div>
-                    <div><strong>Department:</strong> {processMapData.department}</div>
-                    <div><strong>Responsibilities:</strong> {Array.isArray(processMapData.responsibilities) ? processMapData.responsibilities.join(', ') : processMapData.responsibilities}</div>
-                    <div style={{ marginTop: '18px' }}>
+        <div className="agents-hub-banner">
+          <LiveModeHint message="Browse agents below. Switch to Demo to explore sample data, or Live to connect your own." />
+        </div>
+        {/* Process Map Modal */}
+        <Modal
+          open={showProcessMap}
+          onClose={handleCloseProcessMap}
+          title="Process Map"
+          size="lg"
+        >
+          <ModalTabs
+            tabs={[
+              {
+                id: 'visual',
+                label: 'Visual',
+                content: processMapData && (
+                  <div className="process-map-visual">
+                    <div className="process-map-info">
+                      <p><strong>Industry:</strong> {processMapData.industry}</p>
+                      <p><strong>Department:</strong> {processMapData.department}</p>
+                      <p><strong>Responsibilities:</strong> {Array.isArray(processMapData.responsibilities) ? processMapData.responsibilities.join(', ') : processMapData.responsibilities}</p>
+                    </div>
+                    <div className="process-map-steps">
                       <h4>Process Steps</h4>
-                      <ol style={{ paddingLeft: '18px' }}>
+                      <ol>
                         {processMapData.steps.map((step, idx) => (
-                          <li key={idx} style={{ marginBottom: '8px' }}>
-                            <strong>{step.name}</strong>: {step.description} <span style={{ color: '#64748b', fontSize: '0.95em' }}>({step.owner})</span>
+                          <li key={idx}>
+                            <strong>{step.name}</strong>: {step.description}
+                            <span className="process-step-owner">({step.owner})</span>
                           </li>
                         ))}
                       </ol>
                     </div>
                   </div>
-                ) : (
-                  <pre style={{ background: '#f8fafc', borderRadius: '8px', padding: '18px', fontSize: '1em', color: '#334155', border: '1px solid #e2e8f0', maxHeight: '320px', overflow: 'auto' }}>{JSON.stringify(processMapData, null, 2)}</pre>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        <h2>Agents Assembly</h2>
-        
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', gap: '12px' }}>
-          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1f2937', letterSpacing: '0.01em' }}>Agent Stage</span>
-          <button
-            className={`modern-toggle-button ${showChatbot ? 'active' : 'inactive'}`}
-            onClick={() => setShowChatbot(!showChatbot)}
-            title={showChatbot ? 'Agent Stage: Active' : 'Agent Stage: Inactive'}
-          >
-            <span className="toggle-circle"></span>
-            <span className="toggle-label">{showChatbot ? 'Active' : 'Inactive'}</span>
-          </button>
+                )
+              },
+              {
+                id: 'json',
+                label: 'JSON',
+                content: (
+                  <pre className="process-map-json">{JSON.stringify(processMapData, null, 2)}</pre>
+                )
+              }
+            ]}
+            activeTab={processMapTab}
+            onTabChange={setProcessMapTab}
+          />
+        </Modal>
+        <div className="page-header-row">
+          <h2>Agents Assembly</h2>
         </div>
 
-        {showChatbot && (
-        <div className="chatbot-section">
-          <div className="chatbot-container enhanced-chatbot unified-chat">
-            <div style={{ background: 'linear-gradient(135deg, #1E3A5F 0%, #2c5282 100%)', padding: '16px 28px', borderBottom: '2px solid rgba(194, 65, 12, 0.2)', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-              <div>
-                <h3 style={{ color: '#ffffff', fontSize: '1rem', fontWeight: '600', margin: 0, letterSpacing: '0.01em' }}>Business Intelligence Assistant</h3>
-                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.82rem', fontWeight: '400', margin: '4px 0 0 0', letterSpacing: '0.02em' }}>Answer a few questions to get tailored recommendations</p>
+        {/* Floating Chat Widget */}
+        <div className={`floating-chat-widget ${showChatbot ? 'floating-chat-widget--open' : ''}`}>
+          {/* Floating trigger button */}
+          {!showChatbot && (
+            <button
+              className="floating-chat-trigger"
+              onClick={() => setShowChatbot(true)}
+              title="Ask AI Assistant"
+              aria-label="Ask AI Assistant"
+            >
+              <img src="/assets/icons/chat.png" alt="" className="floating-chat-trigger-icon" />
+            </button>
+          )}
+
+          {/* Chat panel */}
+          <div className={`floating-chat-panel ${showChatbot ? 'floating-chat-panel--open' : ''}`}>
+            <div className="floating-chat-header">
+              <span className="floating-chat-title">AI Assistant</span>
+              <div className="floating-chat-actions">
+                <button
+                  className="floating-chat-clear"
+                  onClick={clearChatSession}
+                  title="Clear chat"
+                  aria-label="Clear chat"
+                >
+                  ↻
+                </button>
+                <button
+                  className="floating-chat-close"
+                  onClick={() => setShowChatbot(false)}
+                  aria-label="Close chat"
+                >
+                  ×
+                </button>
               </div>
             </div>
-            <div ref={chatHistoryRef} className="chat-history" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '320px', overflowY: 'auto', paddingBottom: '12px', scrollBehavior: 'smooth' }}>
+            <div ref={chatHistoryRef} className="chat-history" role="log" aria-live="polite" aria-label="Chat messages">
               {chatHistory.length === 0 && (
                 <>
                   <div className="chat-row system">
-                    <div className="chat-avatar system-avatar" />
+                    <span className="chat-sender">AI Assistant</span>
                     <div className="chat-message system">
                       <span>{nextQuestion}</span>
                     </div>
                   </div>
-                  {!industryPrompted && (
-                    <div className="chat-row system">
-                      <div className="chat-avatar system-avatar" />
-                      <div className="chat-message system">
-                        <span>
-                          <div className="industry-options-list">
-                            {industryOptions.map((option, idx) => (
-                              <button
-                                key={option}
-                                className="industry-option-btn"
-                                onClick={() => {
-                                  setInputValue(`We are in the ${option} industry`);
-                                  setIndustryPrompted(true);
-                                  setInputHighlighted(true);
-                                }}
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </span>
-                      </div>
-                    </div>
-                  )}
+{/* Industry filter hint removed - filter always visible in toolbar */}
                 </>
               )}
               {chatHistory.map((msg, idx) => {
                 if (msg.text === '__DEPARTMENT_OPTIONS__') {
+                  // Skip if already selected
+                  if (departmentPrompted) return null;
                   // Render department options as a separate chat row
                   return (
                     <div key={idx} className="chat-row system">
-                      <div className="chat-avatar system-avatar" />
+                      <span className="chat-sender">AI Assistant</span>
                       <div className="chat-message system">
-                        <span>
-                          Please select your department or business function:
-                          <div className="industry-options-list">
-                            {departmentOptions.map((option, didx) => (
-                              <button
-                                key={option}
-                                className="industry-option-btn"
-                                onClick={() => {
-                                  setInputValue(`I am in the ${option}`);
-                                  setInputHighlighted(true);
-                                }}
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </span>
+                        <span>Select your department:</span>
+                        <div className="industry-options-list">
+                          {departmentOptions.map((option, didx) => (
+                            <button
+                              key={option}
+                              className="industry-option-btn"
+                              onClick={() => {
+                                setInputValue(`I am in the ${option}`);
+                                setInputHighlighted(true);
+                                setDepartmentPrompted(true);
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
@@ -766,11 +737,13 @@ const handleEnterpriseChat = async (userInput) => {
                   // Skip empty system messages (if any)
                   return null;
                 } else {
-                  // Render all other chat messages as before
+                  // Render chat messages with sender and timestamp
+                  const senderLabel = msg.type === 'user' ? 'You' : 'AI Assistant';
+                  const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                   return (
-                    <div key={idx} className={`chat-row ${msg.type}`}> 
-                      <div className={`chat-avatar ${msg.type}-avatar`} />
-                      <div className={`chat-message ${msg.type}`}> 
+                    <div key={idx} className={`chat-row ${msg.type}`}>
+                      <span className="chat-sender">{senderLabel}</span>
+                      <div className={`chat-message ${msg.type}`}>
                         {msg.type === 'buffer' ? (
                           <span className="buffering">
                             <span className="loading-dots">
@@ -781,13 +754,14 @@ const handleEnterpriseChat = async (userInput) => {
                           <span>{msg.text}</span>
                         )}
                       </div>
+                      {timeStr && <span className="chat-timestamp">{timeStr}</span>}
                     </div>
                   );
                 }
               })}
               {isBuffering && (
                 <div className="chat-row buffer-row">
-                  <div className="chat-avatar system-avatar" />
+                  <span className="chat-sender">AI Assistant</span>
                   <div className="chat-message system">
                     <span className="buffering">
                       <span className="loading-dots">
@@ -798,7 +772,7 @@ const handleEnterpriseChat = async (userInput) => {
                 </div>
               )}
             </div>
-            <div className="chatbot-input-card enhanced-input unified-input" style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px' }}>
+            <div className="enhanced-input">
               <input
                 id="chat-file-input"
                 type="file"
@@ -806,20 +780,18 @@ const handleEnterpriseChat = async (userInput) => {
                 accept="image/*,.pdf,.doc,.docx,.xlsx,.ppt,.pptx"
                 onChange={handleFileChange}
               />
-              <img
-                src="/assets/icons/plus.png"
-                alt="Attach file"
-                className="chat-plus-btn"
+              <button
+                className="chat-attach-btn"
                 onClick={() => document.getElementById('chat-file-input').click()}
                 title="Attach file"
-                tabIndex={0}
-                role="button"
-                style={{ cursor: 'pointer', width: '18px', height: '18px', flexShrink: 0, opacity: 0.6, transition: 'opacity 0.2s' }}
-              />
+                aria-label="Attach file"
+              >
+                +
+              </button>
               <input
                 type="text"
                 className={`chat-input enhanced${inputHighlighted ? ' highlighted' : ''}`}
-                placeholder={completed ? "Business context complete!" : isBuffering ? "Waiting for response..." : "Talk to us!"}
+                placeholder={completed ? "Conversation complete" : isBuffering ? "Thinking..." : "Message AI Assistant..."}
                 value={inputValue}
                 onChange={e => {
                   setInputValue(e.target.value);
@@ -836,7 +808,6 @@ const handleEnterpriseChat = async (userInput) => {
                 disabled={completed || isBuffering}
                 autoFocus
                 aria-label="Type your message"
-                style={{ flex: '1 1 auto', minWidth: 0, minHeight: '32px', padding: '10px 14px', fontSize: '0.88rem', maxWidth: 'calc(100% - 90px)' }}
               />
               <button
                 onClick={() => {
@@ -846,55 +817,29 @@ const handleEnterpriseChat = async (userInput) => {
                   }
                 }}
                 disabled={completed || isBuffering || !inputValue.trim()}
-                className="chat-send-btn"
-                title="Send message (Enter key)"
+                className={`chat-send-btn ${inputValue.trim() && !completed && !isBuffering ? 'chat-send-btn--active' : ''}`}
+                title="Send message"
                 aria-label="Send message"
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  minWidth: '40px',
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: (inputValue.trim() && !completed && !isBuffering) ? 'linear-gradient(135deg, #C2410C 0%, #B45309 100%)' : '#e5e7eb',
-                  color: (inputValue.trim() && !completed && !isBuffering) ? '#ffffff' : '#999',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: (inputValue.trim() && !completed && !isBuffering) ? 'pointer' : 'not-allowed',
-                  fontSize: '1.1rem',
-                  lineHeight: '1',
-                  transition: 'all 0.2s ease',
-                  fontWeight: '600',
-                  boxShadow: (inputValue.trim() && !completed && !isBuffering) ? '0 4px 12px rgba(194, 65, 12, 0.2)' : 'none',
-                  transform: (inputValue.trim() && !completed && !isBuffering) ? 'translateY(0)' : 'translateY(0)',
-                  padding: '0'
-                }}
               >
-                ↑
+                Send
               </button>
             </div>
           </div>
         </div>
-        )}
 
         {/* Show recommended modules as cards matching business/technical modules, with a 'Recommended' tag and Detailed Report */}
         {recommendedModules.length > 0 && (
           <div className="recommended-modules enhanced">
-            <h3 style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <span>
-                <span role="img" aria-label="star" style={{color: '#fbbf24', marginRight: '8px'}}>★</span>
-                Recommended Agentic Modules
-              </span>
-              <span
+            <h3 className="recommended-header">
+              <span>Recommended Agentic Modules</span>
+              <button
                 className="detailed-report-tag"
-                style={{cursor: 'pointer', fontSize: '0.95rem', color: '#2563eb', background: '#e0e7ef', borderRadius: '8px', padding: '4px 12px', marginLeft: '12px', fontWeight: 500}}
                 onClick={() => setShowDetailedReport(true)}
               >
                 Detailed Report
-              </span>
+              </button>
             </h3>
-            <div className="modules-container recommended">
+            <CardGrid columns="auto" gap="md" className="modules-container recommended">
               {recommendedModules.map((name, idx) => {
                 // Find module details from businessModules or technicalModules
                 const module = businessModules.find(m => m.name === name) || technicalModules.find(m => m.name === name);
@@ -903,13 +848,12 @@ const handleEnterpriseChat = async (userInput) => {
                   <div
                     key={idx}
                     className={`module-card recommended-card ${businessModules.some(b => b.name === name) ? 'business-module' : 'technical-module'}`}
-                    style={{ cursor: 'pointer', position: 'relative' }}
                   >
                     <img src={module.icon} alt={module.name} />
                     <p>{module.name}</p>
                     <span className="recommended-tag">Recommended</span>
                     <div className="card-buttons">
-                      <button 
+                      <button
                         className="try-button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -919,7 +863,7 @@ const handleEnterpriseChat = async (userInput) => {
                       >
                         Try
                       </button>
-                      <button 
+                      <button
                         className="buy-button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -933,13 +877,13 @@ const handleEnterpriseChat = async (userInput) => {
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
             {/* Detailed Report Popup - Visual Tabular Format */}
             {showDetailedReport && detailedReportData && (
-              <div className="detailed-report-popup">
+              <div className="detailed-report-popup" role="dialog" aria-modal="true" aria-labelledby="detailed-report-title">
                 <div className="detailed-report-modal">
-                  <button className="detailed-report-close" onClick={() => setShowDetailedReport(false)}>Close</button>
-                  <h2 className="detailed-report-title">Detailed Recommendation Report</h2>
+                  <button className="detailed-report-close" onClick={() => setShowDetailedReport(false)} aria-label="Close detailed report">Close</button>
+                  <h2 id="detailed-report-title" className="detailed-report-title">Detailed Recommendation Report</h2>
                   {/* Recommended Tools Section - Card Style */}
                   <div className="detailed-report-section corporate-section">
                     <div className="corporate-header">
@@ -1049,175 +993,285 @@ const handleEnterpriseChat = async (userInput) => {
           </div>
         )}
 
-        {/* Show search insights */}
-        {searchResults && searchResults.confidence > 0.2 && (
-          <div className="search-insights">
-            <div className="insights-content">
-              {searchResults.businessTypes.length > 0 && (
-                <p><strong>Business Type:</strong> {searchResults.businessTypes.join(', ')}</p>
-              )}
-              {searchResults.needs.length > 0 && (
-                <p><strong>Identified Needs:</strong> {searchResults.needs.join(', ')}</p>
-              )}
-              <p><strong>Showing {filteredModules.length} relevant Agentic modules</strong></p>
-            </div>
+
+        {/* Unified toolbar: Tabs | Search | Filters */}
+        <div className="agents-toolbar">
+          <div className="module-tabs" role="tablist" aria-label="Module categories">
+            <button
+              role="tab"
+              className={`module-tab module-tab--business ${moduleTab === 'business' ? 'module-tab--active' : ''}`}
+              aria-selected={moduleTab === 'business'}
+              onClick={() => { setModuleTab('business'); setCarouselIndex(0); }}
+            >
+              Business ({businessModules.length})
+            </button>
+            <button
+              role="tab"
+              className={`module-tab module-tab--technical ${moduleTab === 'technical' ? 'module-tab--active' : ''}`}
+              aria-selected={moduleTab === 'technical'}
+              onClick={() => { setModuleTab('technical'); setCarouselIndex(0); }}
+            >
+              Technical ({technicalModules.length})
+            </button>
           </div>
-        )}
 
-        <div className="dropdown-container">
-          <select
-            value={selectedIndustry}
-            onChange={(e) => setSelectedIndustry(e.target.value)}
-            className="dropdown"
-          >
-            <option value="">Select Industry</option>
-            <option value="Retail">Retail</option>
-            <option value="Food Service">Food Service</option>
-            <option value="Manufacturing">Manufacturing</option>
-            <option value="Healthcare">Healthcare</option>
-            <option value="Finance">Finance</option>
-            <option value="Technology">Technology</option>
-            <option value="Consulting">Consulting</option>
-          </select>
-          <select
-            value={selectedProcess}
-            onChange={(e) => setSelectedProcess(e.target.value)}
-            className="dropdown"
-          >
-            <option value="">Select Process</option>
-            <option value="Sales">Sales</option>
-            <option value="Procurement">Procurement</option>
-            <option value="HR">HR</option>
-            <option value="Operations">Operations</option>
-            <option value="Finance">Finance</option>
-            <option value="Customer Service">Customer Service</option>
-          </select>
+          <div className="agent-search-wrapper">
+            <input
+              type="text"
+              className="agent-search-input"
+              placeholder="Search agent..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Search agent"
+            />
+            {searchTerm && (
+              <button
+                className="agent-search-clear"
+                onClick={() => setSearchTerm('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <div className="filter-chips" role="group" aria-label="Filter modules">
+            <Select
+              value={selectedIndustry}
+              onChange={(e) => setSelectedIndustry(e.target.value)}
+              aria-label="Select industry"
+            >
+              <option value="">All Industries</option>
+              <option value="Retail">Retail</option>
+              <option value="Food Service">Food Service</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Finance">Finance</option>
+              <option value="Technology">Technology</option>
+              <option value="Consulting">Consulting</option>
+            </Select>
+            <Select
+              value={selectedProcess}
+              onChange={(e) => setSelectedProcess(e.target.value)}
+              aria-label="Select process"
+            >
+              <option value="">All Processes</option>
+              <option value="Sales">Sales</option>
+              <option value="Procurement">Procurement</option>
+              <option value="HR">HR</option>
+              <option value="Operations">Operations</option>
+              <option value="Finance">Finance</option>
+              <option value="Customer Service">Customer Service</option>
+            </Select>
+            {(selectedIndustry || selectedProcess) && (
+              <button
+                className="clear-filters-btn"
+                onClick={() => {
+                  setSelectedIndustry('');
+                  setSelectedProcess('');
+                }}
+                title="Clear filters"
+                aria-label="Clear all filters"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Module Tabs - Modern Professional */}
-        <div className="module-tabs" style={{ display: 'flex', gap: '0', marginBottom: '32px', borderBottom: '1px solid #e8ecf1', paddingBottom: '0' }}>
-          <button
-            onClick={() => setModuleTab('business')}
-            style={{
-              padding: '14px 28px',
-              borderBottom: moduleTab === 'business' ? '3px solid #c2410c' : '3px solid transparent',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              fontWeight: moduleTab === 'business' ? '700' : '600',
-              color: moduleTab === 'business' ? '#c2410c' : '#475569',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              letterSpacing: '-0.2px',
-              marginRight: '24px'
-            }}
-          >
-            Business Modules ({businessModules.length})
-          </button>
-          <button
-            onClick={() => setModuleTab('technical')}
-            style={{
-              padding: '14px 28px',
-              borderBottom: moduleTab === 'technical' ? '3px solid #475569' : '3px solid transparent',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              fontWeight: moduleTab === 'technical' ? '700' : '600',
-              color: moduleTab === 'technical' ? '#475569' : '#1e3a5f',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              letterSpacing: '-0.2px'
-            }}
-          >
-            Technical Modules ({technicalModules.length})
-          </button>
-        </div>
+        {/* Modules Section - Infinite 3D Carousel */}
+        {(() => {
+          const displayModules = filteredModules
+            .filter(module => {
+              // Filter by tab (business/technical)
+              if (moduleTab === 'business') {
+                if (!businessModules.some(b => b.name === module.name)) return false;
+              } else {
+                if (!technicalModules.some(t => t.name === module.name)) return false;
+              }
+              // Filter by industry
+              if (selectedIndustry && module.industries) {
+                const industryMatch = module.industries.some(ind =>
+                  ind.toLowerCase().includes(selectedIndustry.toLowerCase()) ||
+                  ind.toLowerCase() === 'all industries'
+                );
+                if (!industryMatch) return false;
+              }
+              // Filter by process
+              if (selectedProcess && module.keywords) {
+                const processMatch = module.keywords.some(kw =>
+                  kw.toLowerCase().includes(selectedProcess.toLowerCase())
+                ) || (module.businessContext && module.businessContext.some(ctx =>
+                  ctx.toLowerCase().includes(selectedProcess.toLowerCase())
+                ));
+                if (!processMatch) return false;
+              }
+              return true;
+            })
+            .sort((a, b) => {
+              if (a.status === 'ready' && b.status !== 'ready') return -1;
+              if (a.status !== 'ready' && b.status === 'ready') return 1;
+              return 0;
+            });
 
-        {/* Modules Section */}
-        <div className="modules-container">
-          {filteredModules.length > 0 ? (
-            filteredModules
-              .filter(module => {
-                if (moduleTab === 'business') {
-                  return businessModules.some(b => b.name === module.name);
-                } else {
-                  return technicalModules.some(t => t.name === module.name);
-                }
-              })
-              .sort((a, b) => {
-                // Sort ready agents first, then in-progress
-                if (a.status === 'ready' && b.status !== 'ready') return -1;
-                if (a.status !== 'ready' && b.status === 'ready') return 1;
-                return 0;
-              })
-              .map((module, index) => (
-                <div
-                  key={index}
-                  className={`module-card ${
-                    businessModules.some((b) => b.name === module.name)
-                      ? 'business-module'
-                      : 'technical-module'
-                  }`}
-                  onClick={() => handleCardClick(module.name)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {module.status && (
-                    <div className="status-badge" style={{
-                      position: 'absolute',
-                      top: '12px',
-                      right: '12px',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      fontSize: '0.7rem',
-                      fontWeight: '700',
-                      backgroundColor: module.status === 'ready' ? '#10b981' : '#f97316',
-                      color: '#ffffff',
-                      boxShadow: module.status === 'ready' ? 
-                        '0 4px 12px rgba(16, 185, 129, 0.25)' : 
-                        '0 4px 12px rgba(249, 115, 22, 0.25)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      border: 'none',
-                      zIndex: 3
-                    }}>
-                      {module.status === 'ready' ? '✓ Ready' : '⚡ In Progress'}
-                    </div>
-                  )}
-                  <div className="card-header">
-                    <img src={module.icon} alt={module.name} />
-                    <p>{module.name}</p>
-                  </div>
-                  
-                  <div className="card-buttons">
-                    <button 
-                      className="try-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTryModule(module.name);
-                      }}
-                      title={`Try ${module.name} for free`}
-                    >
-                      Try
-                    </button>
-                    <button 
-                      className="buy-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleBuyModule(module);
-                      }}
-                      title={`Buy ${module.name} - ${module.price}`}
-                    >
-                      Buy
-                    </button>
-                  </div>
+          const total = displayModules.length;
+          if (total === 0) {
+            return (
+              <div className="no-results">
+                <h3>{moduleTab === 'technical' ? 'More technical agents coming soon' : 'No modules found'}</h3>
+                <p>
+                  {moduleTab === 'technical'
+                    ? 'Data Insights is available today. Additional technical agents (AI Chatbot, Invest, Supply Chain) are in preview.'
+                    : 'Try adjusting your search or browse all available modules.'}
+                </p>
+                {moduleTab !== 'technical' && (
+                  <button type="button" onClick={() => setSearchTerm('')}>Clear Search</button>
+                )}
+              </div>
+            );
+          }
+
+          // Infinite circular navigation
+          const scrollCarousel = (direction) => {
+            if (direction === 'left') {
+              setCarouselIndex(prev => (prev - 1 + total) % total);
+            } else {
+              setCarouselIndex(prev => (prev + 1) % total);
+            }
+          };
+
+          // Get circular offset from center (-2, -1, 0, 1, 2)
+          const getCircularOffset = (index) => {
+            const activeIndex = carouselIndex;
+            let offset = index - activeIndex;
+            // Wrap around for circular effect
+            if (offset > total / 2) offset -= total;
+            if (offset < -total / 2) offset += total;
+            return offset;
+          };
+
+          // Calculate 3D card style based on offset from center
+          const getCardStyle = (index) => {
+            const offset = getCircularOffset(index);
+            const absOffset = Math.abs(offset);
+
+            // Only show 5 cards: -2, -1, 0, 1, 2
+            if (absOffset > 2) {
+              return { visible: false };
+            }
+
+            // Scale: center = 1, ±1 = 0.85, ±2 = 0.7
+            const scale = absOffset === 0 ? 1 : absOffset === 1 ? 0.85 : 0.7;
+
+            // Opacity: center = 1, ±1 = 0.6, ±2 = 0.3
+            const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.6 : 0.3;
+
+            // Z-index: center highest
+            const zIndex = 100 - absOffset * 10;
+
+            // X translation: consistent visual gap between scaled cards
+            const cardWidth = Math.min(360, window.innerWidth * 0.20);
+            const gap = 12; // Visual gap between cards
+            // Calculate position accounting for scaled widths
+            let translateX = 0;
+            if (absOffset === 1) {
+              translateX = offset * (cardWidth * 0.925 + gap);
+            } else if (absOffset === 2) {
+              translateX = offset * (cardWidth * 0.925 + gap) + offset * (cardWidth * 0.775 + gap);
+            }
+
+            // Slight Y offset for depth
+            const translateY = absOffset * 8;
+
+            return { visible: true, scale, opacity, zIndex, translateX, translateY, offset };
+          };
+
+          return (
+            <div className="carousel-3d-container">
+              <button
+                type="button"
+                className="carousel-nav carousel-nav--left"
+                onClick={() => scrollCarousel('left')}
+                aria-label="Previous agent"
+              />
+
+              <div className="carousel-3d-viewport">
+                <div className="carousel-3d-stage">
+                  {displayModules.map((module, index) => {
+                    const style = getCardStyle(index);
+                    if (!style.visible) return null;
+
+                    const isReady = module.status === 'ready';
+                    const isNotReady = !isReady;
+                    const isActive = style.offset === 0;
+
+                    return (
+                      <div
+                        key={module.name}
+                        className={`carousel-3d-card ${isActive ? 'carousel-3d-card--active' : ''}`}
+                        onClick={() => {
+                          if (isActive) {
+                            handleCardClick(module.name);
+                          } else {
+                            setCarouselIndex(index);
+                          }
+                        }}
+                        style={{
+                          transform: `translateX(${style.translateX}px) translateY(${style.translateY}px) scale(${style.scale})`,
+                          opacity: style.opacity,
+                          zIndex: style.zIndex,
+                        }}
+                      >
+                        <div className="card-inner">
+                          <div className="card-header">
+                            <img src={module.icon} alt={module.name} />
+                            <StatusIndicator status={isReady ? 'ready' : 'in-progress'} />
+                          </div>
+                          <p className="card-title">{module.name}</p>
+                          <p className="card-description">
+                            {module.description || 'AI-powered agent to help automate and optimize your workflows.'}
+                          </p>
+                          <div className="card-price">{module.price}</div>
+                          <div className="card-buttons">
+                            <button
+                              type="button"
+                              className="try-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isReady && isActive) handleTryModule(module.name);
+                              }}
+                              disabled={isNotReady || !isActive}
+                            >
+                              {isNotReady ? 'Coming Soon' : 'Try Free'}
+                            </button>
+                            <button
+                              type="button"
+                              className="buy-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isReady && isActive) handleBuyModule(module);
+                              }}
+                              disabled={isNotReady || !isActive}
+                            >
+                              Buy
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))
-          ) : (
-            <div className="no-results">
-              <h3>No modules found</h3>
-              <p>Try adjusting your search or browse all available modules.</p>
-              <button onClick={() => setSearchTerm('')}>Clear Search</button>
+              </div>
+
+              <button
+                type="button"
+                className="carousel-nav carousel-nav--right"
+                onClick={() => scrollCarousel('right')}
+                aria-label="Next agent"
+              />
             </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -1,0 +1,47 @@
+.agent-outcomes {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.agent-outcome-card {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-outcome-icon {
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.agent-outcome-icon-img {
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-background);
+  display: block;
+}
+
+.agent-outcome-card strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-heading);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.agent-outcome-card p {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}

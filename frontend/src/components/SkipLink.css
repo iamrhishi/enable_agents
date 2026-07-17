@@ -1,0 +1,41 @@
+/**
+ * SkipLink Styles
+ * Uses design tokens from tokens.css
+ */
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: var(--space-4);
+  z-index: calc(var(--z-toast) + 1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+  outline: none;
+  box-shadow: var(--shadow-lg), 0 0 0 3px var(--color-focus-ring);
+}
+
+/* Multiple skip links */
+.skip-links {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.skip-links .skip-link {
+  position: fixed;
+}
+
+.skip-links .skip-link:nth-child(1) { left: var(--space-4); }
+.skip-links .skip-link:nth-child(2) { left: calc(var(--space-4) + 200px); }
+.skip-links .skip-link:nth-child(3) { left: calc(var(--space-4) + 400px); }

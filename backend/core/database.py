@@ -33,3 +33,13 @@ def init_db(app):
 
     db.init_app(app)
     migrate.init_app(app, db)
+
+    # Enable pgvector extension on first connection (PostgreSQL only)
+    if "postgresql" in db_uri:
+        with app.app_context():
+            try:
+                from sqlalchemy import text
+                db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()

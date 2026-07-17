@@ -3,7 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 
 // Shared UI
 import Login from './core/Login';
+import SkipLink from './components/SkipLink';
 import RegisterUser from './core/RegisterUser';
+import Settings from './settings/Settings';
+import Team from './team/Team';
+import Projects from './projects/Projects';
 
 // Agent components
 import AgentsAssembly from './components/AgentsAssembly';
@@ -20,28 +24,49 @@ import SupplyChainAgent from './agents/SupplyChainAgent';
 import ExecutiveAssistantPage from './agents/ExecutiveAssistantPage';
 
 
+// Check if user is logged in (has session token)
+function isLoggedIn() {
+  return Boolean(localStorage.getItem('sessionToken') || localStorage.getItem('userEmail'));
+}
+
+// Root redirect - go to /agents if logged in, /login otherwise
+function RootRedirect() {
+  return <Navigate to={isLoggedIn() ? '/agents' : '/login'} replace />;
+}
+
 function App() {
   return (
     <Router>
+      <SkipLink />
       <div className="App">
+        <main id="main-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
-          <Route path="/requirements" element={<RequirementsGathering />} />
-          <Route path="/campaign-dashboard" element={<CampaignDashboard />} />
+          <Route path="/market-research" element={<RequirementsGathering />} />
+          <Route path="/market-research/campaigns" element={<CampaignDashboard />} />
+          {/* Redirects for old paths */}
+          <Route path="/requirements" element={<Navigate to="/market-research" replace />} />
+          <Route path="/campaign-dashboard" element={<Navigate to="/market-research/campaigns" replace />} />
           <Route path="/agents" element={<AgentsAssembly />} />
           <Route path="/agents-assembly" element={<AgentsAssembly />} />
-          <Route path="/datainsights" element={<DataInsights />} /> 
+          <Route path="/data-insights" element={<DataInsights />} />
+          <Route path="/datainsights" element={<Navigate to="/data-insights" replace />} /> 
           <Route path="/aichatbot" element={<Chatbot />} />
           <Route path="/community-network" element={<CommunityNetworkAgent />} />
           <Route path="/sales-helper" element={<SalesHelperAgent />} />
           <Route path="/content-marketing" element={<ContentMarketingAgent />} />
+          <Route path="/event-networking" element={<EventNetworkingAgent />} />
           <Route path="/event-networking-agent" element={<EventNetworkingAgent />} />
           <Route path="/invest-agent" element={<InvestAgent />} />
           <Route path="/supply-chain-agent" element={<SupplyChainAgent />} />
           <Route path="/executive-assistant" element={<ExecutiveAssistantPage />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/team" element={<Team />} />
+          <Route path="/projects" element={<Projects />} />
         </Routes>
+        </main>
       </div>
     </Router>
   );

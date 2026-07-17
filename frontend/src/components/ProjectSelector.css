@@ -1,0 +1,175 @@
+/* ProjectSelector - Standard Select Dropdown */
+
+.project-selector {
+  position: relative;
+  display: inline-block;
+}
+
+/* Button - looks like a native select */
+.project-selector-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  padding-right: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  min-width: 140px;
+}
+
+.project-selector-btn:hover {
+  border-color: var(--color-text-muted);
+}
+
+.project-selector-btn:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.project-selector-btn.has-project {
+  color: var(--color-text);
+}
+
+.project-name {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+}
+
+.dropdown-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Create button variant */
+.project-selector-btn--create {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  min-width: auto;
+}
+
+.project-selector-btn--create:hover {
+  background: var(--color-accent-dark);
+  border-color: var(--color-accent-dark);
+}
+
+/* Dropdown menu */
+.project-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-width: 280px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+  animation: selectDropdown 0.12s ease-out;
+}
+
+@keyframes selectDropdown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown options */
+.project-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.project-option:hover {
+  background: var(--color-background);
+}
+
+.project-option.selected {
+  background: var(--color-background);
+  color: var(--color-accent);
+}
+
+.project-option--clear {
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-option--clear:hover {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.clear-icon {
+  margin-right: var(--space-1);
+}
+
+.project-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+}
+
+.project-dropdown-divider {
+  height: 1px;
+  background: var(--color-border);
+}
+
+.project-option--create {
+  color: var(--color-accent);
+  font-weight: var(--font-medium);
+}
+
+.project-option--create:hover {
+  background: rgba(194, 65, 12, 0.06);
+}
+
+.plus-icon {
+  margin-right: var(--space-1);
+}
+
+/* Empty state */
+.project-selector--empty .project-selector-btn {
+  min-width: auto;
+}

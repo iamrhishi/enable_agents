@@ -1,0 +1,164 @@
+/**
+ * Input Component Styles
+ * Uses design tokens from tokens.css
+ */
+
+/* Wrapper for icon support */
+.input-wrapper {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+/* Base input styles */
+.input {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--color-text-subtle);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SIZE VARIANTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input--sm {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+
+.input--md {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body);
+}
+
+.input--lg {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-body);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   STYLE VARIANTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input--outlined {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+}
+
+.input--filled {
+  background: var(--color-background);
+  border: 1.5px solid transparent;
+}
+
+.input--filled:hover:not(:disabled) {
+  background: var(--color-background-subtle);
+}
+
+.input--filled:focus {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   STATE VARIANTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input--error {
+  border-color: var(--color-error);
+}
+
+.input--error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.input--success {
+  border-color: var(--color-success);
+}
+
+.input--success:focus {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+}
+
+.input--disabled,
+.input:disabled {
+  background: var(--color-background-subtle);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FULL WIDTH
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input--full-width {
+  width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ICON SUPPORT
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input-icon {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.input-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.input-icon--left {
+  left: var(--space-3);
+}
+
+.input-icon--right {
+  right: var(--space-3);
+}
+
+.input--has-icon-left {
+  padding-left: calc(var(--space-3) + 18px + var(--space-2));
+}
+
+.input--has-icon-right {
+  padding-right: calc(var(--space-3) + 18px + var(--space-2));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TEXTAREA
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.input--textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}

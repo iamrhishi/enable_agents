@@ -1,32 +1,70 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import '../styles/Header.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from './toast';
+import { Modal, ModalTabs } from '../components/Modal';
 
-function Header({ onProcessClick }) {
+
+function Header({ onProcessClick, onModeChange }) {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [dataSource, setDataSource] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [bulkFiles, setBulkFiles] = useState([]);
-  const firstName = localStorage.getItem('firstName'); 
+  const firstName = localStorage.getItem('firstName');
   const [showModal, setShowModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const navigate = useNavigate();
-  const [selectedSystemTab, setSelectedSystemTab] = useState(0);
+  const location = useLocation();
+  const [selectedSystemTab, setSelectedSystemTab] = useState('tools');
+
+  // Live/Demo mode toggle - persisted in localStorage
+  const [isLiveMode, setIsLiveMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored === 'live';
+  });
+
+  const handleModeToggle = () => {
+    const newMode = !isLiveMode;
+    setIsLiveMode(newMode);
+    localStorage.setItem('enableAgentsMode', newMode ? 'live' : 'demo');
+    showToast(newMode ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
+    onModeChange?.(newMode ? 'live' : 'demo');
+  };
+  const userDropdownRef = useRef(null);
+
   const handleUserIconClick = () => {
     setShowUserDropdown((prev) => !prev);
   };
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    if (showUserDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserDropdown]);
+
   const handleProfileClick = () => {
-    // Implement navigation or modal for profile
-    showToast('Profile settings coming soon.', 'info');
     setShowUserDropdown(false);
+    navigate('/settings?tab=account');
   };
 
   const handleSignOutClick = () => {
     localStorage.removeItem('firstName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('username');
+    localStorage.removeItem('sessionToken');
     sessionStorage.clear();
     setShowUserDropdown(false);
     navigate('/login');
@@ -332,7 +370,12 @@ function Header({ onProcessClick }) {
         body: JSON.stringify(payload)
       });
       const agentsResult = await agentsRes.json();
-      setRecommendedAgents(agentsResult.recommendations || 'No recommendations found.');
+      const recs = agentsResult.recommendations;
+      if (recs && typeof recs === 'object') {
+        setRecommendedAgents(JSON.stringify(recs, null, 2));
+      } else {
+        setRecommendedAgents(recs || 'No recommendations found.');
+      }
     } catch (error) {
       setSystemTools([]);
       setRecommendedAgents('Error fetching recommendations.');
@@ -361,125 +404,150 @@ function Header({ onProcessClick }) {
   return (
     <>
       <header className="header">
-        <Link to="/">
-          <img
-            src={`${process.env.PUBLIC_URL}/logo192.svg`}
-            alt="Enable Logo"
-            className="logo"
-            style={{ height: '48px' }}
-          />
-        </Link>
-        
-        <div className="header-icons">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div className="header-left">
+          <Link to="/agents" aria-label="Go to home">
             <img
-              src="/assets/icons/api.png"
-              alt="Data"
-              className="icon"
-              style={{ cursor: 'pointer' }}
-              onClick={handleOpenModal}
+              src={`${process.env.PUBLIC_URL}/logo192.svg`}
+              alt="Enable Logo"
+              className="logo"
+              style={{ height: '48px' }}
             />
-            <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>connection</span>
+          </Link>
+        </div>
+
+        <div className="header-icons">
+          {/* Live/Demo Mode Toggle */}
+          <div className="mode-toggle-wrapper">
+            <button
+              className={`mode-toggle ${isLiveMode ? 'mode-toggle--live' : 'mode-toggle--demo'}`}
+              onClick={handleModeToggle}
+              aria-pressed={isLiveMode}
+              aria-label={`Switch to ${isLiveMode ? 'Demo' : 'Live'} mode`}
+              title={isLiveMode ? 'Currently in Live mode - click to switch to Demo' : 'Currently in Demo mode - click to switch to Live'}
+            >
+              <span className="mode-toggle-track">
+                <span className="mode-toggle-thumb" />
+              </span>
+              <span className="mode-toggle-label">{isLiveMode ? 'Live' : 'Demo'}</span>
+            </button>
           </div>
-          {/* NEW SYSTEM OPTION */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {/* SYSTEM OPTION */}
+          <button
+            className="header-icon-button"
+            onClick={handleSystemClick}
+            aria-label="Open system overview"
+            title="System Overview"
+          >
             <img
               src="/assets/icons/puzzle.png"
-              alt="Agent System"
+              alt=""
               className="icon"
-              style={{ cursor: 'pointer' }}
-              onClick={handleSystemClick}
             />
-            <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>system</span>
-          </div>
+            <span className="icon-label">system</span>
+          </button>
+          {/* HIDDEN: Landscape feature requires Chrome history API - not functional
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <img 
-              src="/assets/icons/layout-grid.png"  
+            <img
+              src="/assets/icons/layout-grid.png"
               onClick={handleLandscapeClick}
-              alt="Landscape" 
+              alt="Landscape"
               className="icon"
               style={{ cursor: 'pointer' }}
             />
             <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>landscape</span>
           </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <img 
-                src="/assets/icons/process.png"  
-                alt="Process" 
-                className="icon"
-                style={{ cursor: 'pointer' }}
-                onClick={onProcessClick}
-              />
-              <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>process</span>
-            </div>
-          <div className="user-icon-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            <img src="/assets/icons/user.png" alt="User" className="icon" style={{ cursor: 'pointer' }} onClick={handleUserIconClick} />
-            {firstName && (
-              <span className="user-first-name" style={{ fontSize: '0.95em', marginTop: '2px' }}>
-                {firstName}
-              </span>
-            )}
+          */}
+          {/* HIDDEN: Process feature incomplete
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <img
+              src="/assets/icons/process.png"
+              alt="Process"
+              className="icon"
+              style={{ cursor: 'pointer' }}
+              onClick={onProcessClick}
+            />
+            <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>process</span>
+          </div>
+          */}
+          <div className="user-icon-wrapper" ref={userDropdownRef}>
+            <button
+              className="header-icon-button"
+              onClick={handleUserIconClick}
+              aria-label="User menu"
+              aria-expanded={showUserDropdown}
+              aria-haspopup="true"
+              title={firstName ? `Signed in as ${firstName}` : 'User menu'}
+            >
+              <img src="/assets/icons/user.png" alt="" className="icon" />
+              {firstName && (
+                <span className="user-first-name">{firstName}</span>
+              )}
+            </button>
             {showUserDropdown && (
-              <div className="user-dropdown-menu">
-                <button className="user-dropdown-item" onClick={handleProfileClick}>Profile</button>
-                <button className="user-dropdown-item" onClick={handleSignOutClick}>Sign Out</button>
+              <div className="user-dropdown-menu" role="menu">
+                <button className="user-dropdown-item" role="menuitem" onClick={handleProfileClick}>Profile</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/settings'); }}>Settings</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={handleSignOutClick}>Sign Out</button>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      {showSystemModal && (
-        <div className="history-modal">
-          <div className="history-modal-content system-modal-content">
-            <div className="history-modal-header">
-              <h2 className="history-modal-title">System Overview</h2>
-              <button className="close-modal" onClick={handleCloseSystemModal}>×</button>
-            </div>
-            <div className="system-tabs">
-              {['Existing Software Tools', 'Business & Role Context', 'Recommended Agents'].map((tab, idx) => (
-                <button
-                  key={tab}
-                  className={`system-tab${selectedSystemTab === idx ? ' active' : ''}`}
-                  onClick={() => setSelectedSystemTab(idx)}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-            <div className="system-tab-content">
-              {selectedSystemTab === 0 && (
-                <div className="system-section-content">
+      {/* System Overview Modal - using shared Modal component */}
+      <Modal
+        open={showSystemModal}
+        onClose={handleCloseSystemModal}
+        title="System Overview"
+        size="lg"
+      >
+        <ModalTabs
+          tabs={[
+            {
+              id: 'tools',
+              label: 'Software Tools',
+              content: (
+                <div className="system-tools-content">
                   {systemTools.length === 0 ? (
-                    <div>No tools found.</div>
+                    <div className="system-empty-state">
+                      <p>No tools detected yet.</p>
+                      <p className="system-empty-hint">Tools will appear here after browser scan or manual import.</p>
+                    </div>
                   ) : (
                     <>
                       <div className="tools-analytics-summary">
-                        <div className="tools-analytics-item">Total Tools: {systemTools.length}</div>
-                        <div className="tools-analytics-item">Categories: {Array.from(new Set(systemTools.map(t => t.category))).length}</div>
+                        <div className="tools-analytics-item">
+                          <span className="tools-analytics-value">{systemTools.length}</span>
+                          <span className="tools-analytics-label">Total Tools</span>
+                        </div>
+                        <div className="tools-analytics-item">
+                          <span className="tools-analytics-value">{Array.from(new Set(systemTools.map(t => t.category))).length}</span>
+                          <span className="tools-analytics-label">Categories</span>
+                        </div>
                       </div>
-                      <div className="tools-list-row-wrapper">
-                        <div className="tools-list-row-header">
-                          <span className="tools-list-row-title">Tool Name</span>
-                          <span className="tools-list-row-category" style={{cursor: 'pointer'}} onClick={() => setToolsSortAsc((asc) => !asc)}>
+                      <div className="tools-list">
+                        <div className="tools-list-header">
+                          <span className="tools-col-name">Tool</span>
+                          <span className="tools-col-category" onClick={() => setToolsSortAsc(asc => !asc)}>
                             Category {toolsSortAsc ? '▲' : '▼'}
                           </span>
-                          <span className="tools-list-row-description">Description</span>
+                          <span className="tools-col-desc">Description</span>
                         </div>
-                        <div className="tools-list-row-scroll">
+                        <div className="tools-list-body">
                           {[...systemTools]
                             .sort((a, b) => {
                               if (!a.category) return 1;
                               if (!b.category) return -1;
-                              if (a.category.toLowerCase() < b.category.toLowerCase()) return toolsSortAsc ? -1 : 1;
-                              if (a.category.toLowerCase() > b.category.toLowerCase()) return toolsSortAsc ? 1 : -1;
-                              return 0;
+                              const cmp = a.category.toLowerCase().localeCompare(b.category.toLowerCase());
+                              return toolsSortAsc ? cmp : -cmp;
                             })
                             .map((tool, idx) => (
                               <div key={idx} className="tools-list-row">
-                                <span className="tools-list-row-title">{tool.tool_name}</span>
-                                <span className="tools-list-row-category">{tool.category}</span>
-                                <span className="tools-list-row-description">{tool.description}</span>
+                                <span className="tools-col-name">{tool.tool_name}</span>
+                                <span className="tools-col-category">
+                                  <span className="category-badge">{tool.category}</span>
+                                </span>
+                                <span className="tools-col-desc">{tool.description}</span>
                               </div>
                             ))}
                         </div>
@@ -487,255 +555,100 @@ function Header({ onProcessClick }) {
                     </>
                   )}
                 </div>
-              )}
-              {selectedSystemTab === 1 && (
-                <div className="system-section-content">
-                  {!contextConfirmed ? (
-                    <>
-                      {contextStep === 0 && (
-                        <form className="context-form" onSubmit={handleBusinessSubmit}>
-                          <div className="context-chat-bubble bot">Hi! Let's set up your business context. What industry are you in?</div>
-                          <select value={business} onChange={e => setBusiness(e.target.value)} className="context-select">
-                            <option value="">Select your industry...</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Healthcare">Healthcare</option>
-                            <option value="Education">Education</option>
-                            <option value="Technology">Technology</option>
-                            <option value="Retail">Retail</option>
-                            <option value="Other">Other</option>
-                          </select>
-                          <input type="text" className="context-input" placeholder="Or type your business..." value={business} onChange={e => setBusiness(e.target.value)} />
-                          <button type="submit" className="context-save-btn">Next</button>
-                        </form>
-                      )}
-                      {contextStep === 1 && (
-                        <form className="context-form" onSubmit={handleBusinessDescSubmit}>
-                          <div className="context-chat-bubble bot">Can you briefly describe your main product or service? This helps us recommend agents for your entire business, not just your role.</div>
-                          <textarea className="context-input" placeholder="Describe your product or service..." value={businessDesc} onChange={e => setBusinessDesc(e.target.value)} rows={3} />
-                          <button type="submit" className="context-save-btn">Next</button>
-                        </form>
-                      )}
-                      {contextStep === 2 && (
-                        <form className="context-form" onSubmit={handleRoleSubmit}>
-                          <div className="context-chat-bubble bot">Great! And what is your role?</div>
-                          <select value={role} onChange={e => setRole(e.target.value)} className="context-select">
-                            <option value="">Select your role...</option>
-                            {getRoleOptions().map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                          <input type="text" className="context-input" placeholder="Or type your role..." value={role} onChange={e => setRole(e.target.value)} />
-                          <button type="submit" className="context-save-btn">Next</button>
-                        </form>
-                      )}
-                      {contextStep === 3 && (
-                        <div className="context-chat-bubble bot">Awesome! You're a <strong>{role || '...'}</strong> in <strong>{business || '...'}</strong>.<br />Your business offers: <strong>{businessDesc || '...'}</strong><br />Is this correct?</div>
-                      )}
-                      {contextStep === 3 && (
-                        <div style={{marginTop: '18px'}}>
-                          <button className="context-save-btn" onClick={handleContextConfirm}>Yes, Confirm</button>
-                          <button className="context-edit-btn" style={{marginLeft: '12px'}} onClick={handleContextEdit}>Edit</button>
+              )
+            },
+            {
+              id: 'context',
+              label: 'Business Context',
+              content: (
+                <div className="system-context-content">
+                  {(() => {
+                    // Read from localStorage (same as Settings)
+                    const stored = localStorage.getItem('enableAgentsBusinessContext');
+                    const ctx = stored ? JSON.parse(stored) : null;
+                    const hasContext = ctx && (ctx.industry || ctx.role || ctx.productService);
+
+                    if (!hasContext) {
+                      return (
+                        <div className="system-empty-state">
+                          <p>No business context configured yet.</p>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => {
+                              handleCloseSystemModal();
+                              navigate('/settings?tab=business');
+                            }}
+                          >
+                            Set Up Business Context
+                          </button>
                         </div>
-                      )}
-                    </>
+                      );
+                    }
+
+                    return (
+                      <div className="context-display">
+                        <div className="context-display-row">
+                          <span className="context-display-label">Industry</span>
+                          <span className="context-display-value">{ctx.industry || '—'}</span>
+                        </div>
+                        <div className="context-display-row">
+                          <span className="context-display-label">Role</span>
+                          <span className="context-display-value">{ctx.role || '—'}</span>
+                        </div>
+                        <div className="context-display-row">
+                          <span className="context-display-label">Company Size</span>
+                          <span className="context-display-value">{ctx.companySize || '—'}</span>
+                        </div>
+                        <div className="context-display-row">
+                          <span className="context-display-label">Product/Service</span>
+                          <span className="context-display-value">{ctx.productService || '—'}</span>
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            handleCloseSystemModal();
+                            navigate('/settings?tab=business');
+                          }}
+                        >
+                          Edit in Settings
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )
+            },
+            {
+              id: 'agents',
+              label: 'Recommended Agents',
+              content: (
+                <div className="system-agents-content">
+                  {recommendedAgents ? (
+                    <div className="recommendations-display">
+                      <pre className="recommendations-json">{recommendedAgents}</pre>
+                    </div>
                   ) : (
-                    <div className="context-summary">
-                      <div className="context-chat-bubble bot">✅ Your business context is set!</div>
-                      <div><span className="icon-briefcase" /> Business: <strong>{business}</strong></div>
-                      <div><span className="icon-user" /> Role: <strong>{role}</strong></div>
-                      <div><span className="icon-briefcase" /> Product/Service: <strong>{businessDesc}</strong></div>
-                      <button className="context-edit-btn" onClick={handleContextEdit}>Edit</button>
+                    <div className="system-empty-state">
+                      <p>Loading recommendations...</p>
+                      <p className="system-empty-hint">Set up your business context to get personalized agent recommendations.</p>
                     </div>
                   )}
                 </div>
-              )}
-              {selectedSystemTab === 2 && (
-                <div className="system-section-content">
-                  <div className="agents-recommendations">
-                    {recommendedAgents ? (
-                      <pre style={{whiteSpace: 'pre-wrap', fontSize: '1.05em', color: '#334155', background: '#f8fafc', borderRadius: '8px', padding: '18px', border: '1px solid #e2e8f0'}}>{recommendedAgents}</pre>
-                    ) : (
-                      <div>Loading recommendations...</div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+              )
+            }
+          ]}
+          activeTab={selectedSystemTab}
+          onTabChange={setSelectedSystemTab}
+        />
+      </Modal>
 
+      {/* HIDDEN: Connection modal moved to Settings > Connectors
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-source-select">
-              <button
-                className={`source-btn${selectedSource === 'Database' ? ' selected' : ''}`}
-                title="Database"
-                onClick={() => setSelectedSource('Database')}
-              >
-                <span role="img" aria-label="database"><img src="/assets/icons/database.png" alt="Database" /></span>
-                <span>Database</span>
-              </button>
-              <button
-                className={`source-btn${selectedSource === 'File' ? ' selected' : ''}`}
-                title="File"
-                onClick={() => setSelectedSource('File')}
-              >
-                <span role="img" aria-label="file"><img src="/assets/icons/documents.png" alt="File" /></span>
-                <span>File</span>
-              </button>
-              <button
-                className={`source-btn${selectedSource === 'API' ? ' selected' : ''}`}
-                title="API"
-                onClick={() => setSelectedSource('API')}
-              >
-                <span role="img" aria-label="api"><img src="/assets/icons/api.png" alt="API" /></span>
-                <span>API</span>
-              </button>
-            </div>
-            <button className="modal-close" onClick={handleCloseModal}>×</button>
-            <h2>Connect to Data Source</h2>
-            <div className="modal-form">
-            {selectedSource === 'Database' && (
-              <>
-                <input
-                  type="text"
-                  name="host"
-                  placeholder="Host"
-                  value={connectionDetails.host}
-                  onChange={handleInputChange}
-                />
-                <input
-                  type="text"
-                  name="user"
-                  placeholder="User"
-                  value={connectionDetails.user}
-                  onChange={handleInputChange}
-                />
-                <input
-                  type="password"
-                  name="password"
-                  placeholder="Password"
-                  value={connectionDetails.password}
-                  onChange={handleInputChange}
-                />
-                <input
-                  type="text"
-                  name="database"
-                  placeholder="Database"
-                  value={connectionDetails.database}
-                  onChange={handleInputChange}
-                />
-                <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
-                  <button onClick={handleCreateConnection}>Create Connection</button>
-                  <button onClick={handleTestConnection}>Test Connection</button>
-                </div>
-                <textarea
-                  rows={3}
-                  value={testResult}
-                  readOnly
-                  placeholder="Test results will appear here"
-                  style={{ width: '100%', marginBottom: '12px' }}
-                />
-                {dbRows.length > 0 && (
-                  <div className="db-preview">
-                    <h4>Sample Rows:</h4>
-                    <table>
-                      <thead>
-                        <tr>
-                          {Object.keys(dbRows[0]).map((col, idx) => (
-                            <th key={idx}>{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dbRows.map((row, idx) => (
-                          <tr key={idx}>
-                            {Object.values(row).map((val, i) => (
-                              <td key={i}>{val}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            )}
-
-            {selectedSource === 'File' && (
-              <>
-                <input
-                  type="text"
-                  name="fileLocation"
-                  placeholder="File Location"
-                  value={connectionDetails.fileLocation || ''}
-                  onChange={handleInputChange}
-                />
-                <input
-                  type="text"
-                  name="fileDescription"
-                  placeholder="File Description"
-                  value={connectionDetails.fileDescription || ''}
-                  onChange={handleInputChange}
-                />
-                <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
-                  <button onClick={() => showToast('Upload coming soon.', 'info')}>Create Connection</button>
-                </div>
-                <input
-                  type="text"
-                  name="folderName"
-                  placeholder="Folder Name"
-                  value={connectionDetails.folderName || ''}
-                  onChange={handleInputChange}
-                />
-                <input
-                  type="file"
-                  name="file"
-                  multiple
-                  onChange={handleBulkFileChange}
-                />
-                <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
-                  <button onClick={handleBulkUpload}>Upload Files</button>
-                </div>
-              </>
-            )}
-
-            {selectedSource === 'API' && (
-              <>
-                <input
-                  type="text"
-                  name="apiUrl"
-                  placeholder="API URL"
-                  value={connectionDetails.apiUrl || ''}
-                  onChange={handleInputChange}
-                />
-                <textarea
-                  name="apiParams"
-                  placeholder="Enter JSON query parameters"
-                  value={connectionDetails.apiParams || ''}
-                  onChange={handleInputChange}
-                  rows={4}
-                  style={{ width: '100%', marginBottom: '12px' }}
-                />
-                <div style={{ display: 'flex', gap: '12px', margin: '16px 0' }}>
-                  <button onClick={() => showToast('API connection setup coming soon.', 'info')}>Create Connection</button>
-                  <button onClick={() => showToast('Testing API connection…', 'info')}>Test Connection</button>
-                </div>
-                <textarea
-                  rows={3}
-                  value={testResult}
-                  readOnly
-                  placeholder="Test results will appear here"
-                  style={{ width: '100%', marginBottom: '12px' }}
-                />
-              </>
-            )}
-          </div>
-          </div>
+          ...connection modal content...
         </div>
       )}
+      */}
     </>
   );
 }

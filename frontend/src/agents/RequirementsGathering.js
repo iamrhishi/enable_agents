@@ -1,12 +1,133 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from '../core/Header';
+import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal } from '../components';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
+import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
+import { formatDate } from '../utils/dateFormat';
+
+const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
+
+Greetings from [Your Company Name].
+
+We came across your company profile and would like to explore the possibility of working together for our ongoing and upcoming business requirements.
+
+We are currently looking for reliable vendors/suppliers for the supply of [Product/Service Category]. We request you to share your company profile and the following details for our evaluation process:
+
+* Product / Service Catalog
+* Pricing / Quotation
+* GST and Registration Details
+* Payment Terms
+* Delivery Timelines
+* Major Clients / References
+* Certifications (if applicable)
+
+Company Details:
+
+* Company Name: [Your Company Name]
+* Industry: [Industry Type]
+* Location: [Company Location]
+* Contact Person: [Your Name]
+* Contact Number: [Phone Number]
+* Email: [Email Address]
+
+Please feel free to contact us for any further clarification. We look forward to a mutually beneficial business relationship.
+
+Best Regards,
+[Your Company Name]
+[Company Website]`;
+
+const fillTemplate = (template, vars = {}) => {
+  let out = template;
+  const replacements = {
+    '\\[Vendor Name \\/ Sir \\/ Madam\\]': vars.vendorName || 'Sir / Madam',
+    '\\[Vendor Name\\]': vars.vendorName || 'Sir / Madam',
+    '\\[Your Company Name\\]': vars.companyName || '',
+    '\\[Industry Type\\]': vars.industry || '',
+    '\\[Company Location\\]': vars.location || '',
+    '\\[Your Name\\]': vars.contactName || '',
+    '\\[Phone Number\\]': vars.phoneNumber || '',
+    '\\[Email Address\\]': vars.emailAddress || '',
+    '\\[Product\\/Service Category\\]': vars.productCategory || '',
+    '\\[Company Website\\]': vars.companyWebsite || ''
+  };
+  Object.keys(replacements).forEach((pat) => {
+    out = out.replace(new RegExp(pat, 'gi'), replacements[pat]);
+  });
+  return out;
+};
+
+// Demo mode mock data - realistic examples (persisted in sessionStorage)
+const DEMO_MOCK_DATA = {
+  overview: 'B2B SaaS platform for HR automation',
+  industries: 'Technology',
+  countries: 'North America',
+  responseFormat: 'Customer Research',
+  results: {
+    query: 'B2B SaaS platform for HR automation',
+    location: 'North America',
+    industry: 'Technology',
+    totalResults: 8,
+    researchType: 'Customer Research',
+    businesses: [
+      { name: 'TechFlow Solutions', address: 'San Francisco, CA', website: 'https://techflow.io', phone: '+1 (415) 555-0123', email: 'contact@techflow.io', linkedin: 'https://linkedin.com/company/techflow', match_score: 92, summary: 'Leading HR automation platform' },
+      { name: 'CloudHR Systems', address: 'Austin, TX', website: 'https://cloudhr.com', phone: '+1 (512) 555-0456', email: 'info@cloudhr.com', linkedin: 'https://linkedin.com/company/cloudhr', match_score: 88, summary: 'Cloud-based HR solutions' },
+      { name: 'PeopleFirst Inc', address: 'Seattle, WA', website: 'https://peoplefirst.io', phone: '+1 (206) 555-0789', email: 'sales@peoplefirst.io', linkedin: 'https://linkedin.com/company/peoplefirst', match_score: 85, summary: 'Employee experience platform' },
+      { name: 'WorkStream AI', address: 'New York, NY', website: 'https://workstream.ai', phone: '+1 (212) 555-0321', email: 'hello@workstream.ai', linkedin: 'https://linkedin.com/company/workstream', match_score: 91, summary: 'AI-powered workforce management' },
+      { name: 'HRNova Solutions', address: 'Boston, MA', website: 'https://hrnova.com', phone: '+1 (617) 555-0654', email: 'contact@hrnova.com', linkedin: 'https://linkedin.com/company/hrnova', match_score: 94, summary: 'Enterprise HR transformation' },
+      { name: 'Talent Dynamics', address: 'Denver, CO', website: 'https://talentdynamics.co', phone: '+1 (303) 555-0987', email: 'info@talentdynamics.co', linkedin: 'https://linkedin.com/company/talentdynamics', match_score: 79, summary: 'Recruiting and talent acquisition' },
+      { name: 'PayrollPro Systems', address: 'Chicago, IL', website: 'https://payrollpro.io', phone: '+1 (312) 555-0147', email: 'sales@payrollpro.io', linkedin: 'https://linkedin.com/company/payrollpro', match_score: 82, summary: 'Payroll and benefits automation' },
+      { name: 'BenefitHub Corp', address: 'Atlanta, GA', website: 'https://benefithub.com', phone: '+1 (404) 555-0258', email: 'team@benefithub.com', linkedin: 'https://linkedin.com/company/benefithub', match_score: 77, summary: 'Employee benefits management' },
+    ],
+    summary: {
+      totalLeads: 8,
+      topIndustries: ['HR Technology', 'Enterprise Software', 'AI/ML'],
+      avgRating: 4.6,
+      region: 'North America'
+    }
+  },
+  savedLists: [
+    { id: 'demo-1', name: 'Tech Startups Q1', query_used: 'B2B SaaS startups', created_at: '2026-06-15', lead_count: 24, status: 'active' },
+    { id: 'demo-2', name: 'Enterprise HR Leads', query_used: 'Enterprise HR software', created_at: '2026-06-20', lead_count: 18, status: 'active' },
+    { id: 'demo-3', name: 'West Coast Prospects', query_used: 'Tech companies California', created_at: '2026-06-25', lead_count: 32, status: 'active' },
+  ]
+};
+
+// Note: Demo state now handled by centralized modeStorage utility
 
 function RequirementsGathering() {
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  // Track if initial load is done (don't save during initial load or mode transitions)
+  const isInitialLoadRef = React.useRef(true);
+  const lastSavedModeRef = React.useRef(null);
+
+  // Listen for mode changes
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      const newMode = stored !== 'live';
+      if (newMode !== isDemoMode) {
+        isInitialLoadRef.current = true; // Treat mode change like initial load
+        setIsDemoMode(newMode);
+      }
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, [isDemoMode]);
+
   const [overview, setOverview] = useState('');
   const [context, setContext] = useState('');
   const [countries, setCountries] = useState('');
@@ -20,24 +141,10 @@ function RequirementsGathering() {
   const [showPromptsPopup, setShowPromptsPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [googleBusinessConnected, setGoogleBusinessConnected] = useState(false);
-  const [customerResearchResults, setCustomerResearchResults] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('customerResearchResults');
-      return item ? JSON.parse(item) : null;
-    } catch { return null; }
-  });
-  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('showCustomerResearchTable');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
-  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(() => {
-    try {
-      const item = sessionStorage.getItem('minimizedCustomerResearch');
-      return item ? JSON.parse(item) : false;
-    } catch { return false; }
-  });
+  // Note: These are initialized to null/false and loaded by useEffect based on mode
+  const [customerResearchResults, setCustomerResearchResults] = useState(null);
+  const [showCustomerResearchTable, setShowCustomerResearchTable] = useState(false);
+  const [minimizedCustomerResearch, setMinimizedCustomerResearch] = useState(false);
 
   // Email Modal State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -53,21 +160,64 @@ function RequirementsGathering() {
   const [isAddingNewCampaign, setIsAddingNewCampaign] = useState(false);
   const [emailImages, setEmailImages] = useState([]);
 
+  // Save market research data to centralized mode storage
+  // Only save after initial load is complete and mode matches last saved mode
   useEffect(() => {
-    if (customerResearchResults !== null) {
-      sessionStorage.setItem('customerResearchResults', JSON.stringify(customerResearchResults));
-    } else {
-      sessionStorage.removeItem('customerResearchResults');
+    // Skip saving during initial load or mode transitions
+    if (isInitialLoadRef.current) return;
+
+    // Only save if we have results and mode matches what we last loaded
+    if (customerResearchResults !== null && lastSavedModeRef.current === isDemoMode) {
+      setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
+        results: customerResearchResults,
+        showTable: showCustomerResearchTable,
+        minimized: minimizedCustomerResearch,
+        overview,
+        industries,
+        countries,
+        responseFormat,
+      }, isDemoMode);
     }
-  }, [customerResearchResults]);
+  }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
 
+  // Load data when mode changes
   useEffect(() => {
-    sessionStorage.setItem('showCustomerResearchTable', JSON.stringify(showCustomerResearchTable));
-  }, [showCustomerResearchTable]);
+    // Clear state first
+    setCustomerResearchResults(null);
+    setShowCustomerResearchTable(false);
+    setMinimizedCustomerResearch(false);
+    setOverview('');
+    setIndustries('');
+    setCountries('');
+    setResponseFormat('');
 
-  useEffect(() => {
-    sessionStorage.setItem('minimizedCustomerResearch', JSON.stringify(minimizedCustomerResearch));
-  }, [minimizedCustomerResearch]);
+    // Load data for current mode
+    const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, isDemoMode);
+
+    if (isDemoMode && !savedData?.results) {
+      // Demo mode with no saved data - load demo defaults
+      setCustomerResearchResults(DEMO_MOCK_DATA.results);
+      setShowCustomerResearchTable(true);
+      setOverview(DEMO_MOCK_DATA.overview);
+      setIndustries(DEMO_MOCK_DATA.industries);
+      setCountries(DEMO_MOCK_DATA.countries);
+      setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+    } else if (savedData?.results) {
+      setCustomerResearchResults(savedData.results);
+      setShowCustomerResearchTable(savedData.showTable || false);
+      setMinimizedCustomerResearch(savedData.minimized || false);
+      if (savedData.overview) setOverview(savedData.overview);
+      if (savedData.industries) setIndustries(savedData.industries);
+      if (savedData.countries) setCountries(savedData.countries);
+      if (savedData.responseFormat) setResponseFormat(savedData.responseFormat);
+    }
+
+    // Mark initial load as complete after state updates
+    setTimeout(() => {
+      isInitialLoadRef.current = false;
+      lastSavedModeRef.current = isDemoMode;
+    }, 100);
+  }, [isDemoMode]);
 
   // Fetch existing campaigns when email modal opens
   useEffect(() => {
@@ -159,17 +309,36 @@ function RequirementsGathering() {
   const [extractionUsage, setExtractionUsage] = useState(null);
   const [googleBusinessForm, setGoogleBusinessForm] = useState({
     clientId: '',
-    clientSecret: '',
-    redirectUri: ''
+    redirectUri: '',
+    hasCredentials: false
   });
 
   const getCurrentUsername = () => {
     return localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
   };
+  const getCurrentUserEmail = () => {
+    return localStorage.getItem('userEmail') || '';
+  };
 
-  // Check if user just returned from Google OAuth authorization
+  const getResearchEntityMeta = () => {
+    const mode = customerResearchResults?.researchType || activeSavedList?.researchType || responseFormat;
+    return mode === 'Supplier Research'
+      ? { singular: 'vendor', plural: 'vendors', title: 'Vendors' }
+      : { singular: 'lead', plural: 'leads', title: 'Leads' };
+  };
+
+  // Check URL params for tab and Google OAuth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Handle tab param from Campaign Dashboard navigation
+    if (params.get('tab') === 'saved') {
+      setShowSavedListsView(true);
+      fetchSavedLists();
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (params.get('google_connected') === 'true') {
       setGoogleBusinessConnected(true);
       alert('Google Business Account connected successfully!');
@@ -186,8 +355,8 @@ function RequirementsGathering() {
         if (data.success && data.credentials) {
           setGoogleBusinessForm({
             clientId: data.credentials.clientId || '',
-            clientSecret: data.credentials.clientSecret || '',
-            redirectUri: data.credentials.redirectUri || ''
+            redirectUri: data.credentials.redirectUri || '',
+            hasCredentials: data.credentials.hasCredentials || false
           });
           
           // If credentials are configured in .env, mark as connected
@@ -231,14 +400,29 @@ function RequirementsGathering() {
 
   const handleGenerate = async () => {
     try {
-      // Check if Customer Research format is selected
-      if (responseFormat === 'Customer Research') {
+      // Check if Customer Research or Supplier Research format is selected
+      if (responseFormat === 'Customer Research' || responseFormat === 'Supplier Research') {
         // Allow customer research even when OAuth is not connected.
         // Backend can run this flow via Google Places API key.
 
-        // Validate required inputs for customer research
+        // Validate required inputs for research
         if (!overview || !industries || !countries) {
-          alert('Please fill in Overview, Industries, and Region/Countries for customer research');
+          alert('Please fill in Overview, Industries, and Region/Countries for research');
+          return;
+        }
+
+        // In demo mode, use mock data instead of API call
+        if (isDemoMode) {
+          setCustomerResearchResults({
+            query: overview,
+            location: countries,
+            industry: industries,
+            totalResults: DEMO_MOCK_DATA.results.businesses.length,
+            researchType: responseFormat,
+            businesses: DEMO_MOCK_DATA.results.businesses
+          });
+          setShowCustomerResearchTable(true);
+          // Data auto-saved by centralized storage useEffect
           return;
         }
 
@@ -259,7 +443,7 @@ function RequirementsGathering() {
 
         if (!searchResponse.ok) {
           const errorData = await searchResponse.json();
-          const errorMessage = errorData.error || 'Failed to fetch customer research data';
+          const errorMessage = errorData.error || 'Failed to fetch research data';
           console.error('Search API error:', errorData);
           throw new Error(errorMessage);
         }
@@ -278,6 +462,7 @@ function RequirementsGathering() {
           location: countries,
           industry: industries,
           context: context,
+          researchType: responseFormat,
           businesses: searchData.businesses || [],
           totalResults: searchData.totalResults || 0
         });
@@ -346,7 +531,14 @@ function RequirementsGathering() {
 
   const handleGetEmails = async () => {
     if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
-      alert('No businesses to enrich with emails');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} to enrich with emails`);
+      return;
+    }
+
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
       return;
     }
 
@@ -375,7 +567,7 @@ function RequirementsGathering() {
       }
 
       if (enrichedData.success && enrichedData.businesses) {
-        // Update the customer research results with enriched businesses
+        // Update the research results with enriched businesses
         setCustomerResearchResults({
           ...customerResearchResults,
           businesses: enrichedData.businesses
@@ -397,6 +589,13 @@ function RequirementsGathering() {
 
   const handleExtractLinkedInForBusiness = async (business, index) => {
     if (!business) return;
+
+    // In demo mode, data already has LinkedIn
+    if (isDemoMode) {
+      alert('Demo mode: LinkedIn data is already populated in the sample data.');
+      return;
+    }
+
     setExtractingLinkedInRows((prev) => ({ ...prev, [index]: true }));
     console.log(`[LINKEDIN_EXTRACTION] Starting extraction for ${business.name}`);
 
@@ -480,6 +679,12 @@ function RequirementsGathering() {
   const handleExtractEmailForBusiness = async (business, index) => {
     if (!business || !business.website) {
       alert('Website not available for this business.');
+      return;
+    }
+
+    // In demo mode, data already has emails
+    if (isDemoMode) {
+      alert('Demo mode: Email data is already populated in the sample data.');
       return;
     }
 
@@ -674,7 +879,29 @@ function RequirementsGathering() {
   const handleSaveList = async () => {
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
-      alert('No data available to save.');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} available to save.`);
+      return;
+    }
+
+    // In demo mode, simulate saving
+    if (isDemoMode) {
+      if (!saveListName.trim() && saveListMode !== 'append') {
+        alert('Please provide a name for the list.');
+        return;
+      }
+      const newList = {
+        id: `demo-${Date.now()}`,
+        name: saveListName || 'New Demo List',
+        query_used: customerResearchResults?.query || '',
+        created_at: new Date().toISOString(),
+        lead_count: rows.length,
+        status: 'active'
+      };
+      setSavedLists(prev => [newList, ...prev]);
+      setShowSaveListModal(false);
+      setSaveListName('');
+      alert('Demo mode: List saved to local view.');
       return;
     }
 
@@ -703,7 +930,7 @@ function RequirementsGathering() {
 
         const response = await fetch(API_CONFIG.APPEND_PROJECT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             username: getCurrentUsername(),
             projectId: selectedAppendProjectId,
@@ -733,7 +960,7 @@ function RequirementsGathering() {
 
         const response = await fetch(API_CONFIG.SAVE_PROJECT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             username: getCurrentUsername(),
             name: saveListName,
@@ -745,7 +972,8 @@ function RequirementsGathering() {
         const data = await response.json();
         console.log('Save project response:', data);
         if (data.success) {
-          alert('List saved successfully!');
+          const { title } = getResearchEntityMeta();
+          alert(`${title} list saved successfully!`);
           console.log('Refreshing saved lists...');
           await fetchSavedLists();
           setShowSaveListModal(false);
@@ -776,7 +1004,15 @@ function RequirementsGathering() {
     // Gather businesses from current view (saved list or live research)
     const sourceBusinesses = (activeSavedList && activeSavedListLeads && activeSavedListLeads.length) ? activeSavedListLeads : (customerResearchResults?.businesses || []);
     if (!sourceBusinesses || sourceBusinesses.length === 0) {
-      alert('No leads available to score.');
+      const { plural } = getResearchEntityMeta();
+      alert(`No ${plural} available to score.`);
+      return;
+    }
+
+    // In demo mode, scores are already populated
+    if (isDemoMode) {
+      alert('Demo mode: Match scores are already visible in the demo data. In live mode, AI would re-score based on your criteria.');
+      setShowScoreModal(false);
       return;
     }
 
@@ -840,7 +1076,8 @@ function RequirementsGathering() {
           setMinimizedCustomerResearch(false);
         }
 
-        alert('Scoring complete — updated ' + results.length + ' leads (sorted by score)');
+        const { plural } = getResearchEntityMeta();
+        alert(`Scoring complete — updated ${results.length} ${plural} (sorted by score)`);
         setShowScoreModal(false);
         setScoreQueryText('');
       } else {
@@ -857,10 +1094,22 @@ function RequirementsGathering() {
     const confirmed = window.confirm('Delete this saved list permanently?');
     if (!confirmed) return;
 
+    // In demo mode, just remove from local state
+    if (isDemoMode) {
+      setSavedLists(prev => prev.filter(l => l.id !== projectId));
+      if (activeSavedList && activeSavedList.id === projectId) {
+        setActiveSavedList(null);
+        setActiveSavedListLeads([]);
+      }
+      alert('Demo mode: List removed from view.');
+      return;
+    }
+
     setDeletingListId(projectId);
     try {
       const response = await fetch(`${API_CONFIG.DELETE_SAVED_PROJECT}/${projectId}?username=${encodeURIComponent(getCurrentUsername())}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: authOptionalHeaders(),
       });
 
       const data = await response.json();
@@ -884,9 +1133,24 @@ function RequirementsGathering() {
 
   const fetchSavedLists = async () => {
      setIsLoadingSavedLists(true);
+
+     // In demo mode, use mock data
+     if (isDemoMode) {
+       const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, true);
+       if (savedData && savedData.savedLists) {
+         setSavedLists(savedData.savedLists);
+       } else {
+         setSavedLists(DEMO_MOCK_DATA.savedLists);
+       }
+       setIsLoadingSavedLists(false);
+       return;
+     }
+
      try {
        const userIdentifier = getCurrentUsername();
-       const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`);
+       const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userIdentifier)}`, {
+        headers: authOptionalHeaders(),
+       });
        const data = await res.json();
        console.log('Fetched saved lists response:', data);
        if (data.success) {
@@ -909,9 +1173,36 @@ function RequirementsGathering() {
   }, [showSaveListModal]);
 
   const loadSavedListDetails = async (projectId) => {
+     // In demo mode, use mock leads
+     if (isDemoMode) {
+       const demoList = DEMO_MOCK_DATA.savedLists.find(l => l.id === projectId);
+       if (demoList) {
+         // Use the main demo businesses as the leads for any demo list
+         const leads = DEMO_MOCK_DATA.results.businesses;
+
+         setCustomerResearchResults({
+           query: demoList.query_used || demoList.name,
+           location: 'North America',
+           industry: 'Technology',
+           totalResults: leads.length,
+           researchType: 'Customer Research',
+           businesses: leads
+         });
+
+         setActiveSavedList(demoList);
+         setActiveSavedListLeads(leads);
+         setShowSavedListsView(false);
+         setShowCustomerResearchTable(true);
+         setMinimizedCustomerResearch(false);
+       }
+       return;
+     }
+
      try {
         const userIdentifier = getCurrentUsername();
-        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`);
+        const res = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userIdentifier)}`, {
+          headers: authOptionalHeaders(),
+        });
         const data = await res.json();
         if (data.success) {
            const leads = data.leads.map(l => ({
@@ -927,23 +1218,25 @@ function RequirementsGathering() {
             summary: l.summary || l.description || 'N/A',
             has_extracted: l.has_extracted
            }));
-           
+
            // Set customer research results to display in regular leads view
            setCustomerResearchResults({
              query: data.project.query_used || data.project.name,
+             researchType: data.project.researchType || 'Customer Research',
              businesses: leads
            });
            try {
              sessionStorage.setItem('customerResearchResults', JSON.stringify({
                query: data.project.query_used || data.project.name,
+               researchType: data.project.researchType || 'Customer Research',
                businesses: leads
              }));
            } catch (e) { /* ignore */ }
-           
+
            // Store saved list info for context
            setActiveSavedList(data.project);
            setActiveSavedListLeads(leads);
-           
+
            // Switch to leads view (not saved lists view)
            setShowSavedListsView(false);
            setShowCustomerResearchTable(true);
@@ -1049,23 +1342,23 @@ function RequirementsGathering() {
   };
 
   const handleGoogleBusinessConnect = async () => {
-    // If credentials are from .env and empty, just authorize without showing modal
-    const hasEnvCredentials = googleBusinessForm.clientId && 
-                              googleBusinessForm.clientSecret && 
-                              googleBusinessForm.redirectUri;
-    
-    if (!hasEnvCredentials) {
-      alert('Please fill in all fields');
+    // Check if server has credentials configured
+    if (!googleBusinessForm.hasCredentials && !googleBusinessForm.clientId) {
+      alert('Google credentials not configured. Contact administrator.');
       return;
     }
-    
+
     try {
+      // Server uses its own credentials from .env - don't send secrets from frontend
       const response = await fetch(API_CONFIG.CONNECT_GOOGLE_BUSINESS, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(googleBusinessForm),
+        body: JSON.stringify({
+          clientId: googleBusinessForm.clientId,
+          redirectUri: googleBusinessForm.redirectUri
+        }),
       });
 
       const data = await response.json();
@@ -1111,6 +1404,32 @@ function RequirementsGathering() {
     const handleGeneratePersonalizedEmail = async (business, index) => {
     setIsGeneratingEmail(prev => ({ ...prev, [index]: true }));
     try {
+      if (responseFormat === 'Supplier Research') {
+        prepareSupplierEmailDraft(business);
+        setShowEmailModal(true);
+        return;
+      }
+
+      // In demo mode, use sample email content
+      if (isDemoMode) {
+        setEmailSubject(`Partnership Opportunity - ${business.name || 'Your Company'}`);
+        setEmailBody(`Hi ${business.name ? business.name.split(' ')[0] : 'there'},
+
+I came across ${business.name || 'your company'} and was impressed by your work in ${business.summary || 'your industry'}.
+
+We at Enable Agents specialize in AI-powered business automation, and I believe there's potential for a valuable partnership.
+
+Would you be open to a brief call this week to explore how we might work together?
+
+Best regards,
+${getCurrentUsername() || 'Your Name'}`);
+        setCampaignName('Personalized: ' + (business.name || 'Company'));
+        setSelectedLead(business);
+        setShowEmailModal(true);
+        setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
+        return;
+      }
+
       const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1135,17 +1454,63 @@ function RequirementsGathering() {
     } finally {
       setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
     }
-  }; const handleSendEmails = async () => {
+  };
+
+  const getSenderCompanyData = useCallback(() => {
+    return {
+      companyName: localStorage.getItem('companyName') || localStorage.getItem('company') || '',
+      companyWebsite: localStorage.getItem('companyWebsite') || '',
+      industry: localStorage.getItem('companyIndustry') || industries || '',
+      location: localStorage.getItem('companyLocation') || countries || '',
+      contactName: getCurrentUsername() || localStorage.getItem('firstName') || '',
+      phoneNumber: localStorage.getItem('phoneNumber') || '',
+      emailAddress: getCurrentUserEmail() || localStorage.getItem('userEmail') || ''
+    };
+  }, [countries, industries]);
+
+  const prepareSupplierEmailDraft = (business = null) => {
+    const vars = getSenderCompanyData();
+    vars.productCategory = industries || overview || '';
+    vars.vendorName = business?.name || business?.businessName || 'Sir / Madam';
+
+    setSelectedLead(business);
+    setEmailSubject(`Supplier Inquiry${vars.productCategory ? ' - ' + vars.productCategory : ''}`);
+    setEmailBody(fillTemplate(SUPPLIER_TEMPLATE, vars));
+  };
+
+  const handleSendEmails = async () => {
     if (!useAiBulk && (!emailSubject || !emailBody)) {
       alert("Subject and Body required unless using AI Personalization");
       return;
     }
-    
+
+    // In demo mode, simulate sending
+    if (isDemoMode) {
+      alert('Demo mode: Email sending simulated. In live mode, emails would be sent via your connected account.');
+      setShowEmailModal(false);
+      setEmailSubject('');
+      setEmailBody('');
+      setSelectedLead(null);
+      return;
+    }
+
+    const registeredEmail = getCurrentUserEmail();
+    if (!registeredEmail) {
+      alert('Registered email not found. Please log in again so the campaign can be sent from your account.');
+      return;
+    }
+
     let validEmails = [];
     if (selectedLead) {
-      validEmails = [selectedLead];
+      validEmails = selectedLead.email && selectedLead.email !== 'N/A' && selectedLead.email.includes('@')
+        ? [{ ...selectedLead }]
+        : [];
     } else {
-      validEmails = customerResearchResults?.businesses?.filter(b => b.email && b.email !== 'N/A' && b.email.includes('@')) || [];
+      validEmails = (customerResearchResults?.businesses || [])
+        .filter(b => b)
+        .map(b => ({
+          ...b,
+        }));
     }
     
     if (validEmails.length === 0) {
@@ -1160,8 +1525,8 @@ function RequirementsGathering() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: localStorage.getItem("firstName") || "",
-          userEmail: localStorage.getItem("userEmail") || "",
-          campaignName: campaignName || (selectedLead ? '1-on-1 Outreach' : 'Bulk Outreach'),
+          userEmail: registeredEmail,
+          campaignName: campaignName || (selectedLead ? 'Test Outreach - 1-on-1' : 'Test Outreach - Bulk'),
           subject: emailSubject,
           body: emailBody,
           businesses: validEmails,
@@ -1176,7 +1541,7 @@ function RequirementsGathering() {
         setEmailBody('');
         setSelectedLead(null);
       } else {
-        alert('Error : ' + data.error);
+        alert('Error: ' + data.error);
       }
     } catch (e) {
       alert('Error sending emails: ' + e.message);
@@ -1189,19 +1554,50 @@ function RequirementsGathering() {
     <div className="requirements-page">
       <Header />
       <div className="requirements-container">
-        
+
+        <div className="agent-page-header">
+          <div className="agent-header-left">
+            <BackButton />
+            <div className="agent-header-content">
+              <div className="agent-title-row">
+                <h1>Market Research</h1>
+              </div>
+              <p className="text-muted">
+                Discover leads, competitors, and market opportunities for your product or service.
+              </p>
+            </div>
+          </div>
+          <div className="agent-header-right">
+            <ProjectSelector agentKey="marketResearch" />
+          </div>
+        </div>
+
+        <AgentOutcomesStrip
+          items={[
+            { iconSrc: '/assets/icons/search-analysis.png', title: 'Lead lists', description: 'Find prospects matched to your product and region.' },
+            { iconSrc: '/assets/icons/bar-chart.png', title: 'Market analysis', description: 'Competitors, trends, and industry use cases.' },
+            { iconSrc: '/assets/icons/document.png', title: 'Export formats', description: 'PRD, supplier research, competitive reports.' },
+          ]}
+        />
+
+        <LiveModeHint
+          requireProject
+          message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample research outputs."
+        />
+
+        <ProjectGate agentLabel="Market Research workspace">
         <div className="requirements-header-bar">
           <div className="header-bar-top">
             <div className="overview-title">
-              <span>Market Research Agent</span>
+              <span>Research configuration</span>
             </div>
             <div className="integration-badge">
-              <span className="dot"></span> 3RD PARTY INTEGRATION READY
+              <span className="dot"></span> 3rd-party integration ready
             </div>
           </div>
           <div className="header-bar-inputs">
             <div className="input-block flex-grow">
-              <label>PROJECT CONTEXT & DESCRIPTION</label>
+              <label>Project context & description</label>
               <input
                 type="text"
                 placeholder="What is the product or service you need research on?"
@@ -1210,31 +1606,32 @@ function RequirementsGathering() {
               />
             </div>
             <div className="input-block">
-              <label>INDUSTRY</label>
+              <label>Industry</label>
               <input
                 type="text"
-                placeholder="e.g. Fintech"
+                placeholder="e.g., Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
               />
             </div>
             <div className="input-block">
-              <label>REGION</label>
+              <label>Region</label>
               <input
                 type="text"
-                placeholder="e.g. North Ame"
+                placeholder="e.g., North America"
                 value={countries}
                 onChange={(e) => setCountries(e.target.value)}
               />
             </div>
             <div className="input-block">
-              <label>FORMAT</label>
+              <label>Format</label>
               <select
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
               >
                  <option value="">Select format...</option>
                  <option value="Detailed PRD">Detailed PRD</option>
+                 <option value="Supplier Research">Supplier Research</option>
                  <option value="Customer Research">Customer Research</option>
                  <option value="Industry Use Cases">Industry Use Cases</option>
                  <option value="Product Requirements">Product Requirements</option>
@@ -1267,35 +1664,59 @@ function RequirementsGathering() {
         <div className="main-workspace-area">
 
           <div className="tabs-container">
-            <button className={`workspace-tab ${!showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(false); setActiveSavedList(null); setActiveSavedListLeads([]); }}>Leads</button>
-            <button className={`workspace-tab ${showSavedListsView ? 'active-tab' : ''}`} onClick={() => { setShowSavedListsView(true); fetchSavedLists(); }}>Saved Leads</button>
-            <button className="workspace-tab" onClick={() => window.location.href='/campaign-dashboard'}>Campaign Dashboard</button>
+            <div className="workspace-view-tabs module-tabs">
+              <button
+                type="button"
+                className={`module-tab ${!showSavedListsView ? 'module-tab--active' : ''}`}
+                onClick={() => {
+                  setShowSavedListsView(false);
+                  setActiveSavedList(null);
+                  setActiveSavedListLeads([]);
+                }}
+              >
+                {responseFormat === 'Supplier Research' ? 'All Vendors' : 'All Leads'}
+              </button>
+              <button
+                type="button"
+                className={`module-tab ${showSavedListsView ? 'module-tab--active' : ''}`}
+                onClick={() => {
+                  setShowSavedListsView(true);
+                  fetchSavedLists();
+                }}
+              >
+                {responseFormat === 'Supplier Research' ? 'Saved Vendors' : 'Saved Leads'}
+              </button>
+            </div>
+            <a href="/market-research/campaigns" className="workspace-link">
+              Campaign Dashboard →
+            </a>
           </div>
 
-          <div className="workspace-content-box" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '600px' }}>
+          <div className="workspace-content-box workspace-content-box--flex">
              {showSavedListsView ? (
-               <div className="saved-lists-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
+               <div className="saved-lists-container">
                  {activeSavedList && (
-                    <button 
-                      onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }} 
-                       style={{ marginBottom: '20px', background: 'none', border: '1px solid #1E3A5F', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer', color: '#1E3A5F' }}
+                    <button
+                      type="button"
+                      className="saved-lists-back-btn"
+                      onClick={() => { setActiveSavedList(null); setActiveSavedListLeads([]); fetchSavedLists(); }}
                     >
-                       ← Back to All Lists
+                      Back to all lists
                     </button>
                  )}
-                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1E3A5F' }}>
-                      {activeSavedList ? `Saved List: ${activeSavedList.name}` : 'Saved Leads Lists'}
-                    </h2>
-                 </div>
+                 {activeSavedList && (
+                   <h2 className="saved-lists-detail-title">
+                     {activeSavedList.name}
+                   </h2>
+                 )}
                  {isLoadingSavedLists ? (
-                    <div style={{ textAlign: 'center', padding: '40px' }}><span className="spinner"></span> Loading lists...</div>
+                    <div className="saved-lists-loading"><span className="spinner"></span> Loading lists...</div>
                  ) : !activeSavedList ? (
                     savedLists.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>No saved lists found.</div>
+                      <div className="saved-lists-empty">No saved lists found.</div>
                     ) : (
                       <div className="saved-lists-table-scroll">
-                        <table className="businesses-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table className="businesses-table saved-lists-table">
                           <thead>
                             <tr>
                               <th style={{ textAlign: 'left' }}>List Name</th>
@@ -1311,19 +1732,20 @@ function RequirementsGathering() {
                                 <td>{list.name}</td>
                                 <td>{list.query_used || 'N/A'}</td>
                                 <td style={{ textAlign: 'center' }}>{list.lead_count}</td>
-                                <td style={{ textAlign: 'center' }}>{list.created_at ? new Date(list.created_at).toLocaleDateString() : 'N/A'}</td>
+                                <td style={{ textAlign: 'center' }}>{list.created_at ? formatDate(list.created_at) : 'N/A'}</td>
                                 <td>
                                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                     <button
+                                      type="button"
+                                      className="btn-open-list"
                                       onClick={() => loadSavedListDetails(list.id)}
-                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#284A7A', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
                                     >
                                       Open List
                                     </button>
                                     <button
                                       onClick={() => handleDeleteSavedList(list.id)}
                                       disabled={deletingListId === list.id}
-                                      style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: '#b42318', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: deletingListId === list.id ? 0.7 : 1 }}
+                                      className="btn-delete-list"
                                     >
                                       {deletingListId === list.id ? 'Deleting...' : 'Delete'}
                                     </button>
@@ -1358,15 +1780,15 @@ function RequirementsGathering() {
                               <td>{business.address || 'N/A'}</td>
                               <td>{business.phone || 'N/A'}</td>
                               <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a> : <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>) : <span style={{ color: '#999' }}>N/A</span>}</td>
-                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span className="text-na">N/A</span>}</td>
+                              <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="link-profile">View Profile</a> : <span className="text-na-italic">Not Found</span>) : <span className="text-na">N/A</span>}</td>
+                              <td>{business.email && business.email !== 'N/A' ? <button onClick={() => handleGeneratePersonalizedEmail(business, index)} disabled={!!isGeneratingEmail[index]} className="table-btn-primary">{isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}</button> : <span className="text-na">-</span>}</td>
                               <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                 {business.match_score != null ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
+                                    <div className={`match-score ${business.match_score >= 70 ? 'match-score--high' : (business.match_score >= 40 ? 'match-score--medium' : 'match-score--low')}`}>{business.match_score}%</div>
                                   </div>
-                                ) : <span style={{ color: '#999' }}>-</span>}
+                                ) : <span className="text-na">-</span>}
                               </td>
                               <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
                             </tr>
@@ -1379,26 +1801,25 @@ function RequirementsGathering() {
             ) : (
             <div className="ai-assisted" style={{ background: 'transparent', boxShadow: 'none' }}>
               {isLoadingResearch ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px' }}>
-                    <div className="loader" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #ff725e', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
-                    <p style={{ marginTop: '20px', color: '#666', fontSize: '18px' }}>Scraping and analyzing leads... please wait...</p>
-                    <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+                  <div className="research-loader">
+                    <div className="research-spinner" />
+                    <p className="research-loader-text">Scraping and analyzing {getResearchEntityMeta().plural}... please wait...</p>
                   </div>
               ) : (!aiRequirements && !customerResearchResults) ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px' }}>
-                  <div style={{ background: '#EAE1D9', borderRadius: '12px', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8E9BAb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div className="awaiting-config">
+                  <div className="awaiting-config-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                     </svg>
                   </div>
-                  <h2 style={{ color: '#0D2644', fontSize: '1.5rem', marginBottom: '12px' }}>Awaiting Configuration</h2>
-                  <p style={{ color: '#6C7F99', textAlign: 'center', maxWidth: '400px', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '16px' }}>
+                  <h2>Awaiting Configuration</h2>
+                  <p>
                     Refine the requirements in the bar above to generate structured architectural specifications. Our AI will analyze your context, industry, and region to produce a precise specification.
                   </p>
-                  <div style={{ display: 'flex', gap: '16px' }}>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>READY TO ANALYZE</div>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>SECURE END-TO-END</div>
-                    <div style={{ background: 'white', padding: '8px 16px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', color: '#1E3A5F', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>ENTERPRISE LLM</div>
+                  <div className="awaiting-config-badges">
+                    <div className="awaiting-badge">READY TO ANALYZE</div>
+                    <div className="awaiting-badge">SECURE END-TO-END</div>
+                    <div className="awaiting-badge">ENTERPRISE LLM</div>
                   </div>
                 </div>
               ) : (
@@ -1440,9 +1861,9 @@ function RequirementsGathering() {
                           </div>
                           
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <div className="summary-badge emails-badge" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px', background: '#F0FDF4', border: '1px solid #D1D5DB', padding: '8px 12px' }}>
-                                <span className="badge-label" style={{ marginBottom: 0, color: '#666', fontSize: '10px' }}>Extracted</span>
-                                <span className="badge-value" style={{ color: '#166534', fontWeight: 600, fontSize: '12px' }}>
+                              <div className="summary-badge emails-badge">
+                                <span className="badge-label">Extracted</span>
+                                <span className="badge-value">
                                   {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
                                 </span>
                               </div>
@@ -1463,15 +1884,17 @@ function RequirementsGathering() {
                                 className="action-icon-button"
                                 onClick={handleCopyToClipboard}
                                 title="Copy to Clipboard"
+                                aria-label="Copy to Clipboard"
                               >
-                                <img src="/assets/icons/copy.png" alt="Copy" />
+                                <img src="/assets/icons/copy.png" alt="Copy to Clipboard" />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => setShowExportModal(true)}
                                 title="Export Data"
+                                aria-label="Export Data"
                               >
-                                <img src="/assets/icons/import-export.png" alt="Export" />
+                                <img src="/assets/icons/import-export.png" alt="Export Data" />
                               </button>
                               <button 
                                 className="action-icon-button"
@@ -1480,30 +1903,26 @@ function RequirementsGathering() {
                                   setSelectedAppendProjectId('');
                                   setShowSaveListModal(true);
                                 }}
-                                title="Save to List"
+                                title={responseFormat === 'Supplier Research' ? 'Save Vendors List' : 'Save Leads List'}
+                                aria-label={responseFormat === 'Supplier Research' ? 'Save Vendors List' : 'Save Leads List'}
                               >
-                                <img src="/assets/icons/document.png" alt="Save Leads" />
+                                <img src="/assets/icons/document.png" alt={responseFormat === 'Supplier Research' ? 'Save Vendors' : 'Save Leads'} />
                               </button>
                               <button 
                                 className="action-icon-button"
                                 onClick={() => { setScoreQueryText(''); setShowScoreModal(true); }}
-                                title="Score Leads"
+                                title={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'}
+                                aria-label={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'}
                               >
-                                <img src="/assets/icons/bar-chart.png" alt="Score Leads" />
+                                <img src="/assets/icons/bar-chart.png" alt={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'} />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
-                                onClick={() => { setSelectedLead(null); setShowEmailModal(true); }}
+                                onClick={() => { prepareSupplierEmailDraft(null); setShowEmailModal(true); }}
                                 title="Send Emails"
+                                aria-label="Send Emails"
                               >
                                 <img src="/assets/icons/mail.png" alt="Send Emails" />
-                              </button>
-                              <button 
-                                className="action-icon-button"
-                                onClick={() => { setShowCustomerResearchTable(true); setMinimizedCustomerResearch(false); }}
-                                title="Maximize"
-                              >
-                                <img src="/assets/icons/maximize.png" alt="Maximize" />
                               </button>
                           </div>
                         </div>
@@ -1555,16 +1974,15 @@ function RequirementsGathering() {
                                       <td>
                                         {business.linkedin ? (
                                           business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
+                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="table-link">
                                               View Profile
                                             </a>
                                           ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
+                                            <span className="table-na">Not Found</span>
                                           )
                                         ) : (
                                           <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
+                                            className="table-btn-secondary"
                                             onClick={() => handleExtractLinkedInForBusiness(business, index)}
                                             disabled={!!extractingLinkedInRows[index]}
                                           >
@@ -1575,24 +1993,24 @@ function RequirementsGathering() {
                                       <td>
                                         {business.email && business.email !== 'N/A' ? (
                                           <button
+                                            className="table-btn-primary"
                                             onClick={() => handleGeneratePersonalizedEmail(business, index)}
                                             disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                                           >
                                             {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
                                           </button>
                                         ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
+                                          <span className="table-muted">-</span>
                                         )}
                                       </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <td className="match-cell">
                                         {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
+                                          <span className={`match-score ${business.match_score >= 70 ? 'match-score--high' : business.match_score >= 40 ? 'match-score--medium' : 'match-score--low'}`}>
+                                            {business.match_score}%
+                                          </span>
+                                        ) : <span className="table-muted">-</span>}
                                       </td>
-                                      <td style={{ maxWidth: '260px', whiteSpace: 'normal', lineHeight: '1.35' }} title={business.short_summary || business.summary || business.description || 'N/A'}>
+                                      <td className="summary-cell" title={business.short_summary || business.summary || business.description || 'N/A'}>
                                         {business.short_summary || business.summary || business.description || 'N/A'}
                                       </td>
                                     </tr>
@@ -1620,7 +2038,45 @@ function RequirementsGathering() {
                   )}
 
                   {aiRequirements.length === 0 && !customerResearchResults && (
-                    <p className="empty-message">Generate requirements to see results here...</p>
+                    <div className="empty-state-container">
+                      <div className="empty-state-icon">
+                        <img src="/assets/icons/search-analysis.png" alt="" width={48} height={48} />
+                      </div>
+                      <h3 className="empty-state-title">Ready to Research</h3>
+                      <p className="empty-state-description">
+                        Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.
+                      </p>
+                      <div className="empty-state-steps">
+                        <div className="empty-state-step">
+                          <span className="step-number">1</span>
+                          <span className="step-text">Enter project context</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">2</span>
+                          <span className="step-text">Select industry & region</span>
+                        </div>
+                        <div className="empty-state-step">
+                          <span className="step-number">3</span>
+                          <span className="step-text">Get AI-powered insights</span>
+                        </div>
+                      </div>
+                      {isDemoMode && (
+                        <button
+                          className="demo-example-btn"
+                          onClick={() => {
+                            // Load demo data (auto-saved by centralized storage useEffect)
+                            setOverview(DEMO_MOCK_DATA.overview);
+                            setIndustries(DEMO_MOCK_DATA.industries);
+                            setCountries(DEMO_MOCK_DATA.countries);
+                            setResponseFormat(DEMO_MOCK_DATA.responseFormat);
+                            setCustomerResearchResults(DEMO_MOCK_DATA.results);
+                            setShowCustomerResearchTable(true);
+                          }}
+                        >
+                          Try Example (Demo Mode)
+                        </button>
+                      )}
+                    </div>
                   )}
                 </>
               )}
@@ -1628,271 +2084,95 @@ function RequirementsGathering() {
           )}
           </div>
 
-          {/* Google Business Integration Modal */}
-          {showIntegrationModal && (
-            <div className="popup-overlay">
-              <div className="popup-content integration-modal">
-                <h3>{googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}</h3>
-                <div className="integration-form">
-                  <div className="form-group">
-                    <label>Client ID</label>
-                    <input
-                      type="text"
-                      name="clientId"
-                      value={googleBusinessForm.clientId}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Client ID"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Client Secret</label>
-                    <input
-                      type="text"
-                      name="clientSecret"
-                      value={googleBusinessForm.clientSecret}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Client Secret"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Redirect URI</label>
-                    <input
-                      type="text"
-                      name="redirectUri"
-                      value={googleBusinessForm.redirectUri}
-                      onChange={handleGoogleBusinessInputChange}
-                      placeholder="Enter Redirect URI"
-                    />
-                  </div>
-                </div>
-                <div className="modal-buttons">
-                  <button className="connect-submit-button" onClick={handleGoogleBusinessConnect}>
-                    Connect
-                  </button>
-                  <button className="close-popup-button" onClick={() => setShowIntegrationModal(false)}>
-                    Cancel
-                  </button>
-                </div>
+          <Modal
+            open={showIntegrationModal}
+            onClose={() => setShowIntegrationModal(false)}
+            title={googleBusinessConnected ? 'Reconnect Google Business Account' : 'Connect Google Business Account'}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setShowIntegrationModal(false)}>Cancel</button>
+                <button type="button" className="connect-submit-button" onClick={handleGoogleBusinessConnect}>Connect</button>
+              </>
+            }
+          >
+            <div className="integration-form">
+              <div className="form-group">
+                <label>Client ID</label>
+                <input type="text" name="clientId" value={googleBusinessForm.clientId} onChange={handleGoogleBusinessInputChange} placeholder="Enter Client ID" />
+              </div>
+              <div className="form-group">
+                <label>Redirect URI</label>
+                <input type="text" name="redirectUri" value={googleBusinessForm.redirectUri} onChange={handleGoogleBusinessInputChange} placeholder="Enter Redirect URI" />
               </div>
             </div>
-          )}
+          </Modal>
 
-          {/* Popup for Export Options */}
-          {showPopup && (
-            <div className="popup-overlay">
-              <div className="popup-content">
-                <h3>Export Options</h3>
-                <div className="export-icons">
-                  <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
-                  <img src="/assets/icons/word.png" alt="Word" title="Word" />
-                  <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
-                  <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
-                  <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
-                  <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
-                </div>
-                <button className="close-popup-button" onClick={closePopup}>
-                  Close
+          <Modal open={showPopup} onClose={closePopup} title="Export Options" footer={<button type="button" className="btn-secondary" onClick={closePopup}>Close</button>}>
+            <div className="export-icons">
+              <img src="/assets/icons/gmail.png" alt="Gmail" title="Gmail" />
+              <img src="/assets/icons/word.png" alt="Word" title="Word" />
+              <img src="/assets/icons/pdf.png" alt="PDF" title="PDF" />
+              <img src="/assets/icons/canva.png" alt="Canva" title="Canva" />
+              <img src="/assets/icons/figma.png" alt="Figma" title="Figma" />
+              <img src="/assets/icons/powerpoint.png" alt="PowerPoint" title="PowerPoint" />
+            </div>
+          </Modal>
+
+          <Modal open={showPromptsPopup} onClose={() => setShowPromptsPopup(false)} title="Previous Prompts" size="lg" footer={<button type="button" className="btn-secondary" onClick={() => setShowPromptsPopup(false)}>Close</button>}>
+            <ul className="prompts-list">
+              {previousPrompts.map((prompt, index) => (
+                <li key={index}>
+                  <strong>Prompt ID:</strong> {prompt.id}<br />
+                  <strong>Overview:</strong> {prompt.overview}<br />
+                  <strong>Context:</strong> {prompt.context}<br />
+                  <strong>Countries:</strong> {prompt.countries}<br />
+                  <strong>Industries:</strong> {prompt.industries}<br />
+                  <strong>Business Functions:</strong> {prompt.businessFunctions}<br />
+                  <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}<br />
+                  <strong>Response Format:</strong> {prompt.responseFormat}
+                </li>
+              ))}
+            </ul>
+          </Modal>
+
+          <Modal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            title="Export Market Research"
+            footer={<button type="button" className="btn-secondary" onClick={() => setShowExportModal(false)}>Close</button>}
+          >
+            <div className="export-options-grid">
+              <button type="button" onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
+              <button type="button" onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
+              <button type="button" onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
+              <button type="button" onClick={() => handleExport('json')}>Download JSON (.json)</button>
+              <button type="button" onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
+            </div>
+          </Modal>
+          <Modal
+            open={showEmailModal}
+            onClose={() => {
+              setShowEmailModal(false);
+              setSelectedLead(null);
+              setEmailImages([]);
+              setIsAddingNewCampaign(false);
+            }}
+            title="Draft Email Campaign"
+            size="xl"
+            footer={
+              <>
+                <button type="button" className="email-cancel-button" onClick={() => {
+                  setShowEmailModal(false);
+                  setSelectedLead(null);
+                  setEmailImages([]);
+                  setIsAddingNewCampaign(false);
+                }}>Cancel</button>
+                <button type="button" className="email-send-button" onClick={handleSendEmails} disabled={isSendingEmails}>
+                  {isSendingEmails ? 'Sending...' : 'Send Email'}
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* Customer Research Results Table */}
-
-          {showCustomerResearchTable && customerResearchResults && !minimizedCustomerResearch && (
-              <div className="popup-overlay">
-                <div className="popup-content customer-research-table" style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}
-                    style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666', zIndex: 100 }}
-                    title="Minimize Table"
-                  >
-                    &times;
-                  </button>
-                  <div className="research-summary-row">
-                  <span><strong>Search:</strong> {customerResearchResults.query}</span>
-                  <span><strong>Location:</strong> {customerResearchResults.location}</span>
-                  <span><strong>Industry:</strong> {customerResearchResults.industry}</span>
-                  <span><strong>Total Results:</strong> {customerResearchResults.totalResults}</span>
-                </div>
-
-                {isLoadingResearch ? (
-                  <div className="loading">Loading businesses...</div>
-                ) : customerResearchResults.businesses && customerResearchResults.businesses.length > 0 ? (
-                  <div className="table-wrapper">
-                    <table className="businesses-table">
-                      <thead>
-                        <tr>
-                          <th>Business Name</th>
-                          <th>Address</th>
-                          <th>Phone</th>
-                          <th>Website</th>
-                          <th>Email</th>
-                          <th>LinkedIn</th>
-                          <th>Send Email</th>
-                          <th>Match</th>
-                          <th>Summary</th>
-                        </tr>
-                      </thead>
-                                <tbody>
-                                  {customerResearchResults.businesses.map((business, index) => (
-                                    <tr key={index}>
-                                      <td>{business.name || 'N/A'}</td>
-                                      <td>{business.address || 'N/A'}</td>
-                                      <td>{business.phone || 'N/A'}</td>
-                                      <td>
-                                        {business.website ? (
-                                          <a href={business.website} target="_blank" rel="noopener noreferrer">
-                                            Visit
-                                          </a>
-                                        ) : (
-                                          'N/A'
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? ( 
-                                          <span>{business.email}</span>
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            onClick={() => handleExtractEmailForBusiness(business, index)}
-                                            disabled={!!extractingEmailRows[index]}     
-                                          >
-                                            {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.linkedin ? (
-                                          business.linkedin !== 'N/A' ? (
-                                            <a href={business.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0d6efd', textDecoration: 'none', fontWeight: 'bold' }}>
-                                              View Profile
-                                            </a>
-                                          ) : (
-                                            <span style={{ color: '#999', fontStyle: 'italic', fontSize: '0.9em' }}>Not Found</span>
-                                          )
-                                        ) : (
-                                          <button
-                                            className="extract-email-button"
-                                            style={{ background: '#0a66c2', color: 'white', border: 'none' }}
-                                            onClick={() => handleExtractLinkedInForBusiness(business, index)}
-                                            disabled={!!extractingLinkedInRows[index]}
-                                          >
-                                            {extractingLinkedInRows[index] ? 'Extracting...' : 'Extract LinkedIn'}
-                                          </button>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {business.email && business.email !== 'N/A' ? (
-                                          <button
-                                            onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                            disabled={!!isGeneratingEmail[index]}
-                                            style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                                          >
-                                            {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
-                                          </button>
-                                        ) : (
-                                          <span style={{ color: '#999', fontSize: '0.9em' }}>-</span>
-                                        )}
-                                      </td>
-                                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                                        {business.match_score != null ? (
-                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                            <div style={{ fontWeight: 700, color: business.match_score >= 70 ? '#0f766e' : (business.match_score >= 40 ? '#f59e0b' : '#9ca3af') }}>{business.match_score}%</div>
-                                          </div>
-                                        ) : <span style={{ color: '#999' }}>-</span>}
-                                      </td>
-                                      <td style={{ maxWidth: '320px', whiteSpace: 'pre-line', lineHeight: '1.4' }} title={business.short_summary || business.summary || business.description || 'N/A'}>{business.short_summary || business.summary || business.description || 'N/A'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="no-results">No businesses found matching your search criteria.</div>
-                )}
-
-                <div className="modal-buttons">
-                  <button className="minimize-popup-button" onClick={() => { setMinimizedCustomerResearch(true); setShowCustomerResearchTable(false); }}>
-                    Minimize
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-          {showPromptsPopup && (
-            <div className="popup-overlay">
-              <div className="popup-content">
-                <h3>Previous Prompts</h3>
-                <ul>
-                  {previousPrompts.map((prompt, index) => (
-                    <li key={index}>
-                      <strong>Prompt ID:</strong> {prompt.id}
-                      <br />
-                      <strong>Overview:</strong> {prompt.overview}
-                      <br />
-                      <strong>Context:</strong> {prompt.context}
-                      <br />
-                      <strong>Countries:</strong> {prompt.countries}
-                      <br />
-                      <strong>Industries:</strong> {prompt.industries}
-                      <br />
-                      <strong>Business Functions:</strong> {prompt.businessFunctions}
-                      <br />
-                      <strong>Frameworks:</strong> {prompt.analysisFrameworks.join(', ')}
-                      <br />
-                      <strong>Response Format:</strong> {prompt.responseFormat}
-                    </li>
-                  ))}
-                </ul>
-                <button className="close-popup-button" onClick={() => setShowPromptsPopup(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
-
-          {showExportModal && (
-            <div className="popup-overlay">
-              <div className="popup-content export-options-modal">
-                <h3>Export Market Research</h3>
-                <div className="export-options-grid">
-                  <button onClick={() => handleExport('excel')}>Download Excel (.xlsx)</button>
-                  <button onClick={() => handleExport('csv')}>Download CSV (.csv)</button>
-                  <button onClick={() => handleExport('pdf')}>Download PDF (.pdf)</button>
-                  <button onClick={() => handleExport('json')}>Download JSON (.json)</button>
-                  <button onClick={() => handleExport('sheets')}>Open in Google Sheets</button>
-                </div>
-                <div className="modal-buttons">
-                  <button className="close-popup-button" onClick={() => setShowExportModal(false)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-            {showEmailModal && (
-            <div className="popup-overlay">
-              <div className="popup-content email-modal-large">
-                <div className="email-modal-header">
-                  <h3>Draft Email Campaign</h3>
-                  <button 
-                    className="modal-close-btn"
-                    onClick={() => { 
-                      setShowEmailModal(false); 
-                      setSelectedLead(null);
-                      setEmailImages([]);
-                      setIsAddingNewCampaign(false);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-
+              </>
+            }
+          >
                 <div className="email-modal-body">
                   {/* Campaign Name - Dropdown with Add New Option */}
                   {!selectedLead && (
@@ -2030,108 +2310,71 @@ function RequirementsGathering() {
                     </div>
                   </div>
                 </div>
+          </Modal>
 
-                {/* Footer with Improved Buttons */}
-                <div className="email-modal-footer">
-                  <button 
-                    className="email-cancel-button" 
-                    onClick={() => { 
-                      setShowEmailModal(false); 
-                      setSelectedLead(null);
-                      setEmailImages([]);
-                      setIsAddingNewCampaign(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    className="email-send-button" 
-                    onClick={handleSendEmails} 
-                    disabled={isSendingEmails}
-                  >
-                    {isSendingEmails ? 'Sending...' : 'Send Email'}
-                  </button>
-                </div>
-              </div>
+          <Modal
+            open={showSaveListModal}
+            onClose={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }}
+            title={`${getResearchEntityMeta().title} List`}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)}>
+                  {isSavingList ? 'Saving...' : (saveListMode === 'append' ? `Append ${getResearchEntityMeta().title}` : `Save ${getResearchEntityMeta().title} List`)}
+                </button>
+              </>
+            }
+          >
+            <div className="field">
+              <label>Action</label>
+              <select value={saveListMode} onChange={(e) => setSaveListMode(e.target.value)}>
+                <option value="create">Create new list</option>
+                <option value="append">Append to existing list</option>
+              </select>
             </div>
-          )}
-
-          {/* Saved List Modal */}
-          {showSaveListModal && (
-            <div className="popup-overlay" style={{ zIndex: 3000 }}>
-              <div className="popup-content" style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Save Leads List</h2>
-                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Action</label>
-                  <select
-                    value={saveListMode}
-                    onChange={(e) => setSaveListMode(e.target.value)}
-                    style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
-                  >
-                    <option value="create">Create new list</option>
-                    <option value="append">Append to existing list</option>
+            {saveListMode === 'append' ? (
+              <>
+                <div className="field">
+                  <label>Select List to Append</label>
+                  <select value={selectedAppendProjectId} onChange={(e) => setSelectedAppendProjectId(e.target.value)}>
+                    <option value="">Choose a saved list...</option>
+                    {savedLists.map((list) => (
+                      <option key={list.id} value={list.id}>{list.name}</option>
+                    ))}
                   </select>
                 </div>
-                {saveListMode === 'append' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select List to Append</label>
-                    <select
-                      value={selectedAppendProjectId}
-                      onChange={(e) => setSelectedAppendProjectId(e.target.value)}
-                      style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }}
-                    >
-                      <option value="">Choose a saved list...</option>
-                      {savedLists.map((list) => (
-                        <option key={list.id} value={list.id}>
-                          {list.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                      Duplicate leads are removed automatically when appending.
-                    </div>
-                  </div>
-                ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>List Name</label>
-                  <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="E.g. NY Dentists Campaign" style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', outline: 'none' }} autoFocus />
-                </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  <button onClick={() => { setShowSaveListModal(false); setSaveListMode('create'); setSelectedAppendProjectId(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleSaveList} disabled={isSavingList || (saveListMode === 'append' && !selectedAppendProjectId)} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>
-                    {isSavingList ? 'Saving...' : (saveListMode === 'append' ? 'Append Leads' : 'Save List')}
-                  </button>
-                </div>
+                <p className="field-hint">Duplicate {getResearchEntityMeta().plural} are removed automatically when appending.</p>
+              </>
+            ) : (
+              <div className="field">
+                <label>List Name</label>
+                <input type="text" value={saveListName} onChange={e => setSaveListName(e.target.value)} placeholder="e.g., NY Dentists Campaign" autoFocus />
               </div>
-            </div>
-          )}
+            )}
+          </Modal>
 
-          {/* Score Leads Modal */}
-          {showScoreModal && (
-            <div className="popup-overlay" style={{ zIndex: 3100 }}>
-              <div className="popup-content" style={{ width: '520px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ margin: 0, color: '#1E3A5F' }}>Score Leads</h2>
-                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Describe what you're trying to sell or match</label>
-                  <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g. We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }} />
-                  <div style={{ fontSize: '12px', color: '#6b7280' }}>A concise description helps rank leads. Results will add a Match score and a two-line summary for each company.</div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
-                  <button onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }} style={{ padding: '8px 15px', background: '#ccc', border: 'none', borderRadius: '5px', cursor: 'pointer', color: '#333' }}>Cancel</button>
-                  <button onClick={handleScoreLeads} disabled={isScoring} style={{ padding: '8px 15px', background: '#1E3A5F', border: 'none', borderRadius: '5px', cursor: 'pointer', color: 'white' }}>{isScoring ? 'Scoring...' : 'Score Leads'}</button>
-                </div>
-              </div>
+          <Modal
+            open={showScoreModal}
+            onClose={() => { setShowScoreModal(false); setScoreQueryText(''); }}
+            title={`Score ${getResearchEntityMeta().title}`}
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => { setShowScoreModal(false); setScoreQueryText(''); }}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleScoreLeads} disabled={isScoring}>
+                  {isScoring ? 'Scoring...' : `Score ${getResearchEntityMeta().title}`}
+                </button>
+              </>
+            }
+          >
+            <div className="field">
+              <label>Describe what you're trying to sell or match</label>
+              <textarea value={scoreQueryText} onChange={(e) => setScoreQueryText(e.target.value)} rows={4} placeholder="e.g., We sell fleet telematics hardware and software to logistics companies; looking for mid-size fleet operators in North America" />
+              <p className="field-hint">A concise description helps rank {getResearchEntityMeta().plural}. Results will add a Match score and a two-line summary for each company.</p>
             </div>
-          )}
+          </Modal>
 
-        </div>   
+        </div>
+        </ProjectGate>   
       </div>
     </div>
   );

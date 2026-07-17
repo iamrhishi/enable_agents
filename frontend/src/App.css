@@ -1,68 +1,60 @@
-body {
-  font-family: 'IBM Plex Sans', sans-serif;
-  margin: 0;
-  padding: 0;
-  background-color: #F1EAE4;
-  color: #1E3A5F;
-}
+/**
+ * App-specific styles
+ *
+ * Base styles (body, headings, etc.) are in index.css
+ * Uses design tokens from tokens.css
+ */
 
 .App {
   text-align: center;
-  background-color: #F1EAE4;
+  background-color: var(--color-background);
 }
 
-h1 {
-  font-family: 'Fraunces', serif;
-  font-size: 60px;
-  color: #1E3A5F;
-}
-
-h2 {
-  font-family: 'Fraunces', serif;
-  font-size: 32px;
-  color: #1E3A5F;
-}
-
-h3 {
-  font-family: 'Fraunces', serif;
-  font-size: 20px;
-  color: #1E3A5F;
-}
-
-h4 {
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 16px;
-  color: #1E3A5F;
-}
-
+/* Form layout */
 form {
-  margin: 20px auto;
-  max-width: 400px;
+  margin: var(--space-5) auto;
+  max-width: var(--input-max-width);
   text-align: left;
 }
 
 form div {
-  margin-bottom: 15px;
+  margin-bottom: var(--space-4);
 }
 
-input, textarea, button {
+/* Base input/button styles (component classes in tokens.css are preferred) */
+input, textarea {
   width: 100%;
-  padding: 10px;
-  margin-top: 5px;
-  border: 1px solid #D6C7B8;
-  border-radius: 5px;
-  font-family: 'IBM Plex Sans', sans-serif;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast);
 }
 
-button {
-  background-color: #C2410C;
-  color: #F1EAE4;
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12);
+}
+
+/* Legacy form submit buttons only — do NOT apply width:100% to all buttons app-wide */
+form button {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-weight: 600;
-  transition: background-color 0.3s ease;
+  font-family: var(--font-body);
+  font-weight: var(--font-semibold);
+  transition: background-color var(--transition-normal);
 }
 
-button:hover {
-  background-color: #B45309;
+form button:hover {
+  background-color: var(--color-accent-dark);
 }

@@ -1,29 +1,28 @@
-/* Brand Color Variables */
-:root {
-  --primary-dark: #1E3A5F;
-  --primary-grey: #475569;
-  --accent-burnt: #C2410C;
-  --accent-copper: #B45309;
-  --accent-soft: #D6C7B8;
-  --accent-paper: #F1EAE4;
+/**
+ * Header Brand Styles
+ *
+ * Uses design tokens from tokens.css (imported via index.css)
+ * Includes context forms, modals, tabs, tools list, and header components
+ */
+
+/* ── Context Input Styling ──────────────────────────────────────────────── */
+.context-input[type="text"],
+.context-input {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  font-size: var(--text-body);
+  background: var(--color-surface);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-body);
+  color: var(--color-primary);
+  transition: border-color var(--transition-fast);
 }
 
-/* Context Input Styling */
-.context-input[type="text"], .context-input {
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--accent-soft);
-  font-size: 1em;
-  background: #FFFFFF;
-  margin-bottom: 4px;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
-  transition: border-color 0.2s ease;
-}
-
-.context-input[type="text"]:focus, .context-input:focus {
+.context-input[type="text"]:focus,
+.context-input:focus {
   outline: none;
-  border-color: var(--accent-burnt);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.1);
 }
 
@@ -31,167 +30,165 @@
   min-height: 60px;
   max-height: 120px;
   resize: vertical;
-  font-size: 1em;
-  background: var(--accent-paper);
-  border: 1.5px solid var(--accent-soft);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 4px;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
+  font-size: var(--text-body);
+  background: var(--color-background);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-body);
+  color: var(--color-primary);
 }
 
+/* ── Context chat bubble ────────────────────────────────────────────────── */
 .context-chat-bubble {
   display: inline-block;
-  background: var(--accent-soft);
-  color: var(--primary-dark);
-  border-radius: 18px;
-  padding: 12px 22px;
-  margin-bottom: 16px;
-  font-size: 1.08em;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.08);
+  background: var(--color-border);
+  color: var(--color-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
+  box-shadow: var(--shadow-sm);
   max-width: 90%;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
 }
 
 .context-chat-bubble.bot {
-  background: linear-gradient(90deg, var(--primary-dark) 0%, var(--primary-grey) 100%);
-  color: var(--accent-paper);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-text-muted) 100%);
+  color: var(--color-background);
 }
 
+/* ── Context summary ────────────────────────────────────────────────────── */
 .context-summary {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  font-size: 1.08em;
-  color: var(--primary-dark);
-  margin-bottom: 18px;
-  font-family: 'IBM Plex Sans', sans-serif;
+  gap: var(--space-3);
+  font-size: var(--text-body);
+  color: var(--color-primary);
+  margin-bottom: var(--space-4);
+  font-family: var(--font-body);
 }
 
+/* ── Icon prefixes ──────────────────────────────────────────────────────── */
 .icon-briefcase::before {
   content: '\1F4BC';
-  margin-right: 8px;
-  font-size: 1.1em;
+  margin-right: var(--space-2);
+  font-size: var(--text-heading);
 }
 
 .icon-user::before {
   content: '\1F464';
-  margin-right: 8px;
-  font-size: 1.1em;
+  margin-right: var(--space-2);
+  font-size: var(--text-heading);
 }
 
+/* ── Context edit button ────────────────────────────────────────────────── */
 .context-edit-btn {
-  background: var(--accent-burnt);
-  color: var(--accent-paper);
+  background: var(--color-accent);
+  color: var(--color-background);
   border: none;
-  border-radius: 6px;
-  padding: 8px 18px;
-  font-size: 1em;
-  font-weight: 500;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  margin-top: 10px;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  margin-top: var(--space-3);
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
 }
 
 .context-edit-btn:hover {
-  background: var(--accent-copper);
+  background: var(--color-accent-dark);
 }
 
+/* ── Context form ───────────────────────────────────────────────────────── */
 .context-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  font-size: 1.05em;
-  color: var(--primary-dark);
-  margin-top: 8px;
-  font-family: 'IBM Plex Sans', sans-serif;
+  gap: var(--space-4);
+  font-size: var(--text-body);
+  color: var(--color-primary);
+  margin-top: var(--space-2);
+  font-family: var(--font-body);
 }
 
 .context-form label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-weight: 500;
+  gap: var(--space-2);
+  font-weight: var(--font-medium);
 }
 
 .context-select {
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--accent-soft);
-  font-size: 1em;
-  background: var(--accent-paper);
-  margin-bottom: 4px;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  font-size: var(--text-body);
+  background: var(--color-background);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-body);
+  color: var(--color-primary);
 }
 
-.context-input {
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--accent-soft);
-  font-size: 1em;
-  background: #FFFFFF;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
-}
-
+/* ── Context save button ────────────────────────────────────────────────── */
 .context-save-btn {
-  background: var(--accent-burnt);
-  color: var(--accent-paper);
+  background: var(--color-accent);
+  color: var(--color-background);
   border: none;
-  border-radius: 6px;
-  padding: 10px 22px;
-  font-size: 1.05em;
-  font-weight: 600;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  margin-top: 10px;
+  margin-top: var(--space-3);
   align-self: flex-start;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
 }
 
 .context-save-btn:hover {
-  background: var(--accent-copper);
+  background: var(--color-accent-dark);
 }
 
+/* ── System modal content ───────────────────────────────────────────────── */
 .system-modal-content {
   min-width: 700px;
   max-width: 900px;
-  background: var(--accent-paper);
-  border-radius: 18px;
-  box-shadow: 0 12px 36px rgba(30, 58, 95, 0.14);
-  border: 2px solid var(--accent-soft);
+  background: var(--color-background);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  border: 2px solid var(--color-border);
   padding: 0;
 }
 
+/* ── System tabs ────────────────────────────────────────────────────────── */
 .system-tabs {
   display: flex;
   position: relative;
-  border-bottom: 2px solid var(--accent-soft);
-  background: #FFFFFF;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface);
   margin-bottom: 0;
 }
 
 .system-tab {
   flex: 1;
-  background: #FFFFFF;
-  color: var(--primary-dark);
+  background: var(--color-surface);
+  color: var(--color-primary);
   border: none;
   border-radius: 0;
-  padding: 18px 0;
-  font-size: 1.08em;
-  font-weight: 600;
+  padding: var(--space-4) 0;
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  transition: background 0.25s, color 0.25s, box-shadow 0.25s;
-  border-right: 1px solid var(--accent-soft);
+  transition: background var(--transition-normal), color var(--transition-normal), box-shadow var(--transition-normal);
+  border-right: 1px solid var(--color-border);
   letter-spacing: 0.5px;
   position: relative;
   z-index: 1;
   box-shadow: none;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
 }
 
 .system-tab:last-child {
@@ -199,23 +196,24 @@
 }
 
 .system-tab.active {
-  background: linear-gradient(90deg, var(--primary-dark) 0%, var(--primary-grey) 100%);
-  color: var(--accent-paper);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-text-muted) 100%);
+  color: var(--color-background);
 }
 
 .system-tab-content {
-  padding: 36px 40px 32px 40px;
-  background: #FFFFFF;
+  padding: var(--space-8) var(--space-10);
+  background: var(--color-surface);
   min-height: 260px;
 }
 
 .system-section-content {
-  font-size: 1.08em;
-  color: var(--primary-dark);
-  margin-top: 8px;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: var(--text-body);
+  color: var(--color-primary);
+  margin-top: var(--space-2);
+  font-family: var(--font-body);
 }
 
+/* ── Tools list row wrapper ─────────────────────────────────────────────── */
 .tools-list-row-wrapper {
   width: 100%;
   margin: 0;
@@ -223,27 +221,27 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: var(--accent-paper);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.06);
-  border: 1.5px solid var(--accent-soft);
+  background: var(--color-background);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1.5px solid var(--color-border);
 }
 
 .tools-list-row-header {
   display: flex;
-  font-weight: 700;
-  font-size: 1.08em;
-  color: var(--primary-dark);
-  background: #FFFFFF;
-  border-bottom: 2px solid var(--accent-soft);
-  padding: 14px 0 14px 0;
+  font-weight: var(--font-bold);
+  font-size: var(--text-body);
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border);
+  padding: var(--space-3) 0;
   letter-spacing: 0.5px;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
 }
 
 .tools-list-row-title {
   flex: 2;
-  padding-left: 22px;
+  padding-left: var(--space-5);
   min-width: 180px;
   white-space: nowrap;
   overflow: hidden;
@@ -252,9 +250,9 @@
 
 .tools-list-row-category {
   flex: 1;
-  color: var(--accent-burnt);
+  color: var(--color-accent);
   min-width: 130px;
-  font-weight: 600;
+  font-weight: var(--font-semibold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -262,7 +260,7 @@
 
 .tools-list-row-description {
   flex: 4;
-  color: var(--primary-grey);
+  color: var(--color-text-muted);
   min-width: 280px;
   white-space: nowrap;
   overflow: hidden;
@@ -273,18 +271,18 @@
   max-height: 340px;
   overflow-y: auto;
   width: 100%;
-  background: #FFFFFF;
+  background: var(--color-surface);
 }
 
 .tools-list-row {
   display: flex;
   align-items: center;
-  background: #FFFFFF;
-  border-bottom: 1px solid var(--accent-soft);
-  padding: 14px 0 14px 0;
-  font-size: 1.01em;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) 0;
+  font-size: var(--text-body);
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
 }
 
 .tools-list-row:last-child {
@@ -292,98 +290,102 @@
 }
 
 .tools-list-row:hover {
-  background: var(--accent-paper);
+  background: var(--color-background);
 }
 
+/* ── Tools analytics summary ────────────────────────────────────────────── */
 .tools-analytics-summary {
   display: flex;
-  gap: 32px;
-  margin-bottom: 18px;
-  font-size: 1.08em;
-  color: var(--primary-dark);
-  font-weight: 500;
-  font-family: 'IBM Plex Sans', sans-serif;
+  gap: var(--space-8);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-body);
+  color: var(--color-primary);
+  font-weight: var(--font-medium);
+  font-family: var(--font-body);
 }
 
 .tools-analytics-summary .tools-analytics-item {
-  background: var(--accent-soft);
-  border-radius: 8px;
-  padding: 10px 18px;
-  color: var(--primary-dark);
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(30, 58, 95, 0.04);
+  background: var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-primary);
+  font-weight: var(--font-semibold);
+  box-shadow: var(--shadow-sm);
 }
 
+/* ── Tool list item ─────────────────────────────────────────────────────── */
 .tool-list-item {
-  background: #FFFFFF;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.06);
-  border: 1px solid var(--accent-soft);
-  padding: 18px 20px 14px 20px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: box-shadow 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  gap: var(--space-2);
+  transition: box-shadow var(--transition-fast);
+  font-family: var(--font-body);
 }
 
 .tool-list-item:hover {
-  box-shadow: 0 4px 16px rgba(30, 58, 95, 0.10);
+  box-shadow: var(--shadow-md);
 }
 
 .tool-list-title {
-  font-size: 1.15em;
-  font-weight: 600;
-  color: var(--primary-dark);
-  margin-bottom: 2px;
-  font-family: 'Fraunces', serif;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-display);
 }
 
 .tool-list-category {
-  font-size: 0.98em;
-  color: var(--accent-burnt);
-  font-weight: 500;
-  margin-bottom: 2px;
+  font-size: var(--text-base);
+  color: var(--color-accent);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-1);
 }
 
 .tool-list-description {
-  font-size: 0.98em;
-  color: var(--primary-grey);
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
   margin-bottom: 0;
 }
 
+/* ── User dropdown menu ─────────────────────────────────────────────────── */
 .user-dropdown-menu {
   position: absolute;
   top: 45px;
   right: 0;
-  background: #FFFFFF;
-  border: 1.5px solid var(--accent-soft);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   min-width: 140px;
   z-index: 1001;
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
 }
 
 .user-dropdown-item {
   background: none;
   border: none;
   text-align: left;
-  padding: 10px 20px;
-  font-size: 1em;
-  color: var(--accent-burnt);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-body);
+  color: var(--color-accent);
   cursor: pointer;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 500;
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
 }
 
 .user-dropdown-item:hover {
-  background: var(--accent-paper);
+  background: var(--color-background);
 }
 
+/* ── Header ─────────────────────────────────────────────────────────────── */
 .header {
   top: 0;
   left: 0;
@@ -393,10 +395,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  background-color: #FFFFFF;
-  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.08);
-  border-bottom: 2px solid var(--accent-soft);
+  padding: var(--space-6) var(--space-8);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .logo {
@@ -406,7 +408,7 @@
 
 .header-icons {
   display: flex;
-  gap: 15px;
+  gap: var(--space-4);
 }
 
 .header-icons .icon {
@@ -416,17 +418,21 @@
 }
 
 .user-first-name {
-  font-size: 0.95em;
-  margin-top: 2px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+  font-weight: var(--font-medium);
   text-align: center;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
+  font-family: var(--font-body);
+  color: var(--color-primary);
 }
 
+/* ── Modal overlay ──────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(30, 58, 95, 0.35);
   display: flex;
   align-items: center;
@@ -435,16 +441,16 @@
 }
 
 .modal-content {
-  background: var(--accent-paper);
-  padding: 40px 32px 32px 32px;
-  border-radius: 16px;
-  border: 2px solid var(--accent-soft);
+  background: var(--color-background);
+  padding: var(--space-10) var(--space-8);
+  border-radius: var(--radius-xl);
+  border: 2px solid var(--color-border);
   width: 650px;
   max-width: 98vw;
   height: 600px;
   min-height: 600px;
   max-height: 90vh;
-  box-shadow: 0 8px 32px rgba(30, 58, 95, 0.18);
+  box-shadow: var(--shadow-xl);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -455,55 +461,57 @@
 .modal-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   overflow-y: auto;
   flex-grow: 1;
 }
 
 .modal-close {
   position: absolute;
-  top: 12px;
-  right: 18px;
+  top: var(--space-3);
+  right: var(--space-4);
   background: none;
   border: none;
-  font-size: 2rem;
+  font-size: var(--text-brand);
   cursor: pointer;
-  color: var(--primary-dark);
+  color: var(--color-primary);
 }
 
-.modal-form input, .modal-form textarea {
+.modal-form input,
+.modal-form textarea {
   width: 100%;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1.5px solid var(--accent-soft);
-  font-size: 1rem;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
-  background-color: #FFFFFF;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  font-size: var(--text-heading);
+  font-family: var(--font-body);
+  color: var(--color-primary);
+  background-color: var(--color-surface);
 }
 
 .modal-form button {
-  padding: 8px 18px;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
   border: none;
-  background: var(--accent-burnt);
-  color: var(--accent-paper);
-  font-weight: 500;
+  background: var(--color-accent);
+  color: var(--color-background);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
 }
 
 .modal-form button:hover {
-  background: var(--accent-copper);
+  background: var(--color-accent-dark);
 }
 
+/* ── Modal source select ────────────────────────────────────────────────── */
 .modal-source-select {
   display: flex;
-  gap: 24px;
+  gap: var(--space-6);
   justify-content: center;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .source-btn {
@@ -511,26 +519,26 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #FFFFFF;
-  border: 2px solid var(--accent-soft);
-  border-radius: 12px;
-  padding: 18px 24px;
-  font-size: 1.1em;
-  color: var(--accent-burnt);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  font-size: var(--text-heading);
+  color: var(--color-accent);
   cursor: pointer;
-  transition: background 0.2s, border 0.2s;
+  transition: background var(--transition-fast), border var(--transition-fast);
   min-width: 110px;
   max-width: 110px;
   min-height: 110px;
   max-height: 110px;
   box-sizing: border-box;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
 }
 
 .source-btn span[role="img"] {
-  font-size: 2.2em;
-  margin-bottom: 6px;
+  font-size: var(--text-brand);
+  margin-bottom: var(--space-2);
 }
 
 .source-btn img {
@@ -538,40 +546,42 @@
   height: 40px;
   object-fit: contain;
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .source-btn.selected,
 .source-btn:hover {
-  border-color: var(--accent-burnt);
-  background: var(--accent-paper);
+  border-color: var(--color-accent);
+  background: var(--color-background);
 }
 
+/* ── DB preview ─────────────────────────────────────────────────────────── */
 .db-preview {
-  margin-top: 10px;
+  margin-top: var(--space-3);
   overflow-x: auto;
 }
 
 .db-preview table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95em;
+  font-size: var(--text-sm);
 }
 
-.db-preview th, .db-preview td {
-  border: 1px solid var(--accent-soft);
-  padding: 4px 8px;
+.db-preview th,
+.db-preview td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-1) var(--space-2);
   text-align: left;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--font-body);
 }
 
 .db-preview th {
-  background: var(--primary-dark);
-  color: var(--accent-paper);
-  font-weight: 600;
+  background: var(--color-primary);
+  color: var(--color-background);
+  font-weight: var(--font-semibold);
 }
 
-/* History Modal Styles */
+/* ── History modal ──────────────────────────────────────────────────────── */
 .history-modal {
   position: fixed;
   z-index: 1000;
@@ -586,54 +596,54 @@
 }
 
 .history-modal-content {
-  background-color: var(--accent-paper);
-  border-radius: 8px;
-  border: 2px solid var(--accent-soft);
+  background-color: var(--color-background);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--color-border);
   width: 90%;
   max-width: 800px;
   max-height: 80vh;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(30, 58, 95, 0.15);
+  box-shadow: var(--shadow-lg);
 }
 
 .history-modal-header h2 {
   margin: 0;
-  color: var(--primary-dark);
-  font-family: 'Fraunces', serif;
-  font-size: 28px;
-  font-weight: 600;
+  color: var(--color-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-semibold);
 }
 
 .close-modal {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--text-2xl);
   cursor: pointer;
-  color: var(--primary-dark);
+  color: var(--color-primary);
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
+  transition: background var(--transition-fast);
 }
 
 .close-modal:hover {
-  background: var(--accent-soft);
-  color: var(--accent-burnt);
+  background: var(--color-border);
+  color: var(--color-accent);
 }
 
 .history-modal-body {
-  padding: 20px;
+  padding: var(--space-5);
   max-height: 60vh;
   overflow-y: auto;
 }
 
 .history-item {
-  padding: 15px 0;
-  border-bottom: 1px solid var(--accent-soft);
-  font-family: 'IBM Plex Sans', sans-serif;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-body);
 }
 
 .history-item:last-child {
@@ -641,48 +651,49 @@
 }
 
 .history-item h4 {
-  margin: 0 0 8px 0;
-  color: var(--primary-dark);
-  font-family: 'Fraunces', serif;
-  font-size: 16px;
+  margin: 0 0 var(--space-2) 0;
+  color: var(--color-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-base);
 }
 
 .history-url {
-  color: var(--accent-burnt);
+  color: var(--color-accent);
   word-break: break-all;
-  margin: 5px 0;
+  margin: var(--space-1) 0;
   font-family: monospace;
-  font-size: 0.9em;
+  font-size: var(--text-sm);
 }
 
 .history-meta {
-  color: var(--primary-grey);
-  font-size: 0.9em;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
-/* Landscape Button Styles */
+/* ── Landscape button ───────────────────────────────────────────────────── */
 .landscape-button {
-  background: var(--accent-burnt);
-  color: var(--accent-paper);
+  background: var(--color-accent);
+  color: var(--color-background);
   border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  transition: background var(--transition-fast);
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
 }
 
 .landscape-button:hover {
-  background: var(--accent-copper);
+  background: var(--color-accent-dark);
 }
 
 .landscape-button:disabled {
-  background: var(--primary-grey);
+  background: var(--color-text-muted);
   cursor: not-allowed;
 }
 
+/* ── Instructions modal ─────────────────────────────────────────────────── */
 .instructions-modal {
   position: fixed;
   z-index: 1000;
@@ -697,72 +708,73 @@
 }
 
 .instructions-modal-content {
-  background-color: var(--accent-paper);
-  border-radius: 8px;
-  border: 2px solid var(--accent-soft);
+  background-color: var(--color-background);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--color-border);
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 4px 20px rgba(30, 58, 95, 0.15);
+  box-shadow: var(--shadow-lg);
 }
 
 .instructions-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 2px solid var(--accent-soft);
-  background: #FFFFFF;
-  border-radius: 8px 8px 0 0;
+  padding: var(--space-5);
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .instructions-modal-header h2 {
   margin: 0;
-  color: var(--primary-dark);
-  font-family: 'Fraunces', serif;
-  font-size: 24px;
+  color: var(--color-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
 }
 
 .instructions-modal-body {
-  padding: 20px;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--primary-dark);
+  padding: var(--space-5);
+  font-family: var(--font-body);
+  color: var(--color-primary);
 }
 
 .instructions-modal-body ol {
-  margin: 15px 0;
-  padding-left: 20px;
+  margin: var(--space-4) 0;
+  padding-left: var(--space-5);
 }
 
 .instructions-modal-body li {
-  margin: 10px 0;
-  line-height: 1.5;
+  margin: var(--space-3) 0;
+  line-height: var(--leading-relaxed);
 }
 
+/* ── Modal actions ──────────────────────────────────────────────────────── */
 .modal-actions {
-  margin-top: 20px;
+  margin-top: var(--space-5);
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   justify-content: flex-end;
 }
 
 .try-again-btn {
-  background: var(--accent-copper);
-  color: var(--accent-paper);
+  background: var(--color-accent-dark);
+  color: var(--color-background);
   border: none;
-  padding: 10px 20px;
-  border-radius: 5px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
 }
 
 .cancel-btn {
-  background: var(--primary-grey);
-  color: var(--accent-paper);
+  background: var(--color-text-muted);
+  color: var(--color-background);
   border: none;
-  padding: 10px 20px;
-  border-radius: 5px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
 }

@@ -32,13 +32,16 @@ import googleapiclient.discovery
 from email.message import EmailMessage
 import base64
 from flask_cors import CORS, cross_origin
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
 from urllib.parse import urlencode, urlparse
+import logging
+
+from core.database import db
+from core.context import ContextStore
 
 # LangChain imports with fallbacks for version compatibility
 try:
@@ -111,9 +114,14 @@ import time
 import re
 from docx import Document as DocxDocument
 import networkx as nx
-from agents.market_research.google_business_helper import GoogleBusinessHelper, GoogleBusinessAnalyzer, GoogleBusinessSearcher
+# NOTE: GoogleBusinessHelper imports moved to functions to avoid circular import
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
+def _compact_text(value):
+    text = re.sub(r'\s+', ' ', str(value or '')).strip()
+    return text
 ENV_FILES = [
     os.path.join(PROJECT_ROOT, '.env'),
     os.path.join(PROJECT_ROOT, 'tools', '.env'),
@@ -192,18 +200,29 @@ def _default_frontend_url():
 
 
 def _spa_redirect_base():
-    """OAuth/callback redirects: same as _default_frontend_url, or Host/Proto from the edge proxy."""
+    """OAuth/callback redirects: use FRONTEND_URL if set, otherwise derive from proxy headers."""
+    # If FRONTEND_URL is explicitly set, use it
+    fe = (os.getenv('FRONTEND_URL') or '').strip().rstrip('/')
+    if fe:
+        return fe
+    # In dev mode (localhost:3000), always redirect to frontend, not to request.host (which could be backend port)
     base = _default_frontend_url()
-    if base != 'http://localhost:3000':
+    if base == 'http://localhost:3000':
         return base
+    # Otherwise try to derive from reverse proxy headers (for remote deployments)
     scheme = (request.headers.get('X-Forwarded-Proto') or request.scheme or 'https').split(',')[0].strip()
-    host = (request.headers.get('X-Forwarded-Host') or request.host or '').split(',')[0].strip()
+    host = (request.headers.get('X-Forwarded-Host') or '').split(',')[0].strip()
     if host:
         return f'{scheme}://{host}'.rstrip('/')
-    return base
+    # Fallback to default frontend URL
+    return _default_frontend_url()
 
 
 app = Flask(__name__)
+_sk = (os.getenv('SECRET_KEY') or '').strip()
+if not _sk:
+    _sk = 'local-dev-insecure-enable-agents-set-SECRET_KEY-in-production'
+app.config['SECRET_KEY'] = _sk
 
 FRONTEND_URL = _default_frontend_url()
 _cors_raw = os.getenv('CORS_ORIGINS', '').strip()
@@ -211,8 +230,6 @@ if _cors_raw:
     _cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
 else:
     _cors_origins = [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
         FRONTEND_URL,
     ]
 _seen_cors = set()
@@ -236,8 +253,29 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+# Initialize shared db instance from core.database
+db.init_app(app)
 migrate = Migrate(app, db)
+
+# Initialize Celery
+from core.celery_app import make_celery
+celery = make_celery(app)
+
+# Enable pgvector extension for PostgreSQL
+db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+if 'postgresql' in db_uri:
+    with app.app_context():
+        try:
+            db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+# Register SSE notification routes
+from core.notifications import register_sse_routes
+register_sse_routes(app)
+
+# NOTE: Agent registration moved to end of file to avoid circular imports
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
@@ -333,6 +371,7 @@ init_content_marketing_db()
 
 class User(db.Model):
     __tablename__ = 'users'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(512), nullable=False)
@@ -346,6 +385,7 @@ class User(db.Model):
 
 class GoogleOAuthToken(db.Model):
     __tablename__ = 'google_oauth_tokens'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), db.ForeignKey('users.username'), nullable=False)
     token = db.Column(db.Text, nullable=False)
@@ -360,18 +400,17 @@ EMAIL_EXTRACTION_UNIT_COST = float(os.getenv('EMAIL_EXTRACTION_UNIT_COST', '0.20
 DEFAULT_EMAIL_EXTRACTION_LIMIT = int(os.getenv('EMAIL_EXTRACTION_DEFAULT_LIMIT', '500'))
 
 
-class EmailExtractionQuota(db.Model):
-    __tablename__ = 'email_extraction_quotas'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    total_allowed = db.Column(db.Integer, nullable=False, default=DEFAULT_EMAIL_EXTRACTION_LIMIT)
-    used_count = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+# Email models imported from centralized location
+from agents.email_outreach.models import (
+    EmailCampaign,
+    EmailCampaignRecipient,
+    EmailExtractionQuota,
+)
 
 
 class EmailExtractionUsageLog(db.Model):
     __tablename__ = 'email_extraction_usage_logs'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     request_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
     username = db.Column(db.String(120), nullable=False, index=True)
@@ -382,30 +421,9 @@ class EmailExtractionUsageLog(db.Model):
     total_cost_after = db.Column(db.Float, nullable=False, default=0.0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-class EmailCampaign(db.Model):
-    __tablename__ = 'email_campaigns'
-    id = db.Column(db.String(36), primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    subject = db.Column(db.String(255), nullable=False)
-    username = db.Column(db.String(120), index=True)
-    sender_email = db.Column(db.String(255), nullable=True, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-class EmailCampaignRecipient(db.Model):
-    __tablename__ = 'email_campaign_recipients'
-    id = db.Column(db.Integer, primary_key=True)
-    campaign_id = db.Column(db.String(36), db.ForeignKey('email_campaigns.id'), nullable=False)
-    receiver_email = db.Column(db.String(255), nullable=False, index=True)
-    receiver_name = db.Column(db.String(255), nullable=True)
-    status = db.Column(db.String(50), default='Sent')
-    reply_status = db.Column(db.String(50), default='No Reply')
-    message_id = db.Column(db.String(255), nullable=True) # For tracking Gmail threads
-    thread_id = db.Column(db.String(255), nullable=True)
-    sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    replied_at = db.Column(db.DateTime, nullable=True)
-
 class SavedProject(db.Model):
     __tablename__ = 'saved_projects'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(120), nullable=False, index=True)
     name = db.Column(db.String(255), nullable=False)
@@ -414,6 +432,7 @@ class SavedProject(db.Model):
 
 class SavedLead(db.Model):
     __tablename__ = 'saved_leads'
+    __table_args__ = {'extend_existing': True}
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('saved_projects.id', ondelete='CASCADE'), nullable=False)
     
@@ -433,7 +452,6 @@ class SavedLead(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
-
 def _ensure_email_usage_tables():
     """Create usage tracking tables if they don't exist yet."""
     db.create_all()
@@ -451,6 +469,12 @@ def _ensure_campaign_reply_tracking_columns():
             statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN message_id VARCHAR(255)")
         if 'thread_id' not in recipient_columns:
             statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN thread_id VARCHAR(255)")
+        if 'reply_subject' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_subject VARCHAR(512)")
+        if 'reply_snippet' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_snippet TEXT")
+        if 'reply_body' not in recipient_columns:
+            statements.append("ALTER TABLE email_campaign_recipients ADD COLUMN reply_body TEXT")
         if 'sender_email' not in campaign_columns:
             statements.append("ALTER TABLE email_campaigns ADD COLUMN sender_email VARCHAR(255)")
 
@@ -463,6 +487,45 @@ def _ensure_campaign_reply_tracking_columns():
     except Exception as migration_error:
         db.session.rollback()
         print(f"[DB MIGRATION] Could not ensure reply-tracking columns: {migration_error}")
+
+
+def _extract_gmail_message_text(message):
+    """Best-effort extraction of plain text from a Gmail message payload."""
+    try:
+        payload = message.get('payload') or {}
+        if message.get('snippet'):
+            text_value = str(message.get('snippet')).strip()
+        else:
+            text_value = ''
+
+        def _walk_parts(part):
+            nonlocal text_value
+            if not isinstance(part, dict):
+                return
+            mime_type = (part.get('mimeType') or '').lower()
+            body = part.get('body') or {}
+            data = body.get('data')
+            if data and mime_type in {'text/plain', 'text/html'}:
+                try:
+                    decoded = base64.urlsafe_b64decode(data.encode('utf-8')).decode('utf-8', errors='ignore')
+                    decoded = re.sub(r'<[^>]+>', ' ', decoded)
+                    decoded = re.sub(r'\s+', ' ', decoded).strip()
+                    if decoded:
+                        text_value = f"{text_value} {decoded}".strip() if text_value else decoded
+                except Exception:
+                    pass
+            for child in part.get('parts', []) or []:
+                _walk_parts(child)
+
+        _walk_parts(payload)
+        return re.sub(r'\s+', ' ', text_value).strip()
+    except Exception:
+        return (message.get('snippet') or '').strip()
+
+
+def _extract_gmail_message_subject(message):
+    headers = (message.get('payload') or {}).get('headers', [])
+    return next((h['value'] for h in headers if h.get('name', '').lower() == 'subject'), '')
 
 
 def _resolve_google_token_for_campaign(campaign, fallback_email=None, fallback_username=None):
@@ -508,45 +571,62 @@ def _resolve_google_token_for_campaign(campaign, fallback_email=None, fallback_u
 def _sync_replies_for_campaign(campaign, fallback_email=None, fallback_username=None):
     """Best-effort Gmail reply sync for one campaign. Returns number of updates."""
     token_record = _resolve_google_token_for_campaign(campaign, fallback_email, fallback_username)
-    if not token_record:
-        return 0
-
-    from google.oauth2.credentials import Credentials
-    import googleapiclient.discovery
-
-    creds = Credentials(
-        token=token_record.token,
-        refresh_token=token_record.refresh_token,
-        token_uri=token_record.token_uri,
-        client_id=token_record.client_id,
-        client_secret=token_record.client_secret,
-        scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
-    )
-    service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
-
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
     updated_count = 0
 
-    for recipient in recipients:
-        if recipient.reply_status == 'Replied' or not recipient.thread_id:
-            continue
+    if token_record and token_record.token:
+        from google.oauth2.credentials import Credentials
+        import googleapiclient.discovery
 
         try:
-            thread = service.users().threads().get(userId='me', id=recipient.thread_id).execute()
-            messages = thread.get('messages', [])
+            creds = Credentials(
+                token=token_record.token,
+                refresh_token=token_record.refresh_token,
+                token_uri=token_record.token_uri,
+                client_id=token_record.client_id,
+                client_secret=token_record.client_secret,
+                scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
+            )
+            service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
 
-            for msg in messages:
-                headers = msg.get('payload', {}).get('headers', [])
-                from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+            for recipient in recipients:
+                if not recipient.thread_id:
+                    continue
 
-                if recipient.receiver_email and recipient.receiver_email.lower() in from_header.lower():
-                    recipient.reply_status = 'Replied'
-                    internal_date = int(msg.get('internalDate', 0)) / 1000.0
-                    recipient.replied_at = datetime.fromtimestamp(internal_date) if internal_date > 0 else datetime.utcnow()
-                    updated_count += 1
-                    break
-        except Exception as thread_err:
-            print(f"[REPLY SYNC] Error checking thread {recipient.thread_id}: {thread_err}")
+                needs_text_repair = not _compact_text(recipient.reply_body) and not _compact_text(recipient.reply_snippet) and not _compact_text(recipient.reply_subject)
+                if recipient.reply_status == 'Replied' and not needs_text_repair:
+                    continue
+
+                try:
+                    thread = service.users().threads().get(userId='me', id=recipient.thread_id).execute()
+                    messages = thread.get('messages', [])
+
+                    for msg in messages:
+                        headers = msg.get('payload', {}).get('headers', [])
+                        from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+
+                        if recipient.receiver_email and recipient.receiver_email.lower() in from_header.lower():
+                            reply_subject = _extract_gmail_message_subject(msg)
+                            reply_snippet = (msg.get('snippet') or '').strip()
+                            reply_body = _extract_gmail_message_text(msg)
+                            recipient.reply_status = 'Replied'
+                            internal_date = int(msg.get('internalDate', 0)) / 1000.0
+                            recipient.replied_at = datetime.fromtimestamp(internal_date) if internal_date > 0 else datetime.utcnow()
+                            recipient.reply_subject = reply_subject or recipient.reply_subject
+                            recipient.reply_snippet = reply_snippet or recipient.reply_snippet
+                            recipient.reply_body = reply_body or recipient.reply_body
+                            updated_count += 1
+                            break
+                except Exception as thread_err:
+                    print(f"[REPLY SYNC] Error checking thread {recipient.thread_id}: {thread_err}")
+        except Exception as gmail_sync_err:
+            print(f"[REPLY SYNC] Gmail sync unavailable for campaign {campaign.id}: {gmail_sync_err}")
+
+    try:
+        imap_updates = _sync_replies_via_imap(campaign)
+        updated_count += imap_updates
+    except Exception as imap_err:
+        print(f"[REPLY SYNC] IMAP sync unavailable for campaign {campaign.id}: {imap_err}")
 
     if updated_count > 0:
         db.session.commit()
@@ -554,9 +634,223 @@ def _sync_replies_for_campaign(campaign, fallback_email=None, fallback_username=
     return updated_count
 
 
+def _sync_replies_via_imap(campaign):
+    """Fallback reply sync using the system mailbox via IMAP."""
+    import imaplib
+    import email as py_email
+    from email import policy
+
+    imap_host = (os.getenv('IMAP_HOST') or '').strip() or 'imap.gmail.com'
+    imap_port = int(os.getenv('IMAP_PORT', '993'))
+    imap_user = (os.getenv('EMAIL_USER') or '').strip()
+    imap_pass = (os.getenv('EMAIL_PASS') or '').strip()
+
+    if not imap_user or not imap_pass:
+        return 0
+
+    try:
+        mailbox = imaplib.IMAP4_SSL(imap_host, imap_port)
+        mailbox.login(imap_user, imap_pass)
+        mailbox.select('INBOX')
+
+        recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
+        pending = [
+            r for r in recipients
+            if r.reply_status != 'Replied'
+            or not _compact_text(r.reply_body)
+            or not _compact_text(r.reply_snippet)
+            or not _compact_text(r.reply_subject)
+        ]
+        if not pending:
+            mailbox.logout()
+            return 0
+
+        status, data = mailbox.search(None, 'ALL')
+        if status != 'OK':
+            mailbox.logout()
+            return 0
+
+        message_ids = (data[0] or b'').split()
+        updated_count = 0
+
+        # Check recent messages first.
+        for msg_id in reversed(message_ids[-100:]):
+            try:
+                _, msg_data = mailbox.fetch(msg_id, '(RFC822)')
+                if not msg_data or not msg_data[0]:
+                    continue
+                raw_email = msg_data[0][1]
+                message = py_email.message_from_bytes(raw_email, policy=policy.default)
+                from_header = (message.get('From') or '').lower()
+                subject = (message.get('Subject') or '').lower()
+                in_reply_to = (message.get('In-Reply-To') or '').strip()
+                references = (message.get('References') or '').strip()
+
+                def _extract_message_text(email_message):
+                    if email_message.is_multipart():
+                        parts = []
+                        for part in email_message.walk():
+                            content_type = (part.get_content_type() or '').lower()
+                            disposition = (part.get_content_disposition() or '').lower()
+                            if part.is_multipart() or disposition == 'attachment':
+                                continue
+                            if content_type in {'text/plain', 'text/html'}:
+                                try:
+                                    payload = part.get_content()
+                                except Exception:
+                                    raw_part = part.get_payload(decode=True) or b''
+                                    charset = part.get_content_charset() or 'utf-8'
+                                    payload = raw_part.decode(charset, errors='ignore')
+                                if payload:
+                                    parts.append(str(payload))
+                        return _compact_text('\n'.join(parts))
+
+                    try:
+                        payload = email_message.get_content()
+                    except Exception:
+                        raw_payload = email_message.get_payload(decode=True) or b''
+                        charset = email_message.get_content_charset() or 'utf-8'
+                        payload = raw_payload.decode(charset, errors='ignore')
+                    return _compact_text(payload or '')
+
+                for recipient in pending:
+                    recipient_email = (recipient.receiver_email or '').lower().strip()
+                    message_id = (recipient.message_id or '').strip()
+                    if not recipient_email:
+                        continue
+
+                    matches_sender = recipient_email in from_header
+                    matches_thread = bool(message_id) and (message_id in in_reply_to or message_id in references)
+                    is_reply_subject = subject.startswith('re:') or subject.startswith('fw:')
+
+                    if matches_sender and (matches_thread or is_reply_subject):
+                        reply_subject = (message.get('Subject') or '').strip()
+                        reply_snippet = _compact_text((message.get_body(preferencelist=('plain', 'html')).get_content() if message.get_body(preferencelist=('plain', 'html')) else '') or '')
+                        reply_body = _extract_message_text(message)
+                        recipient.reply_status = 'Replied'
+                        if not recipient.replied_at:
+                            recipient.replied_at = datetime.utcnow()
+                        recipient.reply_subject = reply_subject or recipient.reply_subject
+                        recipient.reply_snippet = reply_snippet or recipient.reply_snippet or reply_body[:220]
+                        recipient.reply_body = reply_body or recipient.reply_body or reply_snippet
+                        updated_count += 1
+                        break
+            except Exception as imap_msg_error:
+                print(f"[IMAP SYNC] Error parsing message {msg_id}: {imap_msg_error}")
+
+        if updated_count > 0:
+            db.session.commit()
+
+        mailbox.logout()
+        return updated_count
+    except Exception as imap_error:
+        print(f"[IMAP SYNC] Error checking inbox for campaign {campaign.id}: {imap_error}")
+        return 0
+
+
 def _normalize_username(value):
     candidate = (value or '').strip()
     return candidate if candidate else 'anonymous'
+
+
+def _require_context_service_key_or_401():
+    """
+    When CONTEXT_API_SECRET is set, require matching X-Context-Api-Key.
+    Session identity must use Authorization: Bearer <browser_session_token> (signed with SECRET_KEY).
+    """
+    secret = (os.getenv('CONTEXT_API_SECRET') or '').strip()
+    if not secret:
+        return None
+    header_key = request.headers.get('X-Context-Api-Key', '').strip()
+    if header_key != secret:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid or missing X-Context-Api-Key (CONTEXT_API_SECRET is set)',
+        }), 401
+    return None
+
+
+def _production_auth_strict():
+    return os.getenv('ENVIRONMENT', '').strip().lower() == 'production'
+
+
+def _bearer_session_user_id():
+    auth = (request.headers.get('Authorization') or '').strip()
+    if not auth.lower().startswith('bearer '):
+        return None
+    raw = auth[7:].strip()
+    if not raw:
+        return None
+    from core.session_token import verify_browser_session_token
+
+    return verify_browser_session_token(app.config.get('SECRET_KEY') or '', raw)
+
+
+def _resolve_session_user_id(fallback_claimed=None):
+    """
+    Prefer Authorization: Bearer <signed session_token> from login/Google/register.
+    In production without a valid bearer → 401.
+    In development/test, falls back to client-supplied user id (legacy).
+    """
+    uid = _bearer_session_user_id()
+    if uid:
+        return uid, None
+    if _production_auth_strict():
+        return None, (
+            jsonify({
+                'success': False,
+                'error': 'Missing or invalid session. Sign in and send Authorization: Bearer <session_token>.',
+            }),
+            401,
+        )
+    return _normalize_username(fallback_claimed), None
+
+
+def _effective_context_api_user_id(payload_dict):
+    """Bearer always wins; with CONTEXT_API_SECRET, bearer is mandatory (ignore body principal)."""
+    uid = _bearer_session_user_id()
+    if uid:
+        return uid, None
+    if (os.getenv('CONTEXT_API_SECRET') or '').strip():
+        return None, (
+            jsonify({
+                'success': False,
+                'error': 'Bearer session token required when CONTEXT_API_SECRET is set',
+            }),
+            401,
+        )
+    claimed = (
+        (payload_dict or {}).get('user_id') or (payload_dict or {}).get('username')
+    )
+    return _resolve_session_user_id(claimed)
+
+
+def _shared_context_entry_key(source_agent, source_action, entry_type, payload):
+    digest_source = json.dumps(
+        {
+            'source_agent': source_agent,
+            'source_action': source_action,
+            'entry_type': entry_type,
+            'payload': payload,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha1(digest_source.encode('utf-8')).hexdigest()
+
+
+def _shared_context_payload_dict(
+    source_agent, source_action, entry_type, project_id, data_obj, text_value, metadata_obj
+):
+    return {
+        'source_agent': source_agent,
+        'source_action': source_action,
+        'entry_type': entry_type,
+        'project_id': project_id,
+        'data': data_obj,
+        'text': text_value,
+        'entry_metadata': metadata_obj or {},
+    }
 
 
 def _is_billable_email(value):
@@ -3566,7 +3860,21 @@ def scrape_product_info():
 @cross_origin()
 def universal_scraper():
     """
-    Universal scraping API - now includes enhanced product scraping
+    Universal scraping API - now includes enhanced product scraping.
+
+    DEPRECATION NOTICE: This endpoint is maintained for backwards compatibility.
+    New code should use the Connector API instead:
+
+        POST /api/connectors/web_scraper/fetch
+        {
+            "resource": "page|text|tables|product|json_ld|links|custom",
+            "params": {"url": "https://example.com", ...}
+        }
+
+    The Connector API provides:
+    - Automatic context storage (retrieved data is available to all agents)
+    - User-specific proxy/rate-limit settings from Settings UI
+    - Unified error handling
     """
     try:
         data = request.get_json()
@@ -4518,7 +4826,15 @@ def register():
         )
         db.session.add(user)
         db.session.commit()
-        return jsonify({'message': 'User registered successfully'}), 201
+        from core.session_token import issue_browser_session_token
+
+        token = issue_browser_session_token(app.config['SECRET_KEY'], username)
+        return jsonify({
+            'message': 'User registered successfully',
+            'session_token': token,
+            'email': email,
+            'username': username,
+        }), 201
     except Exception as e:
         print("Registration error:", e)  # Add this line
         return jsonify({'error': str(e)}), 500
@@ -4535,7 +4851,15 @@ def login():
     user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password, password):
         # Login via email, but still return the username for frontend session storage if needed
-        return jsonify({'message': 'Login successful', 'username': user.username, 'email': user.email}), 200
+        from core.session_token import issue_browser_session_token
+
+        token = issue_browser_session_token(app.config['SECRET_KEY'], user.username)
+        return jsonify({
+            'message': 'Login successful',
+            'username': user.username,
+            'email': user.email,
+            'session_token': token,
+        }), 200
     else:
         return jsonify({'error': 'Invalid email or password'}), 401
 
@@ -6063,9 +6387,19 @@ def get_content_marketing_knowledge_graph(project_id):
 @cross_origin()
 def get_google_credentials():
     """
-    Get pre-configured Google OAuth credentials from environment
-    Returns empty values if not configured
+    Get pre-configured Google OAuth credentials status from environment.
+    Requires authentication. Never exposes client secret.
     """
+    # Require authenticated session
+    user_id, err = _resolve_session_user_id(None)
+    if err:
+        return err
+    if not user_id:
+        return jsonify({
+            'success': False,
+            'error': 'Authentication required'
+        }), 401
+
     try:
         env_file = os.path.join(os.path.dirname(__file__), '.env')
         load_dotenv(env_file, override=True)
@@ -6075,28 +6409,27 @@ def get_google_credentials():
             os.getenv('GOOGLE_REDIRECT_URI')
         ])
         has_places_api_key = bool(os.getenv('GOOGLE_PLACES_API_KEY'))
-        
+
+        # Only expose public info - NEVER expose clientSecret
         credentials = {
             'clientId': os.getenv('GOOGLE_CLIENT_ID', ''),
-            'clientSecret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
             'redirectUri': os.getenv('GOOGLE_REDIRECT_URI', ''),
             'hasCredentials': has_oauth_credentials or has_places_api_key,
             'hasPlacesApiKey': has_places_api_key
         }
-        
+
         return jsonify({
             'success': True,
             'credentials': credentials
         }), 200
-        
+
     except Exception as e:
         print(f"Error fetching Google credentials: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': 'Failed to fetch credentials status',
             'credentials': {
                 'clientId': '',
-                'clientSecret': '',
                 'redirectUri': '',
                 'hasCredentials': False
             }
@@ -6110,16 +6443,17 @@ def connect_google_business():
     Step 1: Save OAuth credentials and generate authorization URL
     Returns URL where user should go to authorize the app
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         data = request.get_json()
-        
+
         required_fields = ['clientId', 'clientSecret', 'redirectUri']
         if not all(field in data for field in required_fields):
             return jsonify({
                 'success': False,
                 'error': 'Missing required fields'
             }), 400
-        
+
         # Save credentials
         helper = GoogleBusinessHelper()
         if not helper.save_credentials(data):
@@ -6226,10 +6560,17 @@ def google_auth_callback():
             token_record.scopes = scopes_received
             db.session.commit()
             
-            # Redirecting to login page with params to automatically log in the user on the frontend
-            return redirect(
-                f"{_spa_redirect_base()}/login?google_auth=success&email={email}"
+            from core.session_token import issue_browser_session_token
+
+            session_tok = issue_browser_session_token(app.config['SECRET_KEY'], email)
+            qs = urlencode(
+                {
+                    'google_auth': 'success',
+                    'email': email,
+                    'session_token': session_tok,
+                }
             )
+            return redirect(f"{_spa_redirect_base()}/login?{qs}")
 
         # Exchange code for refresh token for Google Business
 
@@ -6264,6 +6605,7 @@ def get_google_business_data():
     Fetch Google Business information using saved credentials
     Returns business profile, reviews, and metrics
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         helper = GoogleBusinessHelper()
         
@@ -6295,9 +6637,10 @@ def get_requirements_with_google_data():
     Combined endpoint to get user requirements along with Google Business data
     Returns both requirement inputs and business insights for context
     """
+    from agents.market_research.google_business_helper import GoogleBusinessHelper
     try:
         data = request.get_json()
-        
+
         # Extract user requirements from request
         user_requirements = {
             'overview': data.get('overview', ''),
@@ -6349,9 +6692,10 @@ def search_google_businesses():
     Searches by business name and location with pagination support
     Supports up to 200 listings with configurable page size
     """
+    from agents.market_research.google_business_helper import GoogleBusinessSearcher
     try:
         data = request.get_json()
-        
+
         query = data.get('query', '')
         location = data.get('location', '')
         page = data.get('page', 1)
@@ -6758,6 +7102,7 @@ def generate_email():
 
 
 @app.route('/send-bulk-emails', methods=['POST'])
+@app.route('/api/send-bulk-emails', methods=['POST', 'OPTIONS'])
 @cross_origin()
 def send_bulk_emails():
     """
@@ -6777,6 +7122,9 @@ def send_bulk_emails():
         user_email = data.get('userEmail')
         campaign_name = data.get('campaignName', 'Untitled Campaign')
         username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
+
+        if not user_email or '@' not in str(user_email):
+            return jsonify({'success': False, 'error': 'Registered user email is required to send campaign mail.'}), 400
 
         use_ai_personalization = data.get('use_ai_personalization', False)
         if not use_ai_personalization and (not subject or not body):
@@ -6811,10 +7159,25 @@ def send_bulk_emails():
         
         service = None
         server = None
+        smtp_sender_email = os.getenv('EMAIL_USER') or user_email or ''
+
+        def _connect_smtp_server():
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', 587))
+            email_user = os.getenv('EMAIL_USER')
+            email_pass = os.getenv('EMAIL_PASS')
+            if not email_user or not email_pass:
+                return None, None, 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'
+
+            smtp_server = smtplib.SMTP(email_host, email_port)
+            smtp_server.starttls()
+            smtp_server.login(email_user, email_pass)
+            return smtp_server, email_user, None
         
         if token_record and token_record.token:
             # Use Gmail API
             from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
             import googleapiclient.discovery
             
             creds = Credentials(
@@ -6825,19 +7188,16 @@ def send_bulk_emails():
                 client_secret=token_record.client_secret,
                 scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
             )
+            if creds.refresh_token and (not creds.valid or creds.expired):
+                creds.refresh(Request())
+                token_record.token = creds.token
+                db.session.commit()
             service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
         else:
             # Fallback to system SMTP
-            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-            email_port = int(os.getenv('EMAIL_PORT', 587))
-            email_user = os.getenv('EMAIL_USER')
-            email_pass = os.getenv('EMAIL_PASS')
-            if not email_user or not email_pass:
-                return jsonify({'success': False, 'error': 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'}), 500
-                
-            server = smtplib.SMTP(email_host, email_port)
-            server.starttls()
-            server.login(email_user, email_pass)
+            server, email_user, smtp_err = _connect_smtp_server()
+            if smtp_err:
+                return jsonify({'success': False, 'error': smtp_err}), 500
 
         sent_count = 0
         for b in businesses:
@@ -6866,18 +7226,46 @@ def send_bulk_emails():
             msg.set_content(current_body)
             msg['Subject'] = current_subject
             msg['To'] = recipient
+
+            def _set_from_header(message, sender_value):
+                if 'From' in message:
+                    del message['From']
+                message['From'] = sender_value
+
+            def _set_reply_to_header(message, reply_to_value):
+                if 'Reply-To' in message:
+                    del message['Reply-To']
+                message['Reply-To'] = reply_to_value
             
             thread_id = None
             msg_id = None
+            generated_message_id = f"<{uuid.uuid4().hex}@enable-agents.local>"
+            _set_from_header(msg, user_email or smtp_sender_email or recipient)
+            _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
+            msg['Message-ID'] = generated_message_id
             if service:
-                msg['From'] = user_email
-                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-                create_message = {'raw': encoded_message}
-                sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
-                thread_id = sent_msg.get('threadId')
-                msg_id = sent_msg.get('id')
+                try:
+                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                    create_message = {'raw': encoded_message}
+                    sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
+                    thread_id = sent_msg.get('threadId')
+                    msg_id = sent_msg.get('id')
+                except Exception as send_error:
+                    send_error_text = str(send_error).lower()
+                    if 'invalid_grant' in send_error_text or 'invalid credentials' in send_error_text or 'unauthorized' in send_error_text:
+                        print(f"[SEND_EMAILS] Gmail API failed, falling back to SMTP: {send_error}")
+                        service = None
+                        server, smtp_sender_email, smtp_err = _connect_smtp_server()
+                        if smtp_err:
+                            return jsonify({'success': False, 'error': f'Gmail auth failed and SMTP fallback is unavailable: {smtp_err}'}), 500
+                        _set_from_header(msg, user_email or smtp_sender_email or recipient)
+                        _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
+                        server.send_message(msg)
+                    else:
+                        raise
             else:
-                msg['From'] = email_user
+                _set_from_header(msg, user_email or smtp_sender_email or recipient)
+                _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
                 server.send_message(msg)
                 
             sent_count += 1
@@ -6889,7 +7277,7 @@ def send_bulk_emails():
                 receiver_name=business_name,
                 status='SENT',
                 reply_status='No Reply',
-                message_id=msg_id,
+                message_id=msg_id or generated_message_id,
                 thread_id=thread_id
             )
             db.session.add(recipient_record)
@@ -6976,12 +7364,14 @@ def get_campaign_stats():
         else:
             campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
 
-        # Auto-sync replies in background for all visible campaigns.
-        for campaign in campaigns:
-            try:
-                _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=username)
-            except Exception as sync_err:
-                print(f"[AUTO SYNC] Skipping campaign {campaign.id}: {sync_err}")
+        # Keep the stats endpoint fast. Reply sync is available through the
+        # dedicated check-replies route so the dashboard does not block on inbox scans.
+        if (request.args.get('syncReplies') or '').strip().lower() in {'1', 'true', 'yes'}:
+            for campaign in campaigns:
+                try:
+                    _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=username)
+                except Exception as sync_err:
+                    print(f"[AUTO SYNC] Skipping campaign {campaign.id}: {sync_err}")
 
         results = []
         for c in campaigns:
@@ -7025,11 +7415,191 @@ def get_campaign_recipients(campaign_id):
             'name': r.receiver_name,
             'status': r.status,
             'replyStatus': r.reply_status,
+            'replySubject': r.reply_subject,
+            'replySnippet': r.reply_snippet,
+            'replyBody': r.reply_body,
             'sentAt': r.sent_at.isoformat() if r.sent_at else None,
             'repliedAt': r.replied_at.isoformat() if r.replied_at else None
         } for r in recipients]
         return jsonify({'success': True, 'recipients': results}), 200
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/<campaign_id>/rank-vendors', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def rank_campaign_vendors(campaign_id):
+    """Rank vendor email replies for a campaign using response content and the provided criteria."""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    def _compact_text(value):
+        if not value:
+            return ''
+        return re.sub(r'\s+', ' ', str(value)).strip()
+
+    def _heuristic_score(text, criteria_text):
+        text_lower = (text or '').lower()
+        criteria_lower = (criteria_text or '').lower()
+        score = 0
+        keyword_map = {
+            'cost': ['cost', 'price', 'pricing', 'quote', 'quotation', 'discount', 'rate'],
+            'quality': ['quality', 'grade', 'certified', 'certification', 'premium'],
+            'delivery': ['delivery', 'lead time', 'dispatch', 'shipping', 'logistics'],
+            'reliability': ['reliable', 'reliability', 'consistent', 'on time', 'on-time'],
+            'payment': ['payment', 'credit', 'terms', 'advance', 'net 30', 'net 45'],
+            'warranty': ['warranty', 'guarantee', 'return', 'replacement'],
+            'capacity': ['capacity', 'volume', 'scalable', 'production'],
+            'certification': ['iso', 'certified', 'compliance', 'license', 'registration'],
+            'location': ['location', 'near', 'local', 'site', 'warehouse'],
+        }
+        for terms in keyword_map.values():
+            for term in terms:
+                if term in text_lower:
+                    score += 4
+        # Slight bias if the reply mentions multiple numeric quote values
+        if re.search(r'\b\d+(?:\.\d+)?\b', text_lower):
+            score += 4
+        if 'quotation' in text_lower or 'quote' in text_lower:
+            score += 8
+        if 'best' in text_lower or 'lowest' in text_lower or 'competitive' in text_lower:
+            score += 6
+        # If the reply directly covers criteria wording, boost slightly.
+        for word in re.findall(r'[a-z]{4,}', criteria_lower):
+            if word in text_lower:
+                score += 1
+        return min(score, 100)
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        criteria = _compact_text(payload.get('criteria') or payload.get('question') or payload.get('rankingCriteria') or '')
+        user_email = payload.get('userEmail') or payload.get('senderEmail')
+
+        trusted_uid, uid_err = _resolve_session_user_id(payload.get('user_id') or payload.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        _ensure_email_usage_tables()
+        _ensure_campaign_reply_tracking_columns()
+
+        campaign = EmailCampaign.query.get_or_404(campaign_id)
+        try:
+            _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=trusted_uid)
+        except Exception as sync_err:
+            print(f"[RANK VENDORS] Reply sync skipped for {campaign_id}: {sync_err}")
+
+        recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
+        replied = [
+            r for r in recipients
+            if (r.reply_status or '').lower() == 'replied'
+            and (_compact_text(r.reply_body) or _compact_text(r.reply_snippet) or _compact_text(r.reply_subject))
+        ]
+
+        if not replied:
+            return jsonify({'success': False, 'error': 'No vendor replies found to rank yet.'}), 400
+
+        vendor_payload = []
+        for index, recipient in enumerate(replied):
+            reply_text = _compact_text(recipient.reply_body or recipient.reply_snippet or recipient.reply_subject)
+            if len(reply_text) > 3500:
+                reply_text = reply_text[:3500]
+            vendor_payload.append({
+                'index': index,
+                'vendor_name': recipient.receiver_name or recipient.receiver_email,
+                'email': recipient.receiver_email,
+                'reply_text': reply_text,
+                'sent_at': recipient.sent_at.isoformat() if recipient.sent_at else None,
+                'replied_at': recipient.replied_at.isoformat() if recipient.replied_at else None,
+                'reply_subject': _compact_text(recipient.reply_subject or ''),
+            })
+
+        openai_key = os.getenv('OPENAI_API_KEY')
+        if not openai_key:
+            ranked = []
+            for item in vendor_payload:
+                score = _heuristic_score(item['reply_text'], criteria)
+                ranked.append({
+                    'rank': 0,
+                    'score': score,
+                    'vendor_name': item['vendor_name'],
+                    'email': item['email'],
+                    'reply_summary': item['reply_text'][:220],
+                    'reason': 'Heuristic ranking used because OPENAI_API_KEY is not set.',
+                    'criteria_match': [],
+                    'reply_text': item['reply_text'],
+                })
+            ranked.sort(key=lambda x: x['score'], reverse=True)
+            for idx, item in enumerate(ranked, start=1):
+                item['rank'] = idx
+            return jsonify({
+                'success': True,
+                'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+                'criteria': criteria,
+                'vendors': ranked,
+            }), 200
+
+        client = openai.OpenAI(api_key=openai_key)
+        prompt = [
+            {
+                'role': 'system',
+                'content': (
+                    'You are a procurement analyst ranking vendor email replies like a human buyer would. '
+                    'Compare every vendor reply against the criteria and the quotations mentioned in the emails. '
+                    'Prioritize cost/pricing, quality, reliability, delivery performance, reputation, capacity, compliance, communication, location/logistics, technology, risk, sustainability, payment terms, lead time, after-sales support, customization, financial stability, scalability, warranty/return policies, inventory, contract flexibility, certifications, data security, ethics, client references, and supply-chain stability when relevant. '
+                    'Return only valid JSON in the format: {"vendors":[{"rank":1,"vendor_name":"...","email":"...","score":92,"reply_summary":"...","reason":"...","matched_criteria":["..."],"quote_comparison":"...","strengths":["..."],"risks":["..."]}]}.'
+                )
+            },
+            {
+                'role': 'user',
+                'content': json.dumps({
+                    'criteria': criteria,
+                    'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+                    'vendors': vendor_payload,
+                }, ensure_ascii=False)
+            }
+        ]
+
+        response = client.chat.completions.create(
+            model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
+            messages=prompt,
+            temperature=0.0,
+            max_tokens=int(os.getenv('OPENAI_VENDOR_RANK_MAX_TOKENS', '1400'))
+        )
+
+        response_text = (response.choices[0].message.content or '').strip().replace('```json', '').replace('```', '').strip()
+        parsed = json.loads(response_text)
+        vendors = parsed.get('vendors') if isinstance(parsed, dict) else None
+        if not isinstance(vendors, list):
+            raise ValueError('LLM did not return a vendors array')
+
+        cleaned = []
+        for idx, item in enumerate(vendors, start=1):
+            if not isinstance(item, dict):
+                continue
+            cleaned.append({
+                'rank': int(item.get('rank') or idx),
+                'score': int(item.get('score') or 0),
+                'vendor_name': _compact_text(item.get('vendor_name') or ''),
+                'email': _compact_text(item.get('email') or ''),
+                'reply_summary': _compact_text(item.get('reply_summary') or ''),
+                'reason': _compact_text(item.get('reason') or ''),
+                'matched_criteria': item.get('matched_criteria') if isinstance(item.get('matched_criteria'), list) else [],
+                'quote_comparison': _compact_text(item.get('quote_comparison') or ''),
+                'strengths': item.get('strengths') if isinstance(item.get('strengths'), list) else [],
+                'risks': item.get('risks') if isinstance(item.get('risks'), list) else [],
+            })
+
+        cleaned.sort(key=lambda x: x['rank'])
+        return jsonify({
+            'success': True,
+            'campaign': {'id': campaign.id, 'name': campaign.name, 'subject': campaign.subject},
+            'criteria': criteria,
+            'vendors': cleaned,
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/campaigns/<campaign_id>/check-replies', methods=['POST'])
@@ -7462,13 +8032,17 @@ def save_project():
         return jsonify({}), 200
     try:
         data = request.json
-        username = data.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(data.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+        username = trusted_uid
+
         name = data.get('name')
         query_used = data.get('query') or data.get('query_used', '')
         leads = data.get('businesses') or data.get('leads') or []
         
-        if not username or not name:
-            return jsonify({'success': False, 'error': 'Missing username or name'}), 400
+        if not username or username == 'anonymous' or not name:
+            return jsonify({'success': False, 'error': 'Missing authenticated user or name'}), 400
             
         # Create Project
         project = SavedProject(username=username, name=name, query_used=query_used)
@@ -7661,7 +8235,7 @@ def score_leads():
             })
 
         # LLM only touches the top matches to refine ranking and produce richer summaries.
-        top_k = min(int(os.getenv('LEAD_SCORE_LLM_TOP_K', '10')), len(base_results))
+        top_k = min(int(os.getenv('LEAD_SCORE_LLM_TOP_K', '100')), len(base_results))
         if top_k > 0:
             top_candidates = sorted(base_results, key=lambda item: item['match_score'], reverse=True)[:top_k]
             compact_candidates = [
@@ -7765,12 +8339,15 @@ def append_project():
         return jsonify({}), 200
     try:
         data = request.json
-        username = data.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(data.get('username'))
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+        username = trusted_uid
         project_id = data.get('projectId')
         leads = data.get('businesses') or data.get('leads') or []
         
-        if not username or not project_id:
-            return jsonify({'success': False, 'error': 'Missing username or projectId'}), 400
+        if not username or username == 'anonymous' or not project_id:
+            return jsonify({'success': False, 'error': 'Missing authenticated user or projectId'}), 400
             
         # verify
         project = db.session.get(SavedProject, project_id)
@@ -7831,11 +8408,12 @@ def append_project():
 @cross_origin()
 def get_saved_projects():
     try:
-        username = request.args.get('username')
-        if not username:
-             return jsonify({'success': False, 'error': 'Missing username'}), 400
-             
-        projects = db.session.query(SavedProject).filter_by(username=username).order_by(SavedProject.created_at.desc()).all()
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        projects = db.session.query(SavedProject).filter_by(username=trusted_uid).order_by(SavedProject.created_at.desc()).all()
         result = []
         for p in projects:
             lead_count = db.session.query(SavedLead).filter_by(project_id=p.id).count()
@@ -7857,10 +8435,14 @@ def get_saved_projects():
 @cross_origin()
 def get_project_leads(project_id):
     try:
-        username = request.args.get('username')
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         project = db.session.get(SavedProject, project_id)
-        
-        if not project or (username and project.username != username):
+
+        if not project or project.username != trusted_uid:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
             
         leads = db.session.query(SavedLead).filter_by(project_id=project_id).all()
@@ -7903,12 +8485,13 @@ def delete_saved_project(project_id):
     if request.method == 'OPTIONS':
         return jsonify({}), 200
     try:
-        username = request.args.get('username')
-        if not username:
-             return jsonify({'success': False, 'error': 'Missing username'}), 400
-             
+        username_arg = request.args.get('username')
+        trusted_uid, uid_err = _resolve_session_user_id(username_arg)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         project = db.session.get(SavedProject, project_id)
-        if not project or project.username != username:
+        if not project or project.username != trusted_uid:
             return jsonify({'success': False, 'error': 'Project not found or unauthorized'}), 404
             
         db.session.delete(project)
@@ -7929,21 +8512,30 @@ def sales_helper_chat():
         leads = data.get('leads') or []
         project = data.get('project') or {}
 
+        trusted_uid, uid_err = _resolve_session_user_id(
+            data.get('user_id') or data.get('username')
+        )
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
         if not question:
             return jsonify({'success': False, 'error': 'Missing question'}), 400
 
         if not leads:
             return jsonify({'success': False, 'error': 'No leads provided'}), 400
 
-        # Dynamically detect available fields across all leads
+        # Limit to first 50 leads for AI model context window management
+        # Keeps API tokens reasonable and ensures fast response times
+        lead_batch = leads[:50]
+
         available_fields = set()
-        for lead in leads:
+        for lead in lead_batch:
             available_fields.update(lead.keys())
         
         available_fields_str = ", ".join(sorted([f for f in available_fields if f != 'match_score']))
 
         lead_rows = []
-        for index, lead in enumerate(leads[:25], start=1):
+        for index, lead in enumerate(lead_batch, start=1):
             # Build a row with all available data
             lead_items = []
             for field in sorted(lead.keys()):
@@ -7976,7 +8568,6 @@ IMPORTANT INSTRUCTIONS:
 1. ALWAYS provide a helpful answer, even if some specific fields are missing.
 2. Use inference and reasoning: If exact data is unavailable, derive insights from related information.
    - Example: If "Number of Employees" is missing, infer from "Company Size", "Budget", "Industry", or "Description".
-   - Example: If "Internship Programs" isn't listed, infer from "Job Listings", "Hiring Status", or "Company Type".
 3. Mention lead names when listing specific companies.
 4. Be concise but comprehensive - provide actionable insights.
 5. If a field is completely unavailable, note it but focus on what you CAN analyze.
@@ -7984,16 +8575,79 @@ IMPORTANT INSTRUCTIONS:
 7. Do not make up details, but DO use available context to reason and infer.
 """
 
+        # Persist incoming leads into shared context (Redis + MySQL via ContextStore)
+        user_id_for_context = trusted_uid
+        project_id_value = (
+            str(project.get('id')) if project and project.get('id') else (project.get('name') if project else None)
+        )
+        session_ctx = str(project_id_value)[:36] if project_id_value else None
+        ingest_entries = []
+        for lead in lead_batch:
+            if not isinstance(lead, dict):
+                continue
+            try:
+                flattened = " | ".join(
+                    [
+                        f"{k.replace('_', ' ').title()}: {v}"
+                        for k, v in lead.items()
+                        if v is not None and v != ''
+                    ]
+                )
+                entry_metadata = {'project_name': project.get('name') if project else None}
+                entry_key = _shared_context_entry_key('sales_helper', 'ingest_lead', 'lead', lead)
+                payload_dict = _shared_context_payload_dict(
+                    'sales_helper',
+                    'ingest_lead',
+                    'lead',
+                    project_id_value,
+                    lead,
+                    flattened,
+                    entry_metadata,
+                )
+                ingest_entries.append((entry_key, payload_dict, session_ctx))
+            except Exception as ing_exc:
+                logging.getLogger(__name__).warning('sales_helper context ingest row skipped: %s', ing_exc)
+        try:
+            if ingest_entries:
+                ContextStore().set_many(user_id_for_context, 'sales_helper', ingest_entries)
+        except Exception as persist_exc:
+            logging.getLogger(__name__).exception('sales_helper shared context ingest failed: %s', persist_exc)
+
         if not os.getenv('OPENAI_API_KEY'):
-            lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:5]])
+            # Show first 10 lead names as preview in response
+            lead_names = ", ".join([lead.get('name', 'N/A') for lead in leads[:10]])
             return jsonify({
                 'success': True,
                 'answer': f"Selected list: {project_name}. Leads loaded: {len(leads)}. I can see these example leads: {lead_names}. Ask a more specific question to analyze them further.",
-                'lead_count': len(leads)
+                'lead_count': len(lead_batch),
+                'lead_count_total': len(leads),
+                'lead_count_limited': len(leads) > len(lead_batch)
             }), 200
 
         client = openai.OpenAI()
         client.api_key = os.environ['OPENAI_API_KEY']
+
+        # Before calling LLM, attempt to surface additional saved context entries for this user
+        extra_context_text = ""
+        try:
+            user_q = trusted_uid
+            if user_q:
+                # simple keyword match search against stored JSON payloads/keys
+                matches = ContextStore().search(user_q, question, limit=6)
+                if matches:
+                    extracted_lines = []
+                    for m in matches:
+                        try:
+                            payload = json.loads(m.value) if m.value else {}
+                        except Exception:
+                            payload = {}
+                        extracted_lines.append(f"- {payload.get('text') or m.key}")
+                    extra_context_text = "\n".join(extracted_lines)
+        except Exception:
+            extra_context_text = ""
+
+        if extra_context_text:
+            prompt = prompt + "\n\nAdditional saved context entries for this user:\n" + extra_context_text
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -8009,12 +8663,125 @@ IMPORTANT INSTRUCTIONS:
         return jsonify({
             'success': True,
             'answer': answer,
-            'lead_count': len(leads)
+            'lead_count': len(lead_batch),
+            'lead_count_total': len(leads),
+            'lead_count_limited': len(leads) > len(lead_batch)
         }), 200
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ========== SHARED CONTEXT API ENDPOINTS ==========
+
+@app.route('/api/context/save', methods=['POST'])
+def api_context_save():
+    sk_err = _require_context_service_key_or_401()
+    if sk_err is not None:
+        return sk_err
+    try:
+        payload = request.get_json() or {}
+        user_id, uid_err = _effective_context_api_user_id(payload)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        project_id = payload.get('project_id')
+        entries = payload.get('entries') or []
+        source_agent = payload.get('source_agent') or 'unknown'
+        source_action = payload.get('source_action') or 'batch_save'
+        sid = str(project_id)[:36] if project_id is not None else None
+        batch = []
+        meta = payload.get('entry_metadata') or {}
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            flattened = " | ".join(
+                [
+                    f"{k.replace('_', ' ').title()}: {v}"
+                    for k, v in e.items()
+                    if v is not None and v != ''
+                ]
+            )
+            entry_type = e.get('type') or 'data'
+            entry_key = _shared_context_entry_key(source_agent, source_action, entry_type, e)
+            payload_dict = _shared_context_payload_dict(
+                source_agent, source_action, entry_type, project_id, e, flattened, meta
+            )
+            batch.append((entry_key, payload_dict, sid))
+
+        if not batch:
+            return jsonify({'success': True, 'saved': 0}), 200
+
+        ContextStore().set_many(user_id, source_agent, batch)
+        return jsonify({'success': True, 'saved': len(batch)}), 200
+    except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_save failed')
+        return jsonify({'success': False, 'error': str(ex)}), 500
+
+
+@app.route('/api/context/search', methods=['POST'])
+def api_context_search():
+    sk_err = _require_context_service_key_or_401()
+    if sk_err is not None:
+        return sk_err
+    try:
+        payload = request.get_json() or {}
+        user_id, uid_err = _effective_context_api_user_id(payload)
+        if uid_err is not None:
+            return uid_err[0], uid_err[1]
+
+        query = (payload.get('query') or '').strip()
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Missing user identity'}), 400
+
+        raw_limit = payload.get('limit')
+        try:
+            limit = 10 if raw_limit in (None, '') else int(raw_limit)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid limit; must be an integer'}), 400
+        if limit < 1:
+            return jsonify({'success': False, 'error': 'Invalid limit; must be greater than 0'}), 400
+
+        try:
+            results = ContextStore().search(user_id, query, limit=limit)
+        except ValueError as ve:
+            return jsonify({'success': False, 'error': str(ve)}), 400
+        out = []
+        for r in results:
+            try:
+                payload_obj = json.loads(r.value) if r.value else {}
+            except Exception:
+                payload_obj = {}
+            out.append(
+                {
+                    'id': r.id,
+                    'text': payload_obj.get('text'),
+                    'data': payload_obj.get('data'),
+                    'entry_metadata': payload_obj.get('entry_metadata'),
+                    'source_agent': payload_obj.get('source_agent'),
+                    'source_action': payload_obj.get('source_action'),
+                    'entry_type': payload_obj.get('entry_type'),
+                    'created_at': r.created_at.isoformat(),
+                }
+            )
+        return jsonify({'success': True, 'results': out}), 200
+    except Exception as ex:
+        logging.getLogger(__name__).exception('api_context_search failed')
+        return jsonify({'success': False, 'error': str(ex)}), 500
+
+
+# Register all enabled agents from backend/agents/ (must be after all models defined)
+from agents.registry import register_agents
+register_agents(app)
+
+# Register connector API routes
+from core.connectors.routes import bp as connectors_bp
+app.register_blueprint(connectors_bp)
+
+# Register settings API routes
+from core.settings_routes import bp as settings_bp
+app.register_blueprint(settings_bp)
+
 
 if __name__ == '__main__':
     with app.app_context():

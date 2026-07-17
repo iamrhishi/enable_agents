@@ -1,95 +1,99 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Fraunces:wght@400;500;600;700&display=swap');
+/**
+ * Global Styles
+ *
+ * Imports design tokens and sets base styles.
+ * All component styles should use token variables.
+ */
 
-:root {
-  /* Brand Color Palette */
-  --primary-dark: #1E3A5F;      /* Deep ink blue */
-  --primary-grey: #475569;      /* System grey */
-  --accent-burnt: #C2410C;      /* Burnt ember */
-  --accent-copper: #B45309;     /* Copper clay */
-  --accent-soft: #D6C7B8;       /* Soft clay */
-  --accent-paper: #F1EAE4;      /* Paper warm */
+@import './styles/tokens.css';
 
-  /* Typography */
-  --font-title: 'Fraunces', serif;      /* 60pt */
-  --font-heading: 'Fraunces', serif;    /* 32pt */
-  --font-subheading: 'Fraunces', serif; /* 20pt */
-  --font-quote: 'Fraunces', serif;      /* 15pt */
-  --font-body: 'IBM Plex Sans', sans-serif;          /* 12pt */
-  --font-subtitle: 'IBM Plex Sans', sans-serif;      /* 24pt */
-  --font-section: 'IBM Plex Sans', sans-serif;       /* 16pt */
-  --font-caption: 'IBM Plex Sans', sans-serif;       /* 9pt */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   BASE RESET & DEFAULTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--primary-dark);
-  background-color: var(--accent-paper);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background-color: var(--color-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: 'Courier New', monospace;
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TYPOGRAPHY
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  color: var(--color-text);
+  margin: 0;
+  line-height: var(--leading-tight);
 }
 
-h1 {
-  font-family: var(--font-title);
-  font-size: 60px;
-  color: var(--primary-dark);
+h4, h5, h6 {
+  font-family: var(--font-body);
+  color: var(--color-text);
   margin: 0;
 }
 
-h2 {
-  font-family: var(--font-heading);
-  font-size: 32px;
-  color: var(--primary-dark);
-  margin: 0;
-}
-
-h3 {
-  font-family: var(--font-subheading);
-  font-size: 20px;
-  color: var(--primary-dark);
-  margin: 0;
-}
-
-h4 {
-  font-family: var(--font-section);
-  font-size: 16px;
-  color: var(--primary-dark);
-  margin: 0;
-}
-
-h5 {
-  font-family: var(--font-quote);
-  font-size: 15px;
-  color: var(--primary-dark);
-  margin: 0;
-}
-
-h6 {
-  font-family: var(--font-caption);
-  font-size: 9px;
-  color: var(--primary-dark);
-  margin: 0;
-}
+h1 { font-size: var(--text-4xl); font-weight: var(--font-bold); }
+h2 { font-size: var(--text-3xl); font-weight: var(--font-semibold); }
+h3 { font-size: var(--text-xl); font-weight: var(--font-semibold); }
+h4 { font-size: var(--text-lg); font-weight: var(--font-semibold); }
+h5 { font-size: var(--text-base); font-weight: var(--font-medium); }
+h6 { font-size: var(--text-sm); font-weight: var(--font-medium); }
 
 p {
   font-family: var(--font-body);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--primary-dark);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
   margin: 0;
 }
 
-/* Links */
 a {
-  color: var(--accent-burnt);
+  color: var(--color-accent);
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
 a:hover {
-  color: var(--accent-copper);
+  color: var(--color-accent-dark);
 }
+
+code {
+  font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FORM DEFAULTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+input, textarea, select, button {
+  font-family: var(--font-body);
+}
+
+button {
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.text-accent { color: var(--color-accent); }
+.text-muted { color: var(--color-text-muted); }
+.text-subtle { color: var(--color-text-subtle); }
+
+.bg-surface { background: var(--color-surface); }
+.bg-background { background: var(--color-background); }
+
+.font-display { font-family: var(--font-display); }
+.font-body { font-family: var(--font-body); }

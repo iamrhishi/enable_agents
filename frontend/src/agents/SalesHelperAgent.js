@@ -1,401 +1,289 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
+import { BackButton, ProjectSelector, LiveModeHint, ProjectGate, AgentOutcomesStrip } from '../components';
 import '../styles/SalesHelperAgent.css';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
+import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+
+// Demo mock data for Sales Helper
+const DEMO_SAVED_PROJECTS = [
+  { id: 'demo-1', name: 'Enterprise Prospects Q2', query_used: 'Enterprise software buyers', lead_count: 45, created_at: '2026-06-10' },
+  { id: 'demo-2', name: 'SMB Tech Companies', query_used: 'Small business technology', lead_count: 32, created_at: '2026-06-15' },
+  { id: 'demo-3', name: 'Healthcare Leads', query_used: 'Healthcare technology', lead_count: 28, created_at: '2026-06-20' },
+];
+
+const DEMO_PROJECT_LEADS = [
+  { name: 'Acme Corp', website: 'https://acme.com', phone: '+1 (555) 123-4567', address: 'San Francisco, CA', email: 'sales@acme.com', summary: 'Enterprise software company' },
+  { name: 'TechStart Inc', website: 'https://techstart.io', phone: '+1 (555) 234-5678', address: 'Austin, TX', email: 'info@techstart.io', summary: 'B2B SaaS platform' },
+  { name: 'DataFlow Systems', website: 'https://dataflow.com', phone: '+1 (555) 345-6789', address: 'Seattle, WA', email: 'contact@dataflow.com', summary: 'Data analytics provider' },
+];
+
+const DEMO_CAMPAIGNS = [
+  { id: 'demo-camp-1', name: 'Q2 Outreach Campaign', subject: 'Partnership Opportunity', totalSent: 45, totalReplied: 12, replyRate: 27, createdAt: '2026-06-12' },
+  { id: 'demo-camp-2', name: 'Product Launch Follow-up', subject: 'New Features Available', totalSent: 32, totalReplied: 8, replyRate: 25, createdAt: '2026-06-18' },
+];
+
+const DEMO_DOCUMENTS = [
+  { id: 'doc-1', name: 'Product Catalog 2026.pdf', type: 'product_catalog', size: '2.4 MB', uploadedAt: '2026-06-10', status: 'processed' },
+  { id: 'doc-2', name: 'Enterprise Features.pdf', type: 'product_info', size: '1.1 MB', uploadedAt: '2026-06-15', status: 'processed' },
+];
 
 function SalesHelperAgent() {
+  const selectedProjectId = useSelectedProjectId();
+
+  // Demo mode detection
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const stored = localStorage.getItem('enableAgentsMode');
+    return stored !== 'live';
+  });
+
+  useEffect(() => {
+    const handleModeChange = () => {
+      const stored = localStorage.getItem('enableAgentsMode');
+      setIsDemoMode(stored !== 'live');
+    };
+    window.addEventListener('storage', handleModeChange);
+    const interval = setInterval(handleModeChange, 1000);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+      clearInterval(interval);
+    };
+  }, []);
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
-    addMessage, checkExistingFile, saveJSONToFile,
+    addMessage,
   } = useAgentChat(
     "Welcome to the Sales Helper Agent! I can help you analyze prospects, track leads, and optimize your sales pipeline!",
     'sales_data'
   );
 
-  const [csvData, setCsvData] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [csvData] = useState(null);
   const [savedProjects, setSavedProjects] = useState([]);
   const [selectedSavedProject, setSelectedSavedProject] = useState(null);
   const [selectedSavedProjectLeads, setSelectedSavedProjectLeads] = useState([]);
   const [savedProjectSelection, setSavedProjectSelection] = useState('');
   const [isLoadingSavedProjects, setIsLoadingSavedProjects] = useState(false);
   const [isLoadingSavedProjectLeads, setIsLoadingSavedProjectLeads] = useState(false);
-  const csvFileRef = useRef(null);
-  const cvFileRef = useRef(null);
-  const [existingFiles, setExistingFiles] = useState(new Map());
-  const [currentUserId] = useState('user_001');
-  const [userFavorites, setUserFavorites] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [selectedRankingCampaignId, setSelectedRankingCampaignId] = useState('');
+  const [rankingCriteria, setRankingCriteria] = useState(
+    'Cost / Pricing, Quality of Materials or Products, Reliability & Delivery Performance, Vendor Reputation & Experience, Production Capacity, Compliance & Legal Requirements, Communication & Support, Location & Logistics, Technology & Innovation, Risk Factors, Sustainability & ESG Factors, Payment Terms, Lead Time, After-Sales Service, Customization Capability, Financial Stability, Scalability, Warranty & Return Policies, Inventory Availability, Contract Flexibility, Industry Certifications, Data Security & Confidentiality, Ethical Business Practices, Existing Client References, Supply Chain Stability'
+  );
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+  const [isRankingVendors, setIsRankingVendors] = useState(false);
+  const [rankedVendors, setRankedVendors] = useState([]);
+  const [activeTab, setActiveTab] = useState('leads'); // 'leads' or 'ranking'
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const rankingResultsRef = useRef(null);
+  const [defaultUserId] = useState('user_001');
 
-  const getCurrentUsername = () =>
+  // Product catalog / document upload
+  const [uploadedDocuments, setUploadedDocuments] = useState([]);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [showDocUploadModal, setShowDocUploadModal] = useState(false);
+  const fileInputRef = useRef(null);
+  // eslint-disable-next-line no-unused-vars
+  const selectedRankingCampaign = campaigns.find((campaign) => String(campaign.id) === String(selectedRankingCampaignId));
+  const savedLeadsCount = selectedSavedProjectLeads.length;
+
+  const getCurrentUserIdentifier = () =>
     localStorage.getItem('userEmail') ||
     localStorage.getItem('username') ||
     localStorage.getItem('firstName') ||
-    currentUserId ||
+    defaultUserId ||
     'anonymous';
 
+  // Reload data when mode or project changes
   useEffect(() => {
+    if (!selectedProjectId) {
+      setSavedProjects([]);
+      setCampaigns([]);
+      setSelectedSavedProject(null);
+      setSelectedSavedProjectLeads([]);
+      setRankedVendors([]);
+      setUploadedDocuments([]);
+      return;
+    }
+    setSavedProjects([]);
+    setCampaigns([]);
+    setSelectedSavedProject(null);
+    setSelectedSavedProjectLeads([]);
+    setRankedVendors([]);
+    setUploadedDocuments(isDemoMode ? DEMO_DOCUMENTS : []);
     fetchSavedProjects();
-  }, []);
+    fetchCampaigns();
+  }, [isDemoMode, selectedProjectId]);
 
-  // Function to save JSON data to file
-  // Enhanced handleSearch function for sales data
-  const handleSearch = async (query) => {
-    try {
-      addMessage("🔍 Searching through sales data...", 'agent', null, 'markdown');
-      
-      const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: query,
-          data: csvData
-        })
-      });
+  // Document upload handler
+  const handleDocumentUpload = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-      const result = await response.json();
+    const file = files[0];
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
 
-      if (result.success) {
-        if (result.total_found > 0) {
-          // Show what keywords were extracted
-          const keywordsText = Object.entries(result.keywords)
-            .filter(([key, values]) => values && values.length > 0)
-            .map(([key, values]) => `${key}: ${values.join(', ')}`)
-            .join(' | ');
-          
-          const resultsText = formatSalesResults(result.results);
-          
-          // Use HTML format for search results with formatted profiles
-          addMessage(`🔍 <strong>Sales Search Results</strong> (${result.total_found} found)<br><br><strong>Keywords extracted:</strong> ${keywordsText}<br><br>${resultsText}`, 'agent', {
-            type: 'search_results',
-            data: {
-              query: query,
-              results: result.results,
-              total_found: result.total_found,
-              keywords: result.keywords
-            }
-          }, 'html');
-          
-          // Show more results option if there are many
-          if (result.total_found > 5) {
-            addMessage(`💡 **Found ${result.total_found} total prospects.** Showing top 5. Try being more specific to narrow down results.`, 'agent', null, 'markdown');
-          }
-          
-          // Suggest related searches if results are limited
-          if (result.total_found < 3 && result.total_found > 0) {
-            // addMessage("💡 **Want more results?** Try:\n• Using broader terms\n• Searching by different fields\n• Checking spelling of keywords", 'agent', null, 'markdown');
-          }
-        } else {
-          // No results found - provide helpful suggestions
-          const keywordsText = Object.entries(result.keywords)
-            .filter(([key, values]) => values && values.length > 0)
-            .map(([key, values]) => `${key}: ${values.join(', ')}`)
-            .join(' | ');
-          
-          addMessage(`🔍 **No prospects found** for: "${query}"\n\n**Keywords I looked for:** ${keywordsText}\n\n💡 **Try:**\n• Different spelling or synonyms\n• Broader search terms\n• Different fields (company vs industry vs deal value)\n\n**Example searches:**\n• "Enterprise clients" (instead of "Fortune 500 clients")\n• "SaaS companies"\n• "High value deals"`, 'agent', null, 'markdown');
-        }
-      } else {
-        addMessage(`**Search needs more specific input:** ${result.error}\n\nPlease try rephrasing your request e.g., mention company type or deal stage`, 'agent', null, 'markdown');
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-      addMessage("❌ **Connection error.** Please check your connection and try again.", 'agent', null, 'markdown');
-    }
-  };
-
-  // Sales-specific results formatter
-  const formatSalesResults = (results) => {
-    return results.map((result, index) => {
-      const leadScore = calculateLeadScore(result);
-      const priorityClass = leadScore >= 80 ? 'high-priority' : leadScore >= 60 ? 'medium-priority' : 'low-priority';
-      
-      return `
-        <div class="sales-profile-card ${priorityClass}">
-          <div class="profile-header">
-            <div class="profile-main-info">
-              <h4>${result.company || result.name || 'Prospect'}</h4>
-              <p class="contact-info">${result.contact_name || result.lead_name || ''} ${result.email ? `• ${result.email}` : ''}</p>
-            </div>
-            <div class="lead-score">
-              <span class="score-badge ${priorityClass}">Score: ${leadScore}</span>
-            </div>
-          </div>
-          
-          <div class="profile-details">
-            ${result.industry ? `<span class="detail-tag industry">🏢 ${result.industry}</span>` : ''}
-            ${result.deal_value ? `<span class="detail-tag deal-value">💰 ${result.deal_value}</span>` : ''}
-            ${result.stage ? `<span class="detail-tag stage">📊 ${result.stage}</span>` : ''}
-            ${result.location ? `<span class="detail-tag location">📍 ${result.location}</span>` : ''}
-          </div>
-          
-          <div class="profile-actions">
-            <button class="action-btn contact" onclick="window.salesHelper.contactProspect(${index})">📞 Contact</button>
-            <button class="action-btn favorite" onclick="window.salesHelper.addToFavorites(${index})">⭐ Favorite</button>
-            <button class="action-btn notes" onclick="window.salesHelper.addNotes(${index})">📝 Notes</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  };
-
-  // Calculate lead score based on available data
-  const calculateLeadScore = (prospect) => {
-    let score = 0;
-    
-    // Company size factor
-    if (prospect.company_size) {
-      const size = prospect.company_size.toLowerCase();
-      if (size.includes('enterprise') || size.includes('large')) score += 30;
-      else if (size.includes('medium') || size.includes('mid')) score += 20;
-      else score += 10;
-    }
-    
-    // Deal value factor
-    if (prospect.deal_value) {
-      const value = parseFloat(prospect.deal_value.toString().replace(/[^0-9.]/g, ''));
-      if (value >= 100000) score += 25;
-      else if (value >= 50000) score += 20;
-      else if (value >= 10000) score += 15;
-      else score += 5;
-    }
-    
-    // Stage factor
-    if (prospect.stage) {
-      const stage = prospect.stage.toLowerCase();
-      if (stage.includes('qualified') || stage.includes('proposal')) score += 20;
-      else if (stage.includes('interested') || stage.includes('demo')) score += 15;
-      else if (stage.includes('contacted')) score += 10;
-      else score += 5;
-    }
-    
-    // Industry factor
-    if (prospect.industry) {
-      const industry = prospect.industry.toLowerCase();
-      if (industry.includes('tech') || industry.includes('software') || industry.includes('saas')) score += 15;
-      else if (industry.includes('finance') || industry.includes('healthcare')) score += 10;
-      else score += 5;
-    }
-    
-    // Contact information completeness
-    if (prospect.email) score += 5;
-    if (prospect.phone) score += 5;
-    if (prospect.linkedin) score += 5;
-    
-    return Math.min(score, 100); // Cap at 100
-  };
-
-  // Sales-specific CSV Upload Handler
-  const handleCSVUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const allowedTypes = ['.csv', '.xlsx', '.xls'];
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    
-    if (!allowedTypes.includes(fileExtension)) {
-      addMessage("Please upload a valid CSV or XLSX file with sales data.", 'agent', null, 'markdown');
+    if (!allowedTypes.includes(file.type)) {
+      addMessage('Please upload a PDF, Word document, or text file.', 'agent', null, 'markdown');
       return;
     }
 
-    setIsLoading(true);
+    if (isDemoMode) {
+      const newDoc = {
+        id: `doc-${Date.now()}`,
+        name: file.name,
+        type: 'product_catalog',
+        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+        uploadedAt: new Date().toISOString().split('T')[0],
+        status: 'processed',
+      };
+      setUploadedDocuments([...uploadedDocuments, newDoc]);
+      setShowDocUploadModal(false);
+      addMessage(`**Document uploaded:** ${file.name}\n\nI can now use this document to match prospects with your products and services. (Demo Mode)`, 'agent', null, 'markdown');
+      return;
+    }
 
     try {
-      // Step 1: Check if file already exists and compare sizes
-      const fileCheckResult = await checkExistingFile(file.name, file.size);
-      
-      if (fileCheckResult.should_skip) {
-        // Load existing JSON data
-        const jsonFileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '.json');
-        const loadResponse = await fetch(`${API_CONFIG.API_URL}/load_json_file`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file_name: jsonFileName,
-            folder_name: 'sales_data'
-          })
-        });
-
-        const loadResult = await loadResponse.json();
-        
-        if (loadResult.success) {
-          setCsvData(loadResult.data);
-
-          // Update existing files tracking
-          setExistingFiles(prev => new Map(prev.set(file.name, {
-            size: file.size,
-            processed: true,
-            json_file: jsonFileName,
-            prospects_count: loadResult.data.length
-          })));
-
-          addMessage(`📊 Loaded existing sales data: **${loadResult.data.length} prospects**\n\nData is ready for analysis!`, 'agent', null, 'markdown');
-
-          setIsLoading(false);
-          event.target.value = '';
-          return;
-        }
-      }
-
-      // Step 2: File is new or has more data, proceed with conversion
-      if (fileCheckResult.exists && !fileCheckResult.should_skip) {
-        addMessage(`File exists but new version has more data (${file.size} vs ${fileCheckResult.existing_size} bytes). Updating...`, 'agent', null, 'markdown');
-      }
-
-      // Step 3: Upload and convert file to JSON
+      setIsUploadingDoc(true);
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('folder_name', 'sales_data');
-      formData.append('multiple_sheets', 'false');
+      formData.append('user_id', getCurrentUserIdentifier());
+      formData.append('type', 'product_catalog');
 
-      const response = await fetch(`${API_CONFIG.API_URL}/file_to_json_convert`, {
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents`, {
         method: 'POST',
-        body: formData
-      });
-
-      const conversionResult = await response.json();
-
-      if (conversionResult.success) {
-        const prospects = conversionResult.data;
-        setCsvData(prospects);
-        
-        // Step 4: Save JSON file for future use
-        const saveResult = await saveJSONToFile(prospects, file.name);
-        
-        if (saveResult.success) {
-          addMessage(`📊 Sales data processed successfully! Found ${prospects.length} prospects.\n\n🎯 **Pipeline Analysis:**\n${analyzePipeline(prospects)}`, 'agent', {
-            type: 'csv_upload_success',
-            data: { 
-              prospects_count: prospects.length,
-              columns: Object.keys(prospects[0] || {}),
-              file_type: fileExtension.substring(1).toUpperCase(),
-              json_saved: true,
-              json_file: saveResult.file_path
-            }
-          }, 'markdown');
-
-          // Update existing files tracking
-          setExistingFiles(prev => new Map(prev.set(file.name, {
-            size: file.size,
-            processed: true,
-            json_file: saveResult.file_name,
-            prospects_count: prospects.length
-          })));
-
-        } else {
-          addMessage(`File converted successfully! Found ${prospects.length} prospects. (JSON save failed: ${saveResult.error})`, 'agent', {
-            type: 'csv_upload_success',
-            data: { 
-              prospects_count: prospects.length,
-              columns: Object.keys(prospects[0] || {}),
-              file_type: fileExtension.substring(1).toUpperCase(),
-              json_saved: false
-            }
-          }, 'markdown');
-        }
-
-        // Show a preview of the data structure
-        const sampleProspect = prospects[0];
-        if (sampleProspect) {
-          const availableFields = Object.keys(sampleProspect);
-          addMessage(`**Data Structure Preview:**\nAvailable fields: ${availableFields.join(', ')}\n\n🔍 You can now search and analyze your sales data!`, 'agent', null, 'markdown');
-        }
-        
-      } else {
-        addMessage(`Error processing file: ${conversionResult.error}`, 'agent', null, 'markdown');
-      }
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      addMessage("Error uploading file. Please try again.", 'agent', null, 'markdown');
-    } finally {
-      setIsLoading(false);
-      event.target.value = '';
-    }
-  };
-
-  // Analyze pipeline data
-  const analyzePipeline = (prospects) => {
-    const total = prospects.length;
-    const stages = {};
-    const industries = {};
-    let totalValue = 0;
-    let avgScore = 0;
-
-    prospects.forEach(prospect => {
-      // Stage analysis
-      const stage = prospect.stage || 'Unknown';
-      stages[stage] = (stages[stage] || 0) + 1;
-
-      // Industry analysis
-      const industry = prospect.industry || 'Unknown';
-      industries[industry] = (industries[industry] || 0) + 1;
-
-      // Value analysis
-      if (prospect.deal_value) {
-        const value = parseFloat(prospect.deal_value.toString().replace(/[^0-9.]/g, ''));
-        if (!isNaN(value)) totalValue += value;
-      }
-
-      // Score analysis
-      avgScore += calculateLeadScore(prospect);
-    });
-
-    avgScore = Math.round(avgScore / total);
-
-    const topStages = Object.entries(stages)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([stage, count]) => `${stage}: ${count}`)
-      .join(', ');
-
-    const topIndustries = Object.entries(industries)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([industry, count]) => `${industry}: ${count}`)
-      .join(', ');
-
-    return `• **Total Prospects:** ${total}
-• **Avg Lead Score:** ${avgScore}/100
-• **Top Stages:** ${topStages}
-• **Top Industries:** ${topIndustries}
-• **Pipeline Value:** $${totalValue.toLocaleString()}`;
-  };
-
-  // Handle AI-powered sales insights
-  const handleSalesInsights = async () => {
-    if (!csvData || csvData.length === 0) {
-      addMessage("Please upload sales data first to get insights.", 'agent', null, 'markdown');
-      return;
-    }
-
-    // Use the same sales-helper-chat backend route used for saved lists
-    setIsAnalyzing(true);
-    addMessage("🔍 Analyzing your sales pipeline for insights...", 'agent', null, 'markdown');
-
-    try {
-      const sampleLeads = csvData.slice(0, 25);
-      const question = `Provide concise sales pipeline insights for these leads. Focus on lead quality trends, pipeline bottlenecks, revenue opportunities, and recommendations.`;
-
-      const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
+        headers: authOptionalHeaders(),
+        body: formData,
       });
 
       const result = await response.json();
-      if (result.success && result.answer) {
-        addMessage(`🎯 **Sales Pipeline Insights:**\n\n${result.answer}`, 'agent', null, 'markdown');
+      if (result.success) {
+        setUploadedDocuments([...uploadedDocuments, result.document]);
+        setShowDocUploadModal(false);
+        addMessage(`**Document uploaded:** ${file.name}\n\nI can now use this document to match prospects with your products and services.`, 'agent', null, 'markdown');
       } else {
-        addMessage(result.error || "Unable to generate insights at this time. Please try again.", 'agent', null, 'markdown');
+        addMessage(`Failed to upload document: ${result.error || 'Unknown error'}`, 'agent', null, 'markdown');
       }
     } catch (error) {
-      console.error('Insights error:', error);
-      addMessage("Error generating insights. Please check your connection.", 'agent', null, 'markdown');
+      console.error('Document upload error:', error);
+      addMessage('Error uploading document. Please try again.', 'agent', null, 'markdown');
     } finally {
-      setIsAnalyzing(false);
+      setIsUploadingDoc(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Remove document
+  const handleRemoveDocument = async (docId) => {
+    if (isDemoMode) {
+      setUploadedDocuments(uploadedDocuments.filter(d => d.id !== docId));
+      addMessage('Document removed (Demo Mode)', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents/${docId}`, {
+        method: 'DELETE',
+        headers: authOptionalHeaders(),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setUploadedDocuments(uploadedDocuments.filter(d => d.id !== docId));
+      }
+    } catch (error) {
+      console.error('Error removing document:', error);
+    }
+  };
+
+  // Match prospects with documents
+  const handleMatchProspects = async () => {
+    if (uploadedDocuments.length === 0) {
+      addMessage('Please upload a product catalog first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    if (selectedSavedProjectLeads.length === 0) {
+      addMessage('Please load a leads list first to match prospects.', 'agent', null, 'markdown');
+      return;
+    }
+
+    if (isDemoMode) {
+      addMessage(`**Prospect Matching Results**\n\nBased on your product catalog, here are the best matches from **${selectedSavedProject?.name}**:\n\n1. **Acme Corp** - 95% match\n   - Needs: Enterprise software, automation\n   - Product fit: Enterprise Features package\n\n2. **TechStart Inc** - 88% match\n   - Needs: SaaS platform, integrations\n   - Product fit: API Suite, Starter plan\n\n3. **DataFlow Systems** - 82% match\n   - Needs: Data analytics, reporting\n   - Product fit: Analytics module\n\n(Demo Mode)`, 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/match-prospects`, {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({
+          user_id: getCurrentUserIdentifier(),
+          leads: selectedSavedProjectLeads.slice(0, 20),
+          document_ids: uploadedDocuments.map(d => d.id),
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        addMessage(result.analysis || 'Matching complete. See results above.', 'agent', null, 'markdown');
+      } else {
+        addMessage(`Matching failed: ${result.error || 'Unknown error'}`, 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Prospect matching error:', error);
+      addMessage('Error matching prospects. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Scroll to ranking results when they appear
+  useEffect(() => {
+    if (rankedVendors.length === 0) return;
+
+    const scrollTimer = window.requestAnimationFrame(() => {
+      rankingResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    return () => window.cancelAnimationFrame(scrollTimer);
+  }, [rankedVendors.length]);
+
+  const fetchCampaigns = async () => {
+    // Demo mode: use mock campaigns
+    if (isDemoMode) {
+      setCampaigns(DEMO_CAMPAIGNS);
+      if (!selectedRankingCampaignId && DEMO_CAMPAIGNS.length > 0) {
+        setSelectedRankingCampaignId(String(DEMO_CAMPAIGNS[0].id));
+      }
+      return;
+    }
+
+    try {
+      setIsLoadingCampaigns(true);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.campaigns)) {
+        setCampaigns(result.campaigns);
+        if (!selectedRankingCampaignId && result.campaigns.length > 0) {
+          setSelectedRankingCampaignId(String(result.campaigns[0].id));
+        }
+      } else {
+        setCampaigns([]);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      setCampaigns([]);
+    } finally {
+      setIsLoadingCampaigns(false);
     }
   };
 
@@ -409,10 +297,11 @@ function SalesHelperAgent() {
     try {
       setIsLoading(true);
       const sampleLeads = csvData.slice(0, 25);
+      const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads })
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ question, project: { name: 'Uploaded Sales Data' }, leads: sampleLeads, user_id: userId })
       });
 
       const result = await response.json();
@@ -430,10 +319,21 @@ function SalesHelperAgent() {
   };
 
   const fetchSavedProjects = async () => {
+    // Demo mode: use mock projects
+    if (isDemoMode) {
+      setSavedProjects(DEMO_SAVED_PROJECTS);
+      if (DEMO_SAVED_PROJECTS.length > 0 && !savedProjectSelection) {
+        setSavedProjectSelection(String(DEMO_SAVED_PROJECTS[0].id));
+      }
+      return;
+    }
+
     try {
       setIsLoadingSavedProjects(true);
-      const username = getCurrentUsername();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(username)}`);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
       const result = await response.json();
 
       if (result.success && Array.isArray(result.projects)) {
@@ -455,10 +355,27 @@ function SalesHelperAgent() {
   const loadSavedProjectLeads = async (projectId) => {
     if (!projectId) return;
 
+    // Demo mode: use mock leads
+    if (isDemoMode) {
+      const demoProject = DEMO_SAVED_PROJECTS.find(p => p.id === projectId);
+      setSelectedSavedProject(demoProject);
+      setSelectedSavedProjectLeads(DEMO_PROJECT_LEADS);
+      setSavedProjectSelection(String(projectId));
+      addMessage(
+        `**Loaded saved leads list:** ${demoProject?.name || 'Demo List'}\n\nI can now answer questions about these ${DEMO_PROJECT_LEADS.length} leads. (Demo Mode)`,
+        'agent',
+        null,
+        'markdown'
+      );
+      return;
+    }
+
     try {
       setIsLoadingSavedProjectLeads(true);
-      const username = getCurrentUsername();
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(username)}`);
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
       const result = await response.json();
 
       if (result.success) {
@@ -466,7 +383,7 @@ function SalesHelperAgent() {
         setSelectedSavedProjectLeads(result.leads || []);
         setSavedProjectSelection(String(projectId));
         addMessage(
-          `📂 **Loaded saved leads list:** ${result.project?.name || 'Untitled'}\n\nI can now answer questions about these ${result.leads?.length || 0} leads.`,
+          `**Loaded saved leads list:** ${result.project?.name || 'Untitled'}\n\nI can now answer questions about these ${result.leads?.length || 0} leads.`,
           'agent',
           null,
           'markdown'
@@ -490,13 +407,15 @@ function SalesHelperAgent() {
 
     try {
       setIsLoading(true);
+      const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.SALES_HELPER_CHAT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           question,
           project: selectedSavedProject,
-          leads: selectedSavedProjectLeads
+          leads: selectedSavedProjectLeads,
+          user_id: userId
         })
       });
 
@@ -512,6 +431,47 @@ function SalesHelperAgent() {
       addMessage('Error analyzing the saved leads list. Please try again.', 'agent', null, 'markdown');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRankVendorReplies = async () => {
+    if (!selectedRankingCampaignId) {
+      addMessage('Please select a campaign with vendor replies first.', 'agent', null, 'markdown');
+      return;
+    }
+
+    try {
+      setIsRankingVendors(true);
+      addMessage('Ranking vendor replies by your criteria...', 'agent', null, 'markdown');
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(API_CONFIG.RANK_CAMPAIGN_VENDORS.replace('{campaignId}', selectedRankingCampaignId), {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({
+          criteria: rankingCriteria,
+          user_id: userId,
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.vendors)) {
+        setRankedVendors(result.vendors);
+        const campaignName = result.campaign?.name || 'selected campaign';
+        addMessage(
+          `**Vendor ranking completed for ${campaignName}:**\n\n${result.vendors.map(v => `${v.rank}. ${v.vendor_name} - ${v.score}/100\n${v.reason || v.reply_summary || ''}`).join('\n\n')}`,
+          'agent',
+          null,
+          'markdown'
+        );
+      } else {
+        setRankedVendors([]);
+        addMessage(result.error || 'Unable to rank vendor replies right now.', 'agent', null, 'markdown');
+      }
+    } catch (error) {
+      console.error('Vendor ranking error:', error);
+      addMessage('Error ranking vendor replies. Please try again.', 'agent', null, 'markdown');
+    } finally {
+      setIsRankingVendors(false);
     }
   };
 
@@ -543,15 +503,15 @@ function SalesHelperAgent() {
     window.salesHelper = {
       contactProspect: (index) => {
         const prospect = csvData[index];
-        addMessage(`📞 **Initiating contact with ${prospect.company || prospect.name}**\n\n📋 **Contact Details:**\n${prospect.email ? `📧 Email: ${prospect.email}` : ''}\n${prospect.phone ? `📱 Phone: ${prospect.phone}` : ''}\n${prospect.linkedin ? `🔗 LinkedIn: ${prospect.linkedin}` : ''}`, 'agent', null, 'markdown');
+        addMessage(`**Initiating contact with ${prospect.company || prospect.name}**\n\n**Contact Details:**\n${prospect.email ? `Email: ${prospect.email}` : ''}\n${prospect.phone ? `Phone: ${prospect.phone}` : ''}\n${prospect.linkedin ? `LinkedIn: ${prospect.linkedin}` : ''}`, 'agent', null, 'markdown');
       },
       addToFavorites: (index) => {
         const prospect = csvData[index];
-        addMessage(`⭐ Added ${prospect.company || prospect.name} to favorites!`, 'agent', null, 'markdown');
+        addMessage(`Added ${prospect.company || prospect.name} to favorites!`, 'agent', null, 'markdown');
       },
       addNotes: (index) => {
         const prospect = csvData[index];
-        addMessage(`📝 **Add notes for ${prospect.company || prospect.name}:**\n\nYou can track:\n• Last contact date\n• Discussion points\n• Next follow-up action\n• Decision makers involved`, 'agent', null, 'markdown');
+        addMessage(`**Add notes for ${prospect.company || prospect.name}:**\n\nYou can track:\n• Last contact date\n• Discussion points\n• Next follow-up action\n• Decision makers involved`, 'agent', null, 'markdown');
       }
     };
 
@@ -563,258 +523,491 @@ function SalesHelperAgent() {
   return (
     <div className="sales-helper-agent">
       <Header />
-      
-      <div className="main-container">
-        {/* Left Section - Upload and Tools */}
-        <div className="upload-section">
-          <h3>📊 Sales Pipeline Manager</h3>
-          
-          {/* Sales Data Upload */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>📈 Sales Data</h4>
-              {csvData && <span className="status-indicator">✅ Loaded</span>}
-            </div>
-            <p>Upload your prospects, leads, or customer data in CSV/XLSX format.</p>
-            <input
-              type="file"
-              ref={csvFileRef}
-              onChange={handleCSVUpload}
-              accept=".csv,.xlsx,.xls"
-              style={{ display: 'none' }}
-            />
-            <button 
-              className="upload-btn"
-              onClick={() => csvFileRef.current?.click()}
-              disabled={isLoading}
-            >
-              {isLoading ? '⏳ Processing...' : '📊 Upload Sales Data'}
-            </button>
-            {csvData && (
-              <div className="file-info">
-                <span>📋 {csvData.length} prospects loaded</span>
-              </div>
-            )}
-          </div>
 
-          {/* Sales Insights */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>🎯 AI Insights</h4>
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Sales Helper</h1>
             </div>
-            <p>Get AI-powered insights about your sales pipeline, conversion opportunities, and lead quality.</p>
-            <button 
-              className="upload-btn secondary"
-              onClick={handleSalesInsights}
-              disabled={!csvData || isAnalyzing}
-            >
-              {isAnalyzing ? '🔍 Analyzing...' : '🧠 Generate Insights'}
-            </button>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="upload-card">
-            <div className="upload-header">
-              <h4>⚡ Quick Actions</h4>
-            </div>
-            <div className="quick-actions">
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Which leads look like high value deals?')}
-                disabled={!csvData}
-              >
-                💰 High Value Deals
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Show me qualified leads and why they are qualified')}
-                disabled={!csvData}
-              >
-                ✅ Qualified Leads
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Which leads need follow up and what should the follow up be?')}
-                disabled={!csvData}
-              >
-                📅 Follow-ups
-              </button>
-              <button 
-                className="quick-action-btn"
-                onClick={() => csvData && handleAskCsvLeads('Identify enterprise-level prospects from this data')}
-                disabled={!csvData}
-              >
-                🏢 Enterprise
-              </button>
-            </div>
+            <p className="text-muted">
+              Analyze prospects, rank vendors, and match leads with your product catalog.
+            </p>
           </div>
         </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="salesHelper"
+            onProjectChange={(project) => {
+              if (project) {
+                console.log('Project selected:', project.name);
+              }
+            }}
+          />
+        </div>
+      </div>
 
-        <div className="assistant-workspace">
-          <div className="saved-leads-panel">
-            <div className="saved-leads-panel-header">
-              <div>
-                <h2>💾 Saved Leads</h2>
-                <p>Select a saved list to open it in the panel.</p>
-              </div>
-              <button className="refresh-saved-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects}>
-                {isLoadingSavedProjects ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/search-analysis.png', title: 'Lead analysis', description: 'Load saved lead lists and explore prospect data.' },
+          { iconSrc: '/assets/icons/chat.png', title: 'AI assistant', description: 'Ask questions about vendors and product fit.' },
+          { iconSrc: '/assets/icons/bar-chart.png', title: 'Vendor ranking', description: 'Score and compare vendors for your RFP.' },
+        ]}
+      />
 
-            <div className="saved-leads-controls">
-              <select
-                value={savedProjectSelection}
-                onChange={(e) => setSavedProjectSelection(e.target.value)}
-                className="saved-leads-select"
-              >
-                <option value="">Select a saved leads list</option>
-                {savedProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.lead_count})
-                  </option>
-                ))}
-              </select>
-              <button
-                className="open-saved-list-btn"
-                onClick={() => loadSavedProjectLeads(savedProjectSelection)}
-                disabled={!savedProjectSelection || isLoadingSavedProjectLeads}
-              >
-                {isLoadingSavedProjectLeads ? 'Opening...' : 'Open List'}
-              </button>
-            </div>
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample leads."
+      />
 
-            {!selectedSavedProject ? (
-              <div className="saved-leads-table-scroll">
-                {isLoadingSavedProjects ? (
-                  <div className="empty-saved-state">Loading saved lists...</div>
-                ) : savedProjects.length === 0 ? (
-                  <div className="empty-saved-state">No saved leads lists found.</div>
-                ) : (
-                  <table className="businesses-table saved-projects-table">
-                    <thead>
-                      <tr>
-                        <th>List Name</th>
-                        <th>Query</th>
-                        <th>Leads</th>
-                        <th>Created</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {savedProjects.map((project) => (
-                        <tr key={project.id}>
-                          <td>{project.name}</td>
-                          <td>{project.query_used || 'N/A'}</td>
-                          <td>{project.lead_count}</td>
-                          <td>{project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</td>
-                          <td>
-                            <button className="open-row-btn" onClick={() => loadSavedProjectLeads(project.id)}>
-                              Open
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="selected-saved-list-bar">
-                  <div>
-                    <h3>{selectedSavedProject?.name}</h3>
-                    <p>{selectedSavedProjectLeads.length} leads loaded from the saved list.</p>
-                  </div>
-                  <button
-                    className="back-to-lists-btn"
-                    onClick={() => {
-                      setSelectedSavedProject(null);
-                      setSelectedSavedProjectLeads([]);
-                    }}
-                  >
-                    Back to Lists
+      <div className="main-container">
+        <ProjectGate agentLabel="Sales Helper workspace">
+          <div className="sales-helper-content">
+            <div className="assistant-workspace tabbed-layout">
+          {/* Tab Navigation */}
+          <div className="workspace-tabs">
+            <button
+              className={`workspace-tab ${activeTab === 'leads' ? 'active' : ''}`}
+              onClick={() => setActiveTab('leads')}
+            >
+              Saved Leads
+              <span className="tab-badge">{savedProjects.length} lists</span>
+              {savedLeadsCount > 0 && <span className="tab-badge accent">{savedLeadsCount} loaded</span>}
+            </button>
+            <button
+              className={`workspace-tab ${activeTab === 'ranking' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ranking')}
+            >
+              Vendor Ranking
+              <span className="tab-badge">{campaigns.length} campaigns</span>
+              {rankedVendors.length > 0 && <span className="tab-badge accent">{rankedVendors.length} ranked</span>}
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="workspace-tab-content">
+            {/* Saved Leads Tab */}
+            {activeTab === 'leads' && (
+              <div className="tab-panel leads-panel">
+                <div className="panel-header-row">
+                  <button type="button" className="panel-action-btn" onClick={fetchSavedProjects} disabled={isLoadingSavedProjects} title="Refresh lists">
+                    {isLoadingSavedProjects ? '...' : 'Refresh'}
                   </button>
                 </div>
 
-                <div className="saved-leads-table-scroll">
-                  <table className="businesses-table saved-leads-table">
-                    <thead>
-                      <tr>
-                        <th>Business Name</th>
-                        <th>Website</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                        <th>LinkedIn</th>
-                        <th>Summary</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSavedProjectLeads.map((lead, index) => (
-                        <tr key={`${lead.id || index}`}>
-                          <td>{lead.name || 'N/A'}</td>
-                          <td>{lead.website ? <a href={lead.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
-                          <td>{lead.phone || 'N/A'}</td>
-                          <td>{lead.email || (Array.isArray(lead.emails) && lead.emails[0]) || 'N/A'}</td>
-                          <td>{lead.linkedin ? <a href={lead.linkedin} target="_blank" rel="noopener noreferrer">View</a> : 'N/A'}</td>
-                          <td className="lead-summary-cell">{lead.summary || lead.description || 'N/A'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
+                {/* Main content area */}
+                <div className="leads-main">
+                {!selectedSavedProject ? (
+                  <div className="leads-grid-container">
+                    {isLoadingSavedProjects ? (
+                      <div className="empty-saved-state">Loading...</div>
+                    ) : savedProjects.length === 0 ? (
+                      <div className="empty-state-compact">
+                        <p>No saved lists yet. Create lead lists from Market Research.</p>
+                      </div>
+                    ) : (
+                      <div className="leads-list-grid">
+                        {savedProjects.map((project) => (
+                          <button
+                            key={project.id}
+                            className="lead-list-card"
+                            onClick={() => loadSavedProjectLeads(project.id)}
+                          >
+                            <div className="lead-list-card-header">
+                              <span className="lead-count">{project.lead_count}</span>
+                              <span className="lead-count-label">leads</span>
+                            </div>
+                            <div className="lead-list-card-body">
+                              <h4 className="lead-list-name">{project.name}</h4>
+                              <p className="lead-list-query">{project.query_used || 'No query specified'}</p>
+                            </div>
+                            <div className="lead-list-card-footer">
+                              <span className="view-leads-link">View leads →</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="selected-list-header">
+                      <button
+                        className="back-to-lists-btn"
+                        onClick={() => {
+                          setSelectedSavedProject(null);
+                          setSelectedSavedProjectLeads([]);
+                        }}
+                      >
+                        ← All Lists
+                      </button>
+                      <div className="selected-list-info">
+                        <h3>{selectedSavedProject?.name}</h3>
+                        <span className="lead-count-badge">{selectedSavedProjectLeads.length} leads</span>
+                      </div>
+                    </div>
 
-          {/* Right Section - Chat Interface */}
-          <div className="chat-section">
-            <div className="chat-header">
-              <h2>💼 Sales Assistant</h2>
-              <p>
-                {selectedSavedProject
-                  ? `Asking questions about ${selectedSavedProject.name}`
-                  : 'Search prospects, analyze deals, and get sales insights'}
-              </p>
-            </div>
-            
-            <div className="messages-container">
-              {messages.map((message) => (
-                <div key={message.id} className={`message ${message.sender}`}>
-                  <div className="message-content">
-                    <MessageContent message={message} />
-                    <span className="timestamp">{message.timestamp}</span>
+                    <div className="leads-card-grid">
+                      {selectedSavedProjectLeads.map((lead, index) => (
+                        <div key={`${lead.id || index}`} className="lead-card">
+                          <div className="lead-card-header">
+                            <h4 className="lead-name">{lead.name || 'Unknown'}</h4>
+                            {lead.website && (
+                              <a href={lead.website} target="_blank" rel="noopener noreferrer" className="lead-website-btn">
+                                Website
+                              </a>
+                            )}
+                          </div>
+                          <div className="lead-card-details">
+                            {lead.phone && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Phone</span>
+                                <span className="detail-value">{lead.phone}</span>
+                              </div>
+                            )}
+                            {(lead.email || (Array.isArray(lead.emails) && lead.emails[0])) && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Email</span>
+                                <span className="detail-value">{lead.email || lead.emails[0]}</span>
+                              </div>
+                            )}
+                            {lead.address && (
+                              <div className="lead-detail">
+                                <span className="detail-label">Location</span>
+                                <span className="detail-value">{lead.address}</span>
+                              </div>
+                            )}
+                          </div>
+                          {lead.summary && (
+                            <p className="lead-summary">{lead.summary}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Documents Section - Redesigned */}
+                <div className="catalog-section">
+                  <div className="catalog-header">
+                    <div>
+                      <h4>Product Catalogs</h4>
+                      <p className="catalog-subtitle">Upload documents to match prospects with your offerings</p>
+                    </div>
+                  </div>
+
+                  <div className="catalog-content">
+                    {/* Upload Zone */}
+                    <div
+                      className={`upload-dropzone ${isUploadingDoc ? 'uploading' : ''}`}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <img src="/assets/icons/document.png" alt="" className="dropzone-icon-img" />
+                      <div className="dropzone-text">
+                        <span className="dropzone-title">
+                          {isUploadingDoc ? 'Uploading...' : 'Drop files or click to upload'}
+                        </span>
+                        <span className="dropzone-hint">PDF, Word, TXT up to 10MB</span>
+                      </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleDocumentUpload}
+                        accept=".pdf,.doc,.docx,.txt"
+                        style={{ display: 'none' }}
+                      />
+                    </div>
+
+                    {/* Document List */}
+                    {uploadedDocuments.length > 0 && (
+                      <div className="document-list">
+                        {uploadedDocuments.map(doc => (
+                          <div key={doc.id} className="document-card">
+                            <div className="doc-card-top">
+                              <img src="/assets/icons/document.png" alt="" className="doc-card-icon" />
+                              <div className="doc-card-info">
+                                <span className="doc-card-name">{doc.name}</span>
+                                <span className="doc-card-meta">{doc.size} · {doc.uploadedAt}</span>
+                              </div>
+                            </div>
+                            <div className="doc-card-actions">
+                              <button
+                                className="doc-text-btn"
+                                onClick={() => window.open(doc.url || `/api/sales-helper/documents/${doc.id}/view`, '_blank')}
+                              >
+                                View
+                              </button>
+                              <a
+                                className="doc-text-btn"
+                                href={doc.url || `/api/sales-helper/documents/${doc.id}/download`}
+                                download={doc.name}
+                              >
+                                Download
+                              </a>
+                              <button
+                                className="doc-text-btn danger"
+                                onClick={() => handleRemoveDocument(doc.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Match Button */}
+                    {uploadedDocuments.length > 0 && selectedSavedProjectLeads.length > 0 && (
+                      <button className="match-prospects-btn" onClick={handleMatchProspects} disabled={isLoading}>
+                        {isLoading ? 'Matching prospects...' : 'Match with Prospects'}
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <form className="message-form" onSubmit={handleSendMessage}>
-              <div className="input-container">
-                <input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder={
-                    selectedSavedProject
-                      ? 'Ask a question about the selected saved leads list...'
-                      : 'Search prospects, ask for insights, or analyze deals...'
-                  }
-                  disabled={isLoading}
-                  className="message-input"
-                />
-                <button 
-                  type="submit" 
-                  disabled={isLoading || !inputMessage.trim()}
-                  className="send-button"
-                >
-                  {isLoading ? '⏳' : '📤'}
-                </button>
               </div>
-            </form>
+              </div>
+            )}
+
+            {/* Vendor Ranking Tab - Redesigned */}
+            {activeTab === 'ranking' && (
+              <div className="tab-panel ranking-panel-redesigned">
+                {/* Step 1: Select Campaign */}
+                <div className="ranking-step">
+                  <div className="step-header">
+                    <span className="step-number">1</span>
+                    <div className="step-info">
+                      <h4>Select Campaign</h4>
+                      <p>Choose a campaign with vendor responses to rank</p>
+                    </div>
+                    <button type="button" className="refresh-btn-small" onClick={fetchCampaigns} disabled={isLoadingCampaigns}>
+                      {isLoadingCampaigns ? '...' : '↻'}
+                    </button>
+                  </div>
+
+                  {campaigns.length === 0 ? (
+                    <div className="no-campaigns-hint">
+                      <p>No campaigns with responses yet</p>
+                    </div>
+                  ) : (
+                    <div className="campaign-cards">
+                      {campaigns.map((campaign) => (
+                        <button
+                          key={campaign.id}
+                          className={`campaign-card ${selectedRankingCampaignId === campaign.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedRankingCampaignId(campaign.id);
+                            setRankedVendors([]);
+                          }}
+                        >
+                          <div className="campaign-card-main">
+                            <span className="campaign-name">{campaign.name}</span>
+                            <span className="campaign-date">{campaign.created_at ? new Date(campaign.created_at).toLocaleDateString() : ''}</span>
+                          </div>
+                          <div className="campaign-stats">
+                            <div className="stat">
+                              <span className="stat-value">{campaign.totalReplied || 0}</span>
+                              <span className="stat-label">replies</span>
+                            </div>
+                            <div className="stat">
+                              <span className="stat-value">{campaign.totalSent || 0}</span>
+                              <span className="stat-label">sent</span>
+                            </div>
+                          </div>
+                          {selectedRankingCampaignId === campaign.id && (
+                            <div className="selected-check">✓</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 2: Define Criteria */}
+                <div className={`ranking-step ${!selectedRankingCampaignId ? 'disabled' : ''}`}>
+                  <div className="step-header">
+                    <span className="step-number">2</span>
+                    <div className="step-info">
+                      <h4>Define Ranking Criteria</h4>
+                      <p>What factors matter most for your decision?</p>
+                    </div>
+                  </div>
+
+                  <div className="criteria-input-area">
+                    <textarea
+                      value={rankingCriteria}
+                      onChange={(e) => setRankingCriteria(e.target.value)}
+                      rows={4}
+                      className="criteria-textarea"
+                      placeholder="e.g., Price competitiveness, delivery timeline, quality certifications, customer support..."
+                      disabled={!selectedRankingCampaignId}
+                    />
+                    <div className="criteria-suggestions">
+                      <span className="suggestion-label">Quick add:</span>
+                      {['Price', 'Quality', 'Reliability', 'Speed', 'Support'].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="criteria-tag"
+                          onClick={() => setRankingCriteria(prev => prev ? `${prev}, ${tag}` : tag)}
+                          disabled={!selectedRankingCampaignId}
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="rank-vendors-btn"
+                    onClick={handleRankVendorReplies}
+                    disabled={!selectedRankingCampaignId || isRankingVendors || isLoadingCampaigns}
+                  >
+                    {isRankingVendors ? (
+                      <>
+                        <span className="spinner-small" />
+                        Analyzing responses...
+                      </>
+                    ) : 'Rank Vendors'}
+                  </button>
+                </div>
+
+                {/* Ranked Results */}
+                {rankedVendors.length > 0 && (
+                  <div className="ranked-results" ref={rankingResultsRef}>
+                    <div className="results-header">
+                      <h4>Ranking Results</h4>
+                      <span className="results-count">{rankedVendors.length} vendors scored</span>
+                    </div>
+
+                    {/* Top 3 Podium */}
+                    {rankedVendors.length >= 3 && (
+                      <div className="podium">
+                        <div className="podium-item silver">
+                          <div className="podium-rank">2</div>
+                          <div className="podium-name">{rankedVendors[1]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[1]?.score}</div>
+                        </div>
+                        <div className="podium-item gold">
+                          <div className="podium-rank">1</div>
+                          <div className="podium-name">{rankedVendors[0]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[0]?.score}</div>
+                        </div>
+                        <div className="podium-item bronze">
+                          <div className="podium-rank">3</div>
+                          <div className="podium-name">{rankedVendors[2]?.vendor_name}</div>
+                          <div className="podium-score">{rankedVendors[2]?.score}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Full list with score bars */}
+                    <div className="ranked-list-visual">
+                      {rankedVendors.map((v) => (
+                        <div key={v.rank} className={`ranked-item-visual ${v.rank <= 3 ? 'top-three' : ''}`}>
+                          <div className="rank-header">
+                            <span className="rank-position">#{v.rank}</span>
+                            <span className="rank-vendor-name">{v.vendor_name}</span>
+                            <span className="rank-score-value">{v.score}</span>
+                          </div>
+                          <div className="score-bar-container">
+                            <div
+                              className="score-bar-fill"
+                              style={{ width: `${v.score}%` }}
+                            />
+                          </div>
+                          {(v.reason || v.reply_summary) && (
+                            <p className="rank-summary">{v.reason || v.reply_summary}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Floating Chat Button */}
+        {!isChatOpen && (
+          <button className="floating-chat-btn" onClick={() => setIsChatOpen(true)} aria-label="Open chat">
+            <img src="/assets/icons/chat.png" alt="" className="chat-btn-icon" />
+          </button>
+        )}
+
+        {/* Chat Interface */}
+        {isChatOpen && (
+            <div className="chat-section">
+              <div className="chat-header">
+                <div className="chat-header-content">
+                  <h2>Sales Assistant</h2>
+                  <p>
+                    {selectedSavedProject
+                      ? `Asking questions about ${selectedSavedProject.name}`
+                      : 'Search prospects, analyze deals, and get sales insights'}
+                  </p>
+                </div>
+                <button
+                  className="chat-close-btn"
+                  onClick={() => setIsChatOpen(false)}
+                  aria-label="Close chat"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="messages-container">
+                {messages.map((message, index) => {
+                  const prevMessage = messages[index - 1];
+                  const showDateSeparator = !prevMessage || !isSameDay(message.timestamp, prevMessage.timestamp);
+                  return (
+                    <React.Fragment key={message.id}>
+                      {showDateSeparator && (
+                        <div className="date-separator">
+                          <span>{getRelativeDateLabel(message.timestamp)}</span>
+                        </div>
+                      )}
+                      <div className={`message ${message.sender}`}>
+                        <div className="message-content">
+                          <MessageContent message={message} />
+                          <span className="timestamp">{formatTime(message.timestamp)}</span>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <form className="message-form" onSubmit={handleSendMessage}>
+                <div className="input-container">
+                  <input
+                    type="text"
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    placeholder={
+                      selectedSavedProject
+                        ? 'Ask a question about the selected saved leads list...'
+                        : 'Search prospects, ask for insights, or analyze deals...'
+                    }
+                    disabled={isLoading}
+                    className="message-input"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoading || !inputMessage.trim()}
+                    className="send-button"
+                  >
+                    {isLoading ? '...' : '→'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+          </div>
+        </ProjectGate>
       </div>
     </div>
   );

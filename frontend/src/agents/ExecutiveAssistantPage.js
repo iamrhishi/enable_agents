@@ -1,33 +1,100 @@
-import { API_CONFIG } from '../config/apiConfig';
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
+import { Input, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate } from '../components';
+import ReminderModal from '../components/ReminderModal';
+import { setAgentData, AGENT_KEYS } from '../utils';
+import { formatDate } from '../utils/dateFormat';
+import { useProjectData } from '../hooks/useProjectData';
+import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+
+// Demo data for Executive Assistant - comprehensive sample to showcase features
+const DEMO_PROJECTS = [
+  { id: 'demo-p1', name: 'Q3 Product Launch', description: 'Launch new product features', status: 'Active', dueDate: '2026-09-15' },
+  { id: 'demo-p2', name: 'Marketing Campaign', description: 'Summer marketing initiative', status: 'Active', dueDate: '2026-08-01' },
+  { id: 'demo-p3', name: 'Team Expansion', description: 'Hire 5 new engineers', status: 'Active', dueDate: '2026-07-30' },
+];
+
+const DEMO_TASKS = [
+  // Pending tasks
+  { id: 'demo-t1', projectId: 'demo-p1', title: 'Write release notes', description: 'Document all new features', assignedTo: 'demo-pe1', dueDate: '2026-07-25', priority: 'Medium', status: 'Pending' },
+  { id: 'demo-t2', projectId: 'demo-p1', title: 'Design review meeting', description: 'Review UI/UX designs with team', assignedTo: 'demo-pe2', dueDate: '2026-07-20', priority: 'High', status: 'Pending' },
+  { id: 'demo-t3', projectId: 'demo-p2', title: 'Plan social media posts', description: 'Create content calendar', assignedTo: 'demo-pe3', dueDate: '2026-07-22', priority: 'Medium', status: 'Pending' },
+  { id: 'demo-t4', projectId: 'demo-p3', title: 'Post job listings', description: 'Publish on LinkedIn and Indeed', assignedTo: 'demo-pe4', dueDate: '2026-07-18', priority: 'High', status: 'Pending' },
+  // In Progress tasks
+  { id: 'demo-t5', projectId: 'demo-p1', title: 'Finalize feature specs', description: 'Complete technical specifications', assignedTo: 'demo-pe1', dueDate: '2026-07-15', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t6', projectId: 'demo-p1', title: 'Build landing page', description: 'Create product launch page', assignedTo: 'demo-pe2', dueDate: '2026-07-28', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t7', projectId: 'demo-p2', title: 'Create ad copy', description: 'Write marketing copy for ads', assignedTo: 'demo-pe3', dueDate: '2026-07-19', priority: 'High', status: 'In Progress' },
+  { id: 'demo-t8', projectId: 'demo-p3', title: 'Screen resumes', description: 'Review initial applications', assignedTo: 'demo-pe4', dueDate: '2026-07-21', priority: 'Medium', status: 'In Progress' },
+  // Completed tasks
+  { id: 'demo-t9', projectId: 'demo-p1', title: 'Define MVP scope', description: 'Finalize feature list for launch', assignedTo: 'demo-pe1', dueDate: '2026-07-10', priority: 'High', status: 'Completed' },
+  { id: 'demo-t10', projectId: 'demo-p1', title: 'Create wireframes', description: 'Design initial mockups', assignedTo: 'demo-pe2', dueDate: '2026-07-08', priority: 'Medium', status: 'Completed' },
+  { id: 'demo-t11', projectId: 'demo-p2', title: 'Competitor analysis', description: 'Research competitor campaigns', assignedTo: 'demo-pe3', dueDate: '2026-07-05', priority: 'Low', status: 'Completed' },
+  { id: 'demo-t12', projectId: 'demo-p3', title: 'Define job requirements', description: 'Write job descriptions', assignedTo: 'demo-pe4', dueDate: '2026-07-12', priority: 'High', status: 'Completed' },
+];
+
+const DEMO_PEOPLE = [
+  { id: 'demo-pe1', name: 'John Smith', email: 'john@company.com', phone: '+1 555-0101', role: 'Product Manager', projects: ['demo-p1'] },
+  { id: 'demo-pe2', name: 'Sarah Johnson', email: 'sarah@company.com', phone: '+1 555-0102', role: 'Designer', projects: ['demo-p1', 'demo-p2'] },
+  { id: 'demo-pe3', name: 'Mike Wilson', email: 'mike@company.com', phone: '+1 555-0103', role: 'Marketing Lead', projects: ['demo-p2'] },
+  { id: 'demo-pe4', name: 'Emily Chen', email: 'emily@company.com', phone: '+1 555-0104', role: 'HR Manager', projects: ['demo-p3'] },
+];
 
 function ExecutiveAssistantPage() {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('projects');
-  const [projects, setProjects] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [showProjectForm, setShowProjectForm] = useState(false);
-  const [showTaskForm, setShowTaskForm] = useState(false);
-  const [showPersonForm, setShowPersonForm] = useState(false);
-  const [showWhatsAppReminder, setShowWhatsAppReminder] = useState(false);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-
-  // Form states
-  const [newProject, setNewProject] = useState({
-    id: '',
-    name: '',
-    description: '',
-    status: 'Active',
-    dueDate: ''
+  // Demo mode detection with change listener
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
   });
 
+  // Global project data hook - manages cross-agent project context
+  const {
+    project: globalProject,
+    hasProject: hasGlobalProject,
+    data: projectData,
+    saveData: saveProjectData,
+    sharedData,
+    getSharedAgentData,
+    hasSharedData,
+  } = useProjectData('executiveAssistant', {
+    defaultData: { localProjects: [], tasks: [], people: [] },
+    onProjectLoad: (project, data, shared) => {
+      const hasSavedData = data?.localProjects?.length || data?.tasks?.length || data?.people?.length;
+
+      if (hasSavedData) {
+        setProjects(data.localProjects || []);
+        setTasks(data.tasks || []);
+        setPeople(data.people || []);
+      } else if (isDemoMode) {
+        setProjects(DEMO_PROJECTS);
+        setTasks(DEMO_TASKS);
+        setPeople(DEMO_PEOPLE);
+      } else {
+        setProjects([]);
+        setTasks([]);
+        setPeople([]);
+      }
+
+      if (shared && Object.keys(shared).length > 0) {
+        const agentNames = Object.keys(shared).join(', ');
+        console.log(`Shared data available from: ${agentNames}`);
+      }
+    },
+  });
+
+  const selectedProjectId = useSelectedProjectId();
+
+  const [activeTab, setActiveTab] = useState('projects-tasks');
+
+  // Initialize with demo data if in demo mode
+  const initialDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+
+  const [projects, setProjects] = useState(() => initialDemoMode ? DEMO_PROJECTS : []);
+  const [tasks, setTasks] = useState(() => initialDemoMode ? DEMO_TASKS : []);
+  const [people, setPeople] = useState(() => initialDemoMode ? DEMO_PEOPLE : []);
+  const [showPersonForm, setShowPersonForm] = useState(false);
+
+  // Form states
   const [newTask, setNewTask] = useState({
     id: '',
     projectId: '',
@@ -44,69 +111,90 @@ function ExecutiveAssistantPage() {
     name: '',
     email: '',
     phone: '',
-    whatsappNumber: '',
     role: '',
     projects: []
   });
 
-  const [reminderMessage, setReminderMessage] = useState('');
-  const [reminderDetails, setReminderDetails] = useState({
-    person: '',
-    task: '',
-    project: '',
-    message: '',
-    sendTime: 'now'
-  });
+  // Drag state - track what we're dragging and where
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null); // 'column-Pending' | 'person-id123'
 
-  // Load data from localStorage on mount
+  // Reminder modal state
+  const [reminderTask, setReminderTask] = useState(null);
+  const [reminderPerson, setReminderPerson] = useState(null);
+
+  // Listen for mode changes (storage event handles cross-tab changes)
   useEffect(() => {
-    const savedProjects = JSON.parse(localStorage.getItem('ea_projects') || '[]');
-    const savedTasks = JSON.parse(localStorage.getItem('ea_tasks') || '[]');
-    const savedPeople = JSON.parse(localStorage.getItem('ea_people') || '[]');
-    
-    setProjects(savedProjects);
-    setTasks(savedTasks);
-    setPeople(savedPeople);
+    const handleModeChange = () => {
+      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
+      setIsDemoMode(newMode);
+    };
+    window.addEventListener('storage', handleModeChange);
+    return () => {
+      window.removeEventListener('storage', handleModeChange);
+    };
   }, []);
 
-  // Save to localStorage whenever data changes
+  // Load demo data on mount if in demo mode, or clear if live mode with no project
   useEffect(() => {
-    localStorage.setItem('ea_projects', JSON.stringify(projects));
-  }, [projects]);
-
-  useEffect(() => {
-    localStorage.setItem('ea_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    localStorage.setItem('ea_people', JSON.stringify(people));
-  }, [people]);
-
-  // Add Project
-  const handleAddProject = () => {
-    if (newProject.name.trim()) {
-      const project = {
-        ...newProject,
-        id: Date.now().toString()
-      };
-      setProjects([...projects, project]);
-      setNewProject({ id: '', name: '', description: '', status: 'Active', dueDate: '' });
-      setShowProjectForm(false);
+    if (!selectedProjectId) {
+      if (isDemoMode) {
+        setProjects(DEMO_PROJECTS);
+        setTasks(DEMO_TASKS);
+        setPeople(DEMO_PEOPLE);
+      } else {
+        setProjects([]);
+        setTasks([]);
+        setPeople([]);
+      }
     }
-  };
+  }, [selectedProjectId, isDemoMode]);
 
-  // Delete Project
-  const handleDeleteProject = (id) => {
-    setProjects(projects.filter(p => p.id !== id));
-    setTasks(tasks.filter(t => t.projectId !== id));
-  };
+  // Debounced save to prevent flicker from rapid re-renders
+  const saveTimeoutRef = useRef(null);
+  // Use ref for saveProjectData to avoid dependency instability
+  const saveProjectDataRef = useRef(saveProjectData);
+  saveProjectDataRef.current = saveProjectData;
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (projects.length > 0 || tasks.length > 0 || people.length > 0) {
+      // Clear previous timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Debounce save by 300ms
+      saveTimeoutRef.current = setTimeout(() => {
+        // Save to agent-specific storage
+        setAgentData(AGENT_KEYS.EXECUTIVE_ASSISTANT, { projects, tasks, people }, isDemoMode);
+
+        // Also save to global project if one is selected
+        if (hasGlobalProject) {
+          saveProjectDataRef.current({
+            localProjects: projects,
+            tasks: tasks,
+            people: people,
+            lastUpdated: new Date().toISOString(),
+          });
+        }
+      }, 300);
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [projects, tasks, people, isDemoMode, hasGlobalProject, selectedProjectId]);
 
   // Add Task
   const handleAddTask = () => {
-    if (newTask.title.trim() && newTask.projectId) {
+    if (newTask.title.trim()) {
       const task = {
         ...newTask,
-        id: Date.now().toString()
+        id: Date.now().toString(),
+        projectId: selectedProjectId || 'default'
       };
       setTasks([...tasks, task]);
       setNewTask({
@@ -119,7 +207,6 @@ function ExecutiveAssistantPage() {
         priority: 'Medium',
         status: 'Pending'
       });
-      setShowTaskForm(false);
     }
   };
 
@@ -130,7 +217,7 @@ function ExecutiveAssistantPage() {
 
   // Add Person
   const handleAddPerson = () => {
-    if (newPerson.name.trim() && newPerson.whatsappNumber.trim()) {
+    if (newPerson.name.trim() && newPerson.email.trim()) {
       const person = {
         ...newPerson,
         id: Date.now().toString()
@@ -141,7 +228,6 @@ function ExecutiveAssistantPage() {
         name: '',
         email: '',
         phone: '',
-        whatsappNumber: '',
         role: '',
         projects: []
       });
@@ -154,528 +240,511 @@ function ExecutiveAssistantPage() {
     setPeople(people.filter(p => p.id !== id));
   };
 
-  // Send WhatsApp Reminder
-  const handleSendReminder = async () => {
-    if (!reminderDetails.person || !reminderDetails.message.trim()) {
-      showToast('Please select a person and enter a message', 'warning');
-      return;
-    }
-
-    const person = people.find(p => p.id === reminderDetails.person);
-    const task = tasks.find(t => t.id === reminderDetails.task);
-    const project = projects.find(p => p.id === reminderDetails.project);
-
-    let fullMessage = reminderDetails.message;
-    if (task) {
-      fullMessage = `Task Reminder: ${task.title}\n${reminderDetails.message}`;
-    }
-    if (project) {
-      fullMessage += `\nProject: ${project.name}`;
-    }
-
-    try {
-      // WhatsApp integration via Twilio or WhatsApp Business API
-      const response = await fetch(`${API_CONFIG.API_URL}/send-whatsapp-reminder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          whatsappNumber: person.whatsappNumber,
-          message: fullMessage,
-          personName: person.name,
-          sendTime: reminderDetails.sendTime,
-          taskId: task?.id,
-          projectId: project?.id
-        })
-      });
-
-      if (response.ok) {
-        showToast(`Reminder sent to ${person.name} via WhatsApp!`, 'info');
-        setReminderDetails({ person: '', task: '', project: '', message: '', sendTime: 'now' });
-        setShowWhatsAppReminder(false);
-      } else {
-        showToast('Failed to send reminder. Please try again.', 'error');
-      }
-    } catch (error) {
-      console.error('Error sending reminder:', error);
-      showToast('Error sending reminder. Make sure WhatsApp is configured.', 'error');
-    }
+  const getInitials = (name) => {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
   };
 
-  // Get tasks for selected project
-  const getProjectTasks = (projectId) => {
-    return tasks.filter(t => t.projectId === projectId);
-  };
-
-  // Get people for project
-  const getProjectPeople = (projectId) => {
-    return people.filter(p => p.projects.includes(projectId));
+  const getMonogramVariant = (id) => {
+    const variants = ['ember', 'ink', 'sage', 'slate'];
+    let hash = 0;
+    for (let i = 0; i < id.length; i += 1) {
+      hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return variants[Math.abs(hash) % variants.length];
   };
 
   return (
     <div className="executive-assistant-page">
       <Header />
-      
-      <div className="ea-container">
-        <div className="ea-header">
-          <div>
-            <h1>Executive Assistant Agent</h1>
-            <p>Manage your projects, tasks, and team communications</p>
-          </div>
-          <button className="back-button" onClick={() => navigate('/agents-assembly')}>
-            ← Back to Agents
-          </button>
-        </div>
 
-        {/* Tab Navigation */}
-        <div className="ea-tabs">
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          <BackButton />
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Executive Assistant</h1>
+            </div>
+            <p className="text-muted">
+              Manage projects, tasks, and team coordination. Send email reminders to keep stakeholders aligned.
+            </p>
+          </div>
+        </div>
+        <div className="agent-header-right">
+          <ProjectSelector
+            agentKey="executiveAssistant"
+            onProjectChange={(project) => {
+              if (project) {
+                showToast(`Loaded project: ${project.name}`, 'success');
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      <AgentOutcomesStrip
+        items={[
+          { iconSrc: '/assets/icons/checklist.png', title: 'Track projects', description: 'Organize work by project with due dates and status.' },
+          { iconSrc: '/assets/icons/users.png', title: 'Assign tasks', description: 'Delegate tasks to team members and track progress.' },
+          { iconSrc: '/assets/icons/mail.png', title: 'Email reminders', description: 'Send reminders to stakeholders via email.' },
+        ]}
+      />
+
+      <LiveModeHint
+        requireProject
+        message="Choose a project from the header dropdown, or create one with + New Project. Switch to Demo for sample projects and tasks."
+      />
+
+      <div className="ea-container">
+        <div className="ea-tabs module-tabs">
           <button
-            className={`ea-tab ${activeTab === 'projects' ? 'active' : ''}`}
-            onClick={() => setActiveTab('projects')}
+            type="button"
+            className={`module-tab ${activeTab === 'projects-tasks' ? 'module-tab--active' : ''}`}
+            onClick={() => setActiveTab('projects-tasks')}
           >
-            📋 Projects ({projects.length})
+            Task Board
           </button>
           <button
-            className={`ea-tab ${activeTab === 'tasks' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tasks')}
-          >
-            ✓ Tasks ({tasks.length})
-          </button>
-          <button
-            className={`ea-tab ${activeTab === 'people' ? 'active' : ''}`}
+            type="button"
+            className={`module-tab ${activeTab === 'people' ? 'module-tab--active' : ''}`}
             onClick={() => setActiveTab('people')}
           >
-            👥 People ({people.length})
-          </button>
-          <button
-            className={`ea-tab ${activeTab === 'reminders' ? 'active' : ''}`}
-            onClick={() => setActiveTab('reminders')}
-          >
-            💬 WhatsApp Reminders
+            Team ({people.length})
           </button>
         </div>
 
-        {/* Projects Tab */}
-        {activeTab === 'projects' && (
-          <div className="ea-content projects-section">
-            <div className="section-header">
-              <h2>Your Projects</h2>
-              <button className="add-button" onClick={() => setShowProjectForm(!showProjectForm)}>
-                + Add Project
-              </button>
+        <ProjectGate agentLabel="Executive Assistant workspace">
+        {/* Shared Context Banner - Shows when global project has data from other agents */}
+        {hasGlobalProject && Object.keys(sharedData).length > 0 && (
+          <div className="shared-context-banner">
+            <div className="shared-context-icon">
+              <img src="/assets/icons/integration.png" alt="" width={20} height={20} />
             </div>
-
-            {showProjectForm && (
-              <div className="form-card">
-                <h3>Create New Project</h3>
-                <input
-                  type="text"
-                  placeholder="Project Name"
-                  value={newProject.name}
-                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                />
-                <textarea
-                  placeholder="Project Description"
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                />
-                <input
-                  type="date"
-                  value={newProject.dueDate}
-                  onChange={(e) => setNewProject({ ...newProject, dueDate: e.target.value })}
-                />
-                <select
-                  value={newProject.status}
-                  onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-                >
-                  <option value="Active">Active</option>
-                  <option value="On Hold">On Hold</option>
-                  <option value="Completed">Completed</option>
-                </select>
-                <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddProject}>Save Project</button>
-                  <button className="btn-cancel" onClick={() => setShowProjectForm(false)}>Cancel</button>
-                </div>
+            <div className="shared-context-info">
+              <strong>Project Context Available</strong>
+              <span>
+                Data from: {Object.keys(sharedData).map(key => {
+                  const names = {
+                    salesHelper: 'Sales Helper',
+                    contentMarketing: 'Content Marketing',
+                    eventNetworking: 'Event Networking',
+                    communityNetwork: 'Community Network',
+                    dataInsights: 'Data Insights',
+                    marketResearch: 'Market Research',
+                  };
+                  return names[key] || key;
+                }).join(', ')}
+              </span>
+            </div>
+            {hasSharedData('salesHelper') && getSharedAgentData('salesHelper')?.totalPipeline && (
+              <div className="shared-stat">
+                <span className="stat-value">${(getSharedAgentData('salesHelper').totalPipeline / 1000).toFixed(0)}k</span>
+                <span className="stat-label">Pipeline</span>
               </div>
             )}
-
-            <div className="projects-grid">
-              {projects.length === 0 ? (
-                <p className="empty-state">No projects yet. Create one to get started!</p>
-              ) : (
-                projects.map((project) => (
-                  <div key={project.id} className="project-card">
-                    <div className="card-header">
-                      <h3>{project.name}</h3>
-                      <span className={`status-badge ${project.status.toLowerCase()}`}>
-                        {project.status}
-                      </span>
-                    </div>
-                    <p className="description">{project.description}</p>
-                    {project.dueDate && (
-                      <p className="due-date">📅 Due: {new Date(project.dueDate).toLocaleDateString()}</p>
-                    )}
-                    <div className="card-stats">
-                      <span>Tasks: {getProjectTasks(project.id).length}</span>
-                      <span>People: {getProjectPeople(project.id).length}</span>
-                    </div>
-                    <div className="card-actions">
-                      <button
-                        className="btn-view"
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setActiveTab('tasks');
-                        }}
-                      >
-                        View Tasks
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeleteProject(project.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {hasSharedData('salesHelper') && getSharedAgentData('salesHelper')?.leads && (
+              <div className="shared-stat">
+                <span className="stat-value">{getSharedAgentData('salesHelper').leads.length}</span>
+                <span className="stat-label">Leads</span>
+              </div>
+            )}
+            {hasSharedData('eventNetworking') && getSharedAgentData('eventNetworking')?.attendees && (
+              <div className="shared-stat">
+                <span className="stat-value">{getSharedAgentData('eventNetworking').attendees}</span>
+                <span className="stat-label">Attendees</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tasks Tab */}
-        {activeTab === 'tasks' && (
-          <div className="ea-content tasks-section">
-            <div className="section-header">
-              <h2>Tasks {selectedProject && `- ${selectedProject.name}`}</h2>
-              <button className="add-button" onClick={() => setShowTaskForm(!showTaskForm)}>
-                + Add Task
+        {/* Task Board */}
+        {activeTab === 'projects-tasks' && (
+          <div className="ea-content projects-tasks-section">
+            {/* Quick Add Bar */}
+            <div className="quick-add-bar">
+              <Input
+                placeholder="Add a new task..."
+                value={newTask.title}
+                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newTask.title.trim()) {
+                    handleAddTask();
+                  }
+                }}
+              />
+              {people.length > 0 && (
+                <div className="assignee-pills">
+                  {people.slice(0, 4).map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`assignee-pill ${newTask.assignedTo === p.id ? 'active' : ''}`}
+                      onClick={() => setNewTask({ ...newTask, assignedTo: newTask.assignedTo === p.id ? '' : p.id })}
+                      title={p.name}
+                    >
+                      {getInitials(p.name)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="priority-pills">
+                {['Low', 'Medium', 'High'].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`priority-pill ${p.toLowerCase()} ${newTask.priority === p ? 'active' : ''}`}
+                    onClick={() => setNewTask({ ...newTask, priority: p })}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn-add-task"
+                disabled={!newTask.title.trim()}
+                onClick={handleAddTask}
+              >
+                Add
               </button>
             </div>
 
-            {showTaskForm && (
-              <div className="form-card">
-                <h3>Create New Task</h3>
-                <select
-                  value={newTask.projectId}
-                  onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
-                >
-                  <option value="">Select Project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Task Title"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                />
-                <textarea
-                  placeholder="Task Description"
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                />
-                <select
-                  value={newTask.assignedTo}
-                  onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
-                >
-                  <option value="">Assign to Person</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="date"
-                  value={newTask.dueDate}
-                  onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                />
-                <select
-                  value={newTask.priority}
-                  onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                >
-                  <option value="Low">Low Priority</option>
-                  <option value="Medium">Medium Priority</option>
-                  <option value="High">High Priority</option>
-                </select>
-                <select
-                  value={newTask.status}
-                  onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
-                >
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                </select>
-                <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddTask}>Save Task</button>
-                  <button className="btn-cancel" onClick={() => setShowTaskForm(false)}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            <div className="tasks-list">
-              {tasks.length === 0 ? (
-                <p className="empty-state">No tasks yet. Create one to get started!</p>
-              ) : (
-                tasks
-                  .filter((t) => !selectedProject || t.projectId === selectedProject.id)
-                  .map((task) => {
-                    const assignedPerson = people.find(p => p.id === task.assignedTo);
-                    const project = projects.find(p => p.id === task.projectId);
+            {/* Team Strip - Drag tasks here to assign */}
+            {people.length > 0 && (
+              <div className="team-strip">
+                <span className="team-strip-label">Drag to assign:</span>
+                <div className="team-strip-members">
+                  {people.map((person) => {
+                    const personTaskCount = tasks.filter(t => t.assignedTo === person.id && t.status !== 'Completed').length;
+                    const isDropTarget = dragOverTarget === `person-${person.id}`;
                     return (
-                      <div key={task.id} className="task-card">
-                        <div className="task-header">
-                          <h3>{task.title}</h3>
-                          <div className="task-badges">
-                            <span className={`priority-badge ${task.priority.toLowerCase()}`}>
-                              {task.priority}
-                            </span>
-                            <span className={`status-badge ${task.status.toLowerCase()}`}>
-                              {task.status}
-                            </span>
-                          </div>
+                      <div
+                        key={person.id}
+                        className={`team-strip-member ${isDropTarget ? 'drag-over' : ''}`}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverTarget(`person-${person.id}`);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setDragOverTarget(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (draggedTaskId) {
+                            setTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, assignedTo: person.id } : t));
+                            showToast(`Assigned to ${person.name}`, 'success');
+                          }
+                          setDragOverTarget(null);
+                          setDraggedTaskId(null);
+                        }}
+                        title={`${person.name} • ${personTaskCount} open tasks`}
+                      >
+                        <div className={`team-strip-avatar ${getMonogramVariant(person.id)}`}>
+                          {getInitials(person.name)}
                         </div>
-                        <p className="description">{task.description}</p>
-                        <div className="task-info">
-                          {project && <span>📋 {project.name}</span>}
-                          {assignedPerson && <span>👤 {assignedPerson.name}</span>}
-                          {task.dueDate && <span>📅 {new Date(task.dueDate).toLocaleDateString()}</span>}
-                        </div>
-                        <div className="task-actions">
-                          <button
-                            className="btn-remind"
-                            onClick={() => {
-                              setSelectedTask(task);
-                              setReminderDetails({
-                                ...reminderDetails,
-                                person: task.assignedTo,
-                                task: task.id
-                              });
-                              setActiveTab('reminders');
-                            }}
-                          >
-                            Send Reminder
-                          </button>
-                          <button
-                            className="btn-delete"
-                            onClick={() => handleDeleteTask(task.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <span className="team-strip-name">{person.name.split(' ')[0]}</span>
+                        {personTaskCount > 0 && (
+                          <span className="team-strip-badge">{personTaskCount}</span>
+                        )}
                       </div>
                     );
-                  })
-              )}
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="team-strip-add"
+                  onClick={() => setActiveTab('people')}
+                  title="Add team member"
+                >
+                  +
+                </button>
+              </div>
+            )}
+
+            {people.length === 0 && (
+              <div className="team-strip team-strip--empty">
+                <span className="team-strip-hint">Add team members to assign tasks</span>
+                <button
+                  type="button"
+                  className="btn-compact"
+                  onClick={() => setActiveTab('people')}
+                >
+                  + Add Team
+                </button>
+              </div>
+            )}
+
+            {/* Kanban Board */}
+            <div className="kanban-board">
+              {['Pending', 'In Progress', 'Completed'].map((status) => {
+                const columnTasks = tasks.filter(t => t.status === status);
+                const isDropTarget = dragOverTarget === `column-${status}`;
+                return (
+                  <div
+                    key={status}
+                    className={`kanban-column ${status.toLowerCase().replace(' ', '-')} ${isDropTarget ? 'drag-over' : ''}`}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverTarget(`column-${status}`);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDragLeave={(e) => {
+                      // Only clear if leaving the column entirely (not entering a child)
+                      if (!e.currentTarget.contains(e.relatedTarget)) {
+                        setDragOverTarget(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (draggedTaskId) {
+                        setTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, status } : t));
+                        showToast(`Moved to ${status}`, 'success');
+                      }
+                      setDragOverTarget(null);
+                      setDraggedTaskId(null);
+                    }}
+                  >
+                    <div className="kanban-column-header">
+                      <span className="column-title">{status}</span>
+                      <span className="column-count">{columnTasks.length}</span>
+                    </div>
+                    <div className="kanban-column-body">
+                      {columnTasks.length === 0 && status === 'Pending' && tasks.length === 0 && (
+                        <p className="kanban-empty-hint">Type a task above and press Enter</p>
+                      )}
+                      {columnTasks.length === 0 && tasks.length > 0 && (
+                        <p className="kanban-empty-hint">Drop tasks here</p>
+                      )}
+                      {columnTasks.map((task) => {
+                        const assignedPerson = people.find(p => p.id === task.assignedTo);
+                        return (
+                          <article
+                            key={task.id}
+                            className={`kanban-card ${task.priority.toLowerCase()} ${draggedTaskId === task.id ? 'dragging' : ''}`}
+                            draggable="true"
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', task.id);
+                              e.dataTransfer.setDragImage(e.currentTarget, 50, 20);
+                              setDraggedTaskId(task.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedTaskId(null);
+                              setDragOverTarget(null);
+                            }}
+                          >
+                            <span className={`priority-dot ${task.priority.toLowerCase()}`} />
+                            <div className="kanban-card-content">
+                              <span className="kanban-card-title">{task.title}</span>
+                              <div className="kanban-card-meta">
+                                {assignedPerson ? (
+                                  <span
+                                    className="assignee-chip"
+                                    title={assignedPerson.name}
+                                  >
+                                    {getInitials(assignedPerson.name)}
+                                  </span>
+                                ) : (
+                                  <span className="unassigned-chip" title="Unassigned">—</span>
+                                )}
+                                {task.dueDate && <span className="kanban-due">{formatDate(task.dueDate)}</span>}
+                              </div>
+                            </div>
+                            {/* Card Actions */}
+                            <div className="kanban-card-actions">
+                              {assignedPerson && (
+                                <button
+                                  type="button"
+                                  className="card-action-btn remind"
+                                  draggable="false"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReminderTask(task);
+                                  }}
+                                  title={`Send reminder to ${assignedPerson.name}`}
+                                >
+                                  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                                  </svg>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="card-action-btn delete"
+                                draggable="false"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
+                                title="Delete task"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* People Tab */}
+        {/* Reminder Modal - Multi-channel (Task) */}
+        <ReminderModal
+          isOpen={!!reminderTask}
+          onClose={() => setReminderTask(null)}
+          recipient={reminderTask ? people.find(p => p.id === reminderTask.assignedTo) : null}
+          context={reminderTask ? {
+            taskTitle: reminderTask.title,
+            taskDetails: {
+              status: reminderTask.status,
+              priority: reminderTask.priority,
+              dueDate: reminderTask.dueDate ? formatDate(reminderTask.dueDate) : null,
+            },
+          } : null}
+          isDemoMode={isDemoMode}
+        />
+
+        {/* Reminder Modal - Multi-channel (Person) */}
+        <ReminderModal
+          isOpen={!!reminderPerson}
+          onClose={() => setReminderPerson(null)}
+          recipient={reminderPerson}
+          context={reminderPerson ? {
+            taskTitle: null,
+            taskDetails: null,
+          } : null}
+          isDemoMode={isDemoMode}
+        />
+
         {activeTab === 'people' && (
           <div className="ea-content people-section">
             <div className="section-header">
-              <h2>Team Members</h2>
-              <button className="add-button" onClick={() => setShowPersonForm(!showPersonForm)}>
-                + Add Person
-              </button>
+              <h2>Team & Stakeholders</h2>
+              <div className="header-actions">
+                <button type="button" className="btn-compact" onClick={() => setShowPersonForm(v => !v)}>
+                  {showPersonForm ? 'Cancel' : '+ Person'}
+                </button>
+              </div>
             </div>
 
             {showPersonForm && (
-              <div className="form-card">
-                <h3>Add Team Member</h3>
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={newPerson.name}
-                  onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={newPerson.email}
-                  onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
-                />
-                <input
-                  type="tel"
-                  placeholder="Phone Number"
-                  value={newPerson.phone}
-                  onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp Number (with country code, e.g., +1234567890)"
-                  value={newPerson.whatsappNumber}
-                  onChange={(e) => setNewPerson({ ...newPerson, whatsappNumber: e.target.value })}
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="Role/Position"
-                  value={newPerson.role}
-                  onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })}
-                />
-                <div className="form-buttons">
-                  <button className="btn-save" onClick={handleAddPerson}>Save Person</button>
-                  <button className="btn-cancel" onClick={() => setShowPersonForm(false)}>Cancel</button>
+              <div className="inline-panel">
+                <div className="inline-panel-header"><h3>Add Person</h3></div>
+                <div className="inline-panel-body">
+                  <div className="field">
+                    <label className="input-label input-required">Name</label>
+                    <Input placeholder="Full name" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} />
+                  </div>
+                  <div className="field">
+                    <label className="input-label input-required">Email</label>
+                    <Input type="email" placeholder="email@company.com" value={newPerson.email} onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })} />
+                  </div>
+                  <div className="field-row">
+                    <div className="field">
+                      <label className="input-label">Role</label>
+                      <Input placeholder="e.g. Product Manager" value={newPerson.role} onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })} />
+                    </div>
+                    <div className="field">
+                      <label className="input-label">Phone (optional)</label>
+                      <Input placeholder="+1 555-0100" value={newPerson.phone} onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+                <div className="inline-panel-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
+                  <button type="button" className="btn-primary" onClick={handleAddPerson}>Add Person</button>
                 </div>
               </div>
             )}
-
-            <div className="people-grid">
-              {people.length === 0 ? (
-                <p className="empty-state">No team members yet. Add one to get started!</p>
-              ) : (
-                people.map((person) => (
-                  <div key={person.id} className="person-card">
-                    <div className="person-avatar">👤</div>
-                    <h3>{person.name}</h3>
-                    {person.role && <p className="role">{person.role}</p>}
-                    <div className="contact-info">
-                      {person.email && <p>📧 {person.email}</p>}
-                      {person.phone && <p>📱 {person.phone}</p>}
-                      {person.whatsappNumber && <p>💬 {person.whatsappNumber}</p>}
-                    </div>
-                    <div className="person-actions">
-                      <button
-                        className="btn-remind"
-                        onClick={() => {
-                          setSelectedPerson(person);
-                          setReminderDetails({ ...reminderDetails, person: person.id });
-                          setActiveTab('reminders');
-                        }}
-                      >
-                        Send WhatsApp
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeletePerson(person.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* WhatsApp Reminders Tab */}
-        {activeTab === 'reminders' && (
-          <div className="ea-content reminders-section">
-            <div className="section-header">
-              <h2>WhatsApp Reminders</h2>
-            </div>
 
             {people.length === 0 ? (
-              <div className="empty-state-card">
-                <p>No team members added yet. Add team members first to send reminders.</p>
-              </div>
+              <EmptyState
+                iconType="data"
+                title="No people added"
+                description="Add team members with email addresses to send reminders."
+                action={{ label: 'Add person', onClick: () => setShowPersonForm(true) }}
+              />
             ) : (
-              <div className="reminder-card">
-                <h3>Send WhatsApp Reminder</h3>
-                
-                <div className="reminder-form">
-                  <div className="form-group">
-                    <label>Select Person:</label>
-                    <select
-                      value={reminderDetails.person}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, person: e.target.value })}
+              <div className="visiting-cards-grid">
+                {people.map((person) => (
+                  <article key={person.id} className="visiting-card">
+                    <button
+                      type="button"
+                      className="visiting-card-remove"
+                      aria-label={`Remove ${person.name}`}
+                      onClick={() => handleDeletePerson(person.id)}
                     >
-                      <option value="">Choose a team member</option>
-                      {people.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (💬 {p.whatsappNumber})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
 
-                  <div className="form-group">
-                    <label>Related Task (Optional):</label>
-                    <select
-                      value={reminderDetails.task}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, task: e.target.value })}
+                    <div className="visiting-card-accent" aria-hidden="true" />
+
+                    <div className="visiting-card-top">
+                      <div className={`visiting-card-monogram visiting-card-monogram--${getMonogramVariant(person.id)}`}>
+                        {getInitials(person.name)}
+                      </div>
+                      <div className="visiting-card-identity">
+                        <h3 className="visiting-card-name">{person.name}</h3>
+                        <p className="visiting-card-role">{person.role || 'Team member'}</p>
+                      </div>
+                    </div>
+
+                    <div className="visiting-card-divider" aria-hidden="true" />
+
+                    <div className="visiting-card-contacts">
+                      {person.email && (
+                        <a className="visiting-card-contact" href={`mailto:${person.email}`}>
+                          <img src="/assets/icons/mail.png" alt="" className="visiting-card-contact-icon" />
+                          <span>{person.email}</span>
+                        </a>
+                      )}
+                      {person.phone && (
+                        <span className="visiting-card-contact">
+                          <img src="/assets/icons/mobile-data.png" alt="" className="visiting-card-contact-icon" />
+                          <span>{person.phone}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="visiting-card-action"
+                      onClick={() => setReminderPerson(person)}
                     >
-                      <option value="">Select a task</option>
-                      {tasks.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Related Project (Optional):</label>
-                    <select
-                      value={reminderDetails.project}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, project: e.target.value })}
-                    >
-                      <option value="">Select a project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Message:</label>
-                    <textarea
-                      placeholder="Enter your reminder message"
-                      value={reminderDetails.message}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, message: e.target.value })}
-                      rows="4"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Send When:</label>
-                    <select
-                      value={reminderDetails.sendTime}
-                      onChange={(e) => setReminderDetails({ ...reminderDetails, sendTime: e.target.value })}
-                    >
-                      <option value="now">Send Now</option>
-                      <option value="tomorrow">Tomorrow Morning</option>
-                      <option value="next-day">Next Day</option>
-                      <option value="weekly">Weekly</option>
-                    </select>
-                  </div>
-
-                  <button className="btn-send-whatsapp" onClick={handleSendReminder}>
-                    💬 Send via WhatsApp
-                  </button>
-                </div>
-
-                <div className="reminder-preview">
-                  <h4>Preview:</h4>
-                  <div className="message-preview">
-                    {reminderDetails.person && (
-                      <p><strong>To:</strong> {people.find(p => p.id === reminderDetails.person)?.name}</p>
-                    )}
-                    {reminderDetails.message && (
-                      <p><strong>Message:</strong> {reminderDetails.message}</p>
-                    )}
-                    {reminderDetails.task && (
-                      <p><strong>Task:</strong> {tasks.find(t => t.id === reminderDetails.task)?.title}</p>
-                    )}
-                    {reminderDetails.project && (
-                      <p><strong>Project:</strong> {projects.find(p => p.id === reminderDetails.project)?.name}</p>
-                    )}
-                  </div>
-                </div>
+                      Send reminder
+                    </button>
+                  </article>
+                ))}
               </div>
             )}
           </div>
         )}
+
+
+        </ProjectGate>
+
       </div>
     </div>
   );

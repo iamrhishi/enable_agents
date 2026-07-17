@@ -46,13 +46,13 @@ class TestContextStoreMySQL(unittest.TestCase):
     def test_set_and_get(self, _mock_redis):
         store = self._store()
         store.set("user1", "market_research", "company_profile", {"industry": "SaaS"})
-        result = store.get("user1", "company_profile")
+        result = store.get("user1", "market_research", "company_profile")
         self.assertEqual(result, {"industry": "SaaS"})
 
     @patch("core.context._get_redis", return_value=None)
     def test_get_returns_default_when_missing(self, _mock_redis):
         store = self._store()
-        result = store.get("user1", "nonexistent_key", default="fallback")
+        result = store.get("user1", "market_research", "nonexistent_key", default="fallback")
         self.assertEqual(result, "fallback")
 
     @patch("core.context._get_redis", return_value=None)
@@ -60,7 +60,7 @@ class TestContextStoreMySQL(unittest.TestCase):
         store = self._store()
         store.set("user1", "market_research", "company_profile", {"industry": "SaaS"})
         store.set("user1", "market_research", "company_profile", {"industry": "FinTech"})
-        result = store.get("user1", "company_profile")
+        result = store.get("user1", "market_research", "company_profile")
         self.assertEqual(result["industry"], "FinTech")
 
     @patch("core.context._get_redis", return_value=None)
@@ -69,9 +69,9 @@ class TestContextStoreMySQL(unittest.TestCase):
         store.set("user2", "market_research", "company_profile", {"name": "Acme"})
         store.set("user2", "content_marketing", "content_brief", {"title": "Top 10"})
         snapshot = store.snapshot("user2")
-        self.assertIn("company_profile", snapshot)
-        self.assertIn("content_brief", snapshot)
-        self.assertEqual(snapshot["company_profile"]["name"], "Acme")
+        self.assertIn("company_profile", snapshot["market_research"])
+        self.assertIn("content_brief", snapshot["content_marketing"])
+        self.assertEqual(snapshot["market_research"]["company_profile"]["name"], "Acme")
 
     @patch("core.context._get_redis", return_value=None)
     def test_snapshot_is_isolated_per_user(self, _mock_redis):
@@ -80,15 +80,15 @@ class TestContextStoreMySQL(unittest.TestCase):
         store.set("user_b", "market_research", "company_profile", {"name": "B Corp"})
         snap_a = store.snapshot("user_a")
         snap_b = store.snapshot("user_b")
-        self.assertEqual(snap_a["company_profile"]["name"], "A Corp")
-        self.assertEqual(snap_b["company_profile"]["name"], "B Corp")
+        self.assertEqual(snap_a["market_research"]["company_profile"]["name"], "A Corp")
+        self.assertEqual(snap_b["market_research"]["company_profile"]["name"], "B Corp")
 
     @patch("core.context._get_redis", return_value=None)
     def test_delete_removes_key(self, _mock_redis):
         store = self._store()
         store.set("user1", "market_research", "company_profile", {"x": 1})
         store.delete("user1", "market_research", "company_profile")
-        result = store.get("user1", "company_profile")
+        result = store.get("user1", "market_research", "company_profile")
         self.assertIsNone(result)
 
     @patch("core.context._get_redis", return_value=None)
@@ -103,9 +103,45 @@ class TestContextStoreMySQL(unittest.TestCase):
     def test_supports_non_dict_values(self, _mock_redis):
         store = self._store()
         store.set("user1", "market_research", "prospect_list", ["a@b.com", "c@d.com"])
-        result = store.get("user1", "prospect_list")
+        result = store.get("user1", "market_research", "prospect_list")
         self.assertIsInstance(result, list)
         self.assertIn("a@b.com", result)
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_set_many_writes_all_keys(self, _mock_redis):
+        store = self._store()
+        store.set_many(
+            "user_batch",
+            "sales_helper",
+            [
+                ("key_a", {"text": "alpha"}, None),
+                ("key_b", {"text": "beta"}, None),
+            ],
+        )
+        self.assertEqual(store.get("user_batch", "sales_helper", "key_a"), {"text": "alpha"})
+        self.assertEqual(store.get("user_batch", "sales_helper", "key_b"), {"text": "beta"})
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_search_matches_value_substring(self, _mock_redis):
+        store = self._store()
+        store.set("search_u", "agent", "k1", {"text": "Contoso Robotics", "data": {}})
+        rows = store.search("search_u", "Robotics", limit=10)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].key, "k1")
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_search_limit_validation(self, _mock_redis):
+        store = self._store()
+        with self.assertRaises(ValueError):
+            store.search("u", "", limit=0)
+
+    @patch("core.context._get_redis", return_value=None)
+    def test_same_logical_key_different_agents_isolated(self, _mock_redis):
+        store = self._store()
+        store.set("u9", "agent_a", "shared_name", {"which": "a"})
+        store.set("u9", "agent_b", "shared_name", {"which": "b"})
+        self.assertEqual(store.get("u9", "agent_a", "shared_name"), {"which": "a"})
+        self.assertEqual(store.get("u9", "agent_b", "shared_name"), {"which": "b"})
 
 
 class TestContextStoreRedis(unittest.TestCase):
@@ -135,9 +171,9 @@ class TestContextStoreRedis(unittest.TestCase):
         with patch("core.context._get_redis", return_value=mock_rc):
             from core.context import ContextStore
             store = ContextStore()
-            result = store.get("u1", "company_profile")
+            result = store.get("u1", "market_research", "company_profile")
         self.assertEqual(result, {"industry": "SaaS"})
-        mock_rc.get.assert_called_once()
+        mock_rc.get.assert_called_once_with("agent_ctx:u1:market_research:company_profile")
 
     def test_redis_set_called_on_write(self):
         mock_rc = self._mock_redis()
