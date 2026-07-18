@@ -4,8 +4,9 @@ import './Projects.css';
 import { showToast } from '../core/toast';
 import Header from '../core/Header';
 import { BackButton, showConfirm } from '../components';
-import { AGENTS, getAllAgents } from '../config/agentsConfig';
+import { AGENTS } from '../config/agentsConfig';
 import { initializeDemoProjects } from '../hooks/useProjectData';
+import { useMode } from '../contexts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -67,10 +68,7 @@ const Icons = {
 function Projects() {
   const navigate = useNavigate();
   const userEmail = localStorage.getItem('userEmail') || '';
-
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    return localStorage.getItem('enableAgentsMode') !== 'live';
-  });
+  const { isDemoMode } = useMode();
 
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,30 +76,12 @@ function Projects() {
   const [newProject, setNewProject] = useState({
     name: '',
     description: '',
-    agents: [],
   });
   const [creating, setCreating] = useState(false);
-
-  // Available agents for selection
-  const availableAgents = getAllAgents().filter(a => a.status === 'ready');
 
   useEffect(() => {
     fetchProjects();
   }, [isDemoMode]);
-
-  // Listen for mode changes
-  useEffect(() => {
-    const handleModeChange = () => {
-      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
-      setIsDemoMode(newMode);
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
-  }, []);
 
   const fetchProjects = async () => {
     if (isDemoMode) {
@@ -133,15 +113,16 @@ function Projects() {
       return;
     }
 
-    if (newProject.agents.length === 0) {
-      showToast('Please select at least one agent', 'warning');
-      return;
-    }
+    // All agents are enabled by default
+    const allAgents = ['marketResearch', 'salesHelper', 'contentMarketing',
+      'communityNetwork', 'eventNetworking', 'executiveAssistant', 'dataInsights'];
 
     if (isDemoMode) {
       const project = {
         id: `proj-${Date.now()}`,
-        ...newProject,
+        name: newProject.name,
+        description: newProject.description,
+        agents: allAgents,
         owner: userEmail || 'demo@example.com',
         status: 'active',
         createdAt: new Date().toISOString().split('T')[0],
@@ -151,7 +132,7 @@ function Projects() {
       const updatedProjects = [...projects, project];
       setProjects(updatedProjects);
       saveStoredProjects(updatedProjects);
-      setNewProject({ name: '', description: '', agents: [] });
+      setNewProject({ name: '', description: '' });
       setShowCreateModal(false);
       showToast('Project created', 'success');
       return;
@@ -170,7 +151,7 @@ function Projects() {
 
       if (res.ok) {
         showToast('Project created', 'success');
-        setNewProject({ name: '', description: '', agents: [] });
+        setNewProject({ name: '', description: '' });
         setShowCreateModal(false);
         fetchProjects();
       } else {
@@ -216,15 +197,6 @@ function Projects() {
     } catch {
       showToast('Failed to delete project', 'error');
     }
-  };
-
-  const toggleAgent = (agentId) => {
-    setNewProject(prev => ({
-      ...prev,
-      agents: prev.agents.includes(agentId)
-        ? prev.agents.filter(a => a !== agentId)
-        : [...prev.agents, agentId],
-    }));
   };
 
   const getAgentName = (agentId) => {
@@ -368,25 +340,9 @@ function Projects() {
                   rows={2}
                 />
               </div>
-              <div className="field">
-                <label>Enable for Agents *</label>
-                <p className="field-hint">Select which agents can access this project</p>
-                <div className="agents-grid">
-                  {availableAgents.map(agent => (
-                    <label
-                      key={agent.id}
-                      className={`agent-checkbox ${newProject.agents.includes(agent.id) ? 'selected' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={newProject.agents.includes(agent.id)}
-                        onChange={() => toggleAgent(agent.id)}
-                      />
-                      <span className="agent-name">{agent.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <p className="field-hint" style={{ marginTop: '8px', color: 'var(--color-text-muted)' }}>
+                All agents will have access to this project.
+              </p>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>
@@ -395,7 +351,7 @@ function Projects() {
               <button
                 className="btn-primary"
                 onClick={handleCreate}
-                disabled={!newProject.name.trim() || newProject.agents.length === 0 || creating}
+                disabled={!newProject.name.trim() || creating}
               >
                 {creating ? 'Creating...' : 'Create Project'}
               </button>

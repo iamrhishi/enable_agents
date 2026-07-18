@@ -17,7 +17,8 @@ function RegisterUser() {
     touched,
     handleChange,
     handleBlur,
-    validate
+    validate,
+    reset
   } = useValidation({
     firstName: { value: '', validators: [validators.required('First name is required')] },
     lastName: { value: '', validators: [validators.required('Last name is required')] },
@@ -46,6 +47,7 @@ function RegisterUser() {
   }, [bgImages.length]);
 
   const handleGoogleRegister = async () => {
+    reset(); // Clear validation state before OAuth redirect
     setLoading(true);
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/auth/google/start`);

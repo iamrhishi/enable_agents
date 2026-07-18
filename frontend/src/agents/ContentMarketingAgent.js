@@ -7,6 +7,7 @@ import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useMode } from '../contexts';
 
 // Storage key for state persistence
 const STATE_KEY = 'contentMarketingState';
@@ -88,9 +89,8 @@ function ContentMarketingAgent() {
     }
   }, []);
 
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    return localStorage.getItem('enableAgentsMode') !== 'live';
-  });
+  const { isDemoMode } = useMode();
+  const prevModeRef = useRef(isDemoMode);
 
   const savedState = loadPersistedState();
   const [step, setStep] = useState(savedState.step || 'upload'); // upload | generate
@@ -267,29 +267,20 @@ function ContentMarketingAgent() {
     ]);
   }, [isDemoMode, selectedProjectId]);
 
-  // Listen for mode changes and clear demo data when switching to live
+  // Handle mode change side effects
   useEffect(() => {
-    const handleModeChange = () => {
-      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
-      if (isDemoMode && !newMode) {
-        // Switching to live: reset content
-        setGeneratedContent(null);
-        setMessages([{
-          id: 1,
-          text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
-          sender: 'agent',
-          timestamp: new Date().toISOString(),
-          format: 'markdown'
-        }]);
-      }
-      setIsDemoMode(newMode);
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
+    if (prevModeRef.current && !isDemoMode) {
+      // Switching from demo to live: reset content
+      setGeneratedContent(null);
+      setMessages([{
+        id: 1,
+        text: "Welcome to the Content Marketing Agent! I'll help you create marketing content across all channels using your documents and knowledge graphs.",
+        sender: 'agent',
+        timestamp: new Date().toISOString(),
+        format: 'markdown'
+      }]);
+    }
+    prevModeRef.current = isDemoMode;
   }, [isDemoMode]);
 
   // ============= FILE UPLOAD =============

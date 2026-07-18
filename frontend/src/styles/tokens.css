@@ -185,15 +185,20 @@
   --header-height: 80px;
 
   /* ═══════════════════════════════════════════════════════════════════════════
-     Z-INDEX SCALE
+     Z-INDEX SCALE — Use these instead of hardcoded values
      ═══════════════════════════════════════════════════════════════════════════ */
 
   --z-base: 0;
-  --z-dropdown: 100;
-  --z-sticky: 200;
-  --z-modal-backdrop: 900;
-  --z-modal: 1000;
-  --z-toast: 1100;
+  --z-raised: 10;          /* Slightly elevated content */
+  --z-dropdown: 100;       /* Dropdown menus, autocomplete */
+  --z-sticky: 200;         /* Sticky headers, floating elements */
+  --z-header: 300;         /* Main app header */
+  --z-sidebar: 400;        /* Sidebars, drawers */
+  --z-overlay: 500;        /* Dark overlays behind modals */
+  --z-modal-backdrop: 900; /* Modal backdrop */
+  --z-modal: 1000;         /* Modal content */
+  --z-toast: 1100;         /* Toast notifications (always on top) */
+  --z-tooltip: 1200;       /* Tooltips (above everything) */
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

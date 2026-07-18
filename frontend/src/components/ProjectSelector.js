@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './ProjectSelector.css';
 import { initializeDemoProjects } from '../hooks/useProjectData';
+import { useMode } from '../contexts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -30,10 +31,7 @@ function ProjectSelector({ agentKey, onProjectChange }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const userEmail = localStorage.getItem('userEmail') || '';
-
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    return localStorage.getItem('enableAgentsMode') !== 'live';
-  });
+  const { isDemoMode } = useMode();
 
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -43,20 +41,6 @@ function ProjectSelector({ agentKey, onProjectChange }) {
 
   // Get project ID from URL
   const projectIdFromUrl = searchParams.get('project');
-
-  // Listen for mode changes
-  useEffect(() => {
-    const handleModeChange = () => {
-      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
-      setIsDemoMode(newMode);
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
-  }, []);
 
   // Fetch projects for this agent
   useEffect(() => {

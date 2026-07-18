@@ -3,12 +3,15 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from '../core/Header';
-import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal } from '../components';
+import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal, showConfirm } from '../components';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
 import { formatDate } from '../utils/dateFormat';
+import { showToast } from '../core/toast';
+import { useMode } from '../contexts';
+import { STRINGS } from '../constants';
 
 const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
 
@@ -97,35 +100,25 @@ const DEMO_MOCK_DATA = {
   ]
 };
 
-// Note: Demo state now handled by centralized modeStorage utility
+// Note: Demo state now handled by centralized ModeContext
 
 function RequirementsGathering() {
-  // Demo mode detection
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    const stored = localStorage.getItem('enableAgentsMode');
-    return stored !== 'live';
-  });
+  // Demo mode from context (no polling needed)
+  const { isDemoMode } = useMode();
 
   // Track if initial load is done (don't save during initial load or mode transitions)
   const isInitialLoadRef = React.useRef(true);
   const lastSavedModeRef = React.useRef(null);
 
-  // Listen for mode changes
+  // Reset initial load flag when mode changes
   useEffect(() => {
-    const handleModeChange = () => {
-      const stored = localStorage.getItem('enableAgentsMode');
-      const newMode = stored !== 'live';
-      if (newMode !== isDemoMode) {
-        isInitialLoadRef.current = true; // Treat mode change like initial load
-        setIsDemoMode(newMode);
-      }
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
+    isInitialLoadRef.current = true;
+    // Mark initial load complete after state updates
+    const timer = setTimeout(() => {
+      isInitialLoadRef.current = false;
+      lastSavedModeRef.current = isDemoMode;
+    }, 100);
+    return () => clearTimeout(timer);
   }, [isDemoMode]);
 
   const [overview, setOverview] = useState('');
@@ -341,7 +334,7 @@ function RequirementsGathering() {
 
     if (params.get('google_connected') === 'true') {
       setGoogleBusinessConnected(true);
-      alert('Google Business Account connected successfully!');
+      showToast('Google Business Account connected successfully!', 'success');
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -407,7 +400,7 @@ function RequirementsGathering() {
 
         // Validate required inputs for research
         if (!overview || !industries || !countries) {
-          alert('Please fill in Overview, Industries, and Region/Countries for research');
+          showToast('Please fill in Overview, Industries, and Region/Countries for research', 'warning');
           return;
         }
 
@@ -451,7 +444,7 @@ function RequirementsGathering() {
         const searchData = await searchResponse.json();
 
         if (!searchData.success) {
-          alert(`Error: ${searchData.error}`);
+          showToast(`Error: ${searchData.error}`, 'error');
           setIsLoadingResearch(false);
           return;
         }
@@ -502,7 +495,7 @@ function RequirementsGathering() {
       setAiRequirements(data.requirements.split('\n'));
     } catch (error) {
       console.error('Error generating requirements:', error);
-      alert('Error: ' + error.message);
+      showToast('Error: ' + error.message, 'error');
       setIsLoadingResearch(false);
     }
   };
@@ -532,13 +525,13 @@ function RequirementsGathering() {
   const handleGetEmails = async () => {
     if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
       const { plural } = getResearchEntityMeta();
-      alert(`No ${plural} to enrich with emails`);
+      showToast(`No ${plural} to enrich with emails`, 'warning');
       return;
     }
 
     // In demo mode, data already has emails
     if (isDemoMode) {
-      alert('Demo mode: Email data is already populated in the sample data.');
+      showToast('Demo mode: Email data is already populated in the sample data.', 'info');
       return;
     }
 
@@ -573,15 +566,15 @@ function RequirementsGathering() {
           businesses: enrichedData.businesses
         });
         const usageLine = enrichedData.usageSummary
-          ? `\nUsed: ${enrichedData.usageSummary.usedCount}/${enrichedData.usageSummary.totalAllowed} | Remaining: ${enrichedData.usageSummary.remainingCount}`
+          ? ` (Used: ${enrichedData.usageSummary.usedCount}/${enrichedData.usageSummary.totalAllowed})`
           : '';
-        alert(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`);
+        showToast(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`, 'success');
       } else {
-        alert('Failed to enrich businesses with emails');
+        showToast('Failed to enrich businesses with emails', 'error');
       }
     } catch (error) {
       console.error('Error getting emails:', error);
-      alert(`Error: ${error.message}`);
+      showToast(`Error: ${error.message}`, 'error');
     } finally {
       setIsLoadingEmails(false);
     }
@@ -592,7 +585,7 @@ function RequirementsGathering() {
 
     // In demo mode, data already has LinkedIn
     if (isDemoMode) {
-      alert('Demo mode: LinkedIn data is already populated in the sample data.');
+      showToast('Demo mode: LinkedIn data is already populated in the sample data.', 'info');
       return;
     }
 
@@ -655,7 +648,7 @@ function RequirementsGathering() {
       } else {
         const errorMsg = data.error || 'No LinkedIn profile found.';
         console.warn(`[LINKEDIN_EXTRACTION] ${errorMsg}`);
-        alert(errorMsg);
+        showToast(errorMsg, 'warning');
       }
     } catch (error) {
       console.error('[LINKEDIN_EXTRACTION] Error extracting LinkedIn:', error);
@@ -666,9 +659,9 @@ function RequirementsGathering() {
       });
       
       if (error.name === 'AbortError') {
-        alert('LinkedIn extraction timed out. Please try again.');
+        showToast('LinkedIn extraction timed out. Please try again.', 'error');
       } else {
-        alert('Error extracting LinkedIn. Check console.');
+        showToast('Error extracting LinkedIn. Please try again.', 'error');
       }
     } finally {
       setExtractingLinkedInRows((prev) => ({ ...prev, [index]: false }));
@@ -678,13 +671,13 @@ function RequirementsGathering() {
 
   const handleExtractEmailForBusiness = async (business, index) => {
     if (!business || !business.website) {
-      alert('Website not available for this business.');
+      showToast('Website not available for this business.', 'warning');
       return;
     }
 
     // In demo mode, data already has emails
     if (isDemoMode) {
-      alert('Demo mode: Email data is already populated in the sample data.');
+      showToast('Demo mode: Email data is already populated in the sample data.', 'info');
       return;
     }
 
@@ -779,9 +772,9 @@ function RequirementsGathering() {
       });
       
       if (error.name === 'AbortError') {
-        alert('Email extraction timed out. Please try again.');
+        showToast('Email extraction timed out. Please try again.', 'error');
       } else {
-        alert(`Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, 'error');
       }
     } finally {
       setExtractingEmailRows((prev) => ({ ...prev, [index]: false }));
@@ -791,7 +784,7 @@ function RequirementsGathering() {
 
   const handleCopyToClipboard = () => {
     if (!customerResearchResults || !customerResearchResults.businesses || customerResearchResults.businesses.length === 0) {
-      alert('No data to copy.');
+      showToast('No data to copy.', 'warning');
       return;
     }
 
@@ -814,14 +807,14 @@ function RequirementsGathering() {
 
       // Copy to clipboard
       navigator.clipboard.writeText(tsvContent).then(() => {
-        alert(`Successfully copied ${customerResearchResults.businesses.length} businesses to clipboard!`);
+        showToast(`Successfully copied ${customerResearchResults.businesses.length} businesses to clipboard!`, 'success');
       }).catch(err => {
         console.error('Failed to copy:', err);
-        alert('Failed to copy to clipboard');
+        showToast('Failed to copy to clipboard', 'error');
       });
     } catch (error) {
       console.error('Error copying to clipboard:', error);
-      alert('Failed to copy data to clipboard');
+      showToast('Failed to copy data to clipboard', 'error');
     }
   };
 
@@ -880,14 +873,14 @@ function RequirementsGathering() {
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
       const { plural } = getResearchEntityMeta();
-      alert(`No ${plural} available to save.`);
+      showToast(`No ${plural} available to save.`, 'warning');
       return;
     }
 
     // In demo mode, simulate saving
     if (isDemoMode) {
       if (!saveListName.trim() && saveListMode !== 'append') {
-        alert('Please provide a name for the list.');
+        showToast('Please provide a name for the list.', 'warning');
         return;
       }
       const newList = {
@@ -901,7 +894,7 @@ function RequirementsGathering() {
       setSavedLists(prev => [newList, ...prev]);
       setShowSaveListModal(false);
       setSaveListName('');
-      alert('Demo mode: List saved to local view.');
+      showToast('Demo mode: List saved to local view.', 'info');
       return;
     }
 
@@ -923,7 +916,7 @@ function RequirementsGathering() {
       const isAppendMode = saveListMode === 'append';
       if (isAppendMode) {
         if (!selectedAppendProjectId) {
-          alert('Please select a list to append to.');
+          showToast('Please select a list to append to.', 'warning');
           setIsSavingList(false);
           return;
         }
@@ -940,7 +933,7 @@ function RequirementsGathering() {
 
         const data = await response.json();
         if (data.success) {
-          alert(data.message || 'Leads appended successfully!');
+          showToast(data.message || 'Leads appended successfully!', 'success');
           setShowSaveListModal(false);
           setSaveListName('');
           setSaveListMode('create');
@@ -950,11 +943,11 @@ function RequirementsGathering() {
             await loadSavedListDetails(selectedAppendProjectId);
           }
         } else {
-          alert('Error appending list: ' + (data.error || 'Unknown error'));
+          showToast('Error appending list: ' + (data.error || 'Unknown error'), 'error');
         }
       } else {
         if (!saveListName.trim()) {
-          alert("Please provide a name for the list.");
+          showToast('Please provide a name for the list.', 'warning');
           return;
         }
 
@@ -973,7 +966,7 @@ function RequirementsGathering() {
         console.log('Save project response:', data);
         if (data.success) {
           const { title } = getResearchEntityMeta();
-          alert(`${title} list saved successfully!`);
+          showToast(`${title} list saved successfully!`, 'success');
           console.log('Refreshing saved lists...');
           await fetchSavedLists();
           setShowSaveListModal(false);
@@ -982,12 +975,12 @@ function RequirementsGathering() {
           setSelectedAppendProjectId('');
         } else {
           console.error('Error saving list:', data.error);
-          alert('Error saving list: ' + data.error);
+          showToast('Error saving list: ' + data.error, 'error');
         }
       }
     } catch (e) {
       console.error('Exception while saving:', e);
-      alert('An error occurred while saving the list: ' + e.message);
+      showToast('An error occurred while saving the list: ' + e.message, 'error');
     }
     setIsSavingList(false);
   };
@@ -995,7 +988,7 @@ function RequirementsGathering() {
   const handleScoreLeads = async () => {
     const text = (scoreQueryText || '').trim();
     if (!text) {
-      alert('Please provide a short description of what you want to match for.');
+      showToast('Please provide a short description of what you want to match for.', 'warning');
       return;
     }
 
@@ -1005,13 +998,13 @@ function RequirementsGathering() {
     const sourceBusinesses = (activeSavedList && activeSavedListLeads && activeSavedListLeads.length) ? activeSavedListLeads : (customerResearchResults?.businesses || []);
     if (!sourceBusinesses || sourceBusinesses.length === 0) {
       const { plural } = getResearchEntityMeta();
-      alert(`No ${plural} available to score.`);
+      showToast(`No ${plural} available to score.`, 'warning');
       return;
     }
 
     // In demo mode, scores are already populated
     if (isDemoMode) {
-      alert('Demo mode: Match scores are already visible in the demo data. In live mode, AI would re-score based on your criteria.');
+      showToast('Demo mode: Match scores are already visible in the demo data. In live mode, AI would re-score based on your criteria.', 'info');
       setShowScoreModal(false);
       return;
     }
@@ -1037,7 +1030,7 @@ function RequirementsGathering() {
         data = await response.json();
       } catch (parseErr) {
         console.error('[ScoreLeads] failed to parse JSON response', parseErr);
-        alert('Scoring failed: invalid JSON response from server');
+        showToast('Scoring failed: invalid JSON response from server', 'error');
         setIsScoring(false);
         return;
       }
@@ -1077,21 +1070,26 @@ function RequirementsGathering() {
         }
 
         const { plural } = getResearchEntityMeta();
-        alert(`Scoring complete — updated ${results.length} ${plural} (sorted by score)`);
+        showToast(`Scoring complete — updated ${results.length} ${plural} (sorted by score)`, 'success');
         setShowScoreModal(false);
         setScoreQueryText('');
       } else {
-        alert('Scoring failed: ' + (data.error || 'Unknown error'));
+        showToast('Scoring failed: ' + (data.error || 'Unknown error'), 'error');
       }
     } catch (e) {
       console.error(e);
-      alert('An error occurred while scoring leads: ' + e.message);
+      showToast('An error occurred while scoring leads: ' + e.message, 'error');
     }
     setIsScoring(false);
   };
 
   const handleDeleteSavedList = async (projectId) => {
-    const confirmed = window.confirm('Delete this saved list permanently?');
+    const confirmed = await showConfirm({
+      title: STRINGS.DIALOGS.DELETE_LIST_TITLE,
+      message: STRINGS.DIALOGS.DELETE_LIST_CONFIRM,
+      confirmLabel: STRINGS.COMMON.DELETE,
+      variant: 'danger'
+    });
     if (!confirmed) return;
 
     // In demo mode, just remove from local state
@@ -1101,7 +1099,7 @@ function RequirementsGathering() {
         setActiveSavedList(null);
         setActiveSavedListLeads([]);
       }
-      alert('Demo mode: List removed from view.');
+      showToast('Demo mode: List removed from view.', 'info');
       return;
     }
 
@@ -1114,18 +1112,18 @@ function RequirementsGathering() {
 
       const data = await response.json();
       if (data.success) {
-        alert(data.message || 'Saved list deleted successfully.');
+        showToast(data.message || 'Saved list deleted successfully.', 'success');
         if (activeSavedList && Number(activeSavedList.id) === Number(projectId)) {
           setActiveSavedList(null);
           setActiveSavedListLeads([]);
         }
         await fetchSavedLists();
       } else {
-        alert('Error deleting list: ' + (data.error || 'Unknown error'));
+        showToast('Error deleting list: ' + (data.error || 'Unknown error'), 'error');
       }
     } catch (error) {
       console.error('Error deleting saved list:', error);
-      alert('An error occurred while deleting the list: ' + error.message);
+      showToast('An error occurred while deleting the list: ' + error.message, 'error');
     } finally {
       setDeletingListId(null);
     }
@@ -1250,7 +1248,7 @@ function RequirementsGathering() {
   const handleExport = async (format) => {
     const rows = getCustomerResearchRows();
     if (rows.length === 0) {
-      alert('No data available to export.');
+      showToast('No data available to export.', 'warning');
       return;
     }
 
@@ -1319,11 +1317,11 @@ function RequirementsGathering() {
 
         await navigator.clipboard.writeText(tsvContent);
         window.open('https://docs.google.com/spreadsheets/create', '_blank', 'noopener,noreferrer');
-        alert('Google Sheets opened. Data is copied to clipboard, paste with Ctrl+V.');
+        showToast('Google Sheets opened. Data is copied to clipboard, paste with Ctrl+V.', 'info');
       }
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Export failed. Please try again.');
+      showToast('Export failed. Please try again.', 'error');
     } finally {
       setShowExportModal(false);
     }
@@ -1344,7 +1342,7 @@ function RequirementsGathering() {
   const handleGoogleBusinessConnect = async () => {
     // Check if server has credentials configured
     if (!googleBusinessForm.hasCredentials && !googleBusinessForm.clientId) {
-      alert('Google credentials not configured. Contact administrator.');
+      showToast('Google credentials not configured. Contact administrator.', 'warning');
       return;
     }
 
@@ -1367,15 +1365,15 @@ function RequirementsGathering() {
         // Open Google authorization URL in new window
         setShowIntegrationModal(false);
         window.open(data.authUrl, 'google_auth', 'width=500,height=600');
-        
+
         // After user authorizes, the app will redirect to localhost:3000?google_connected=true
         // We'll handle that with a URL parameter check in useEffect
       } else {
-        alert(data.error || 'Failed to generate authorization URL');
+        showToast(data.error || 'Failed to generate authorization URL', 'error');
       }
     } catch (error) {
       console.error('Error connecting Google Business:', error);
-      alert('Error connecting to Google Business');
+      showToast('Error connecting to Google Business', 'error');
     }
   };
 
@@ -1446,11 +1444,11 @@ ${getCurrentUsername() || 'Your Name'}`);
         setSelectedLead(business);
         setShowEmailModal(true);
       } else {
-        alert('Failed to generate personalized email.');
+        showToast('Failed to generate personalized email.', 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Error generating email.');
+      showToast('Error generating email.', 'error');
     } finally {
       setIsGeneratingEmail(prev => ({ ...prev, [index]: false }));
     }
@@ -1480,13 +1478,13 @@ ${getCurrentUsername() || 'Your Name'}`);
 
   const handleSendEmails = async () => {
     if (!useAiBulk && (!emailSubject || !emailBody)) {
-      alert("Subject and Body required unless using AI Personalization");
+      showToast('Subject and Body required unless using AI Personalization', 'warning');
       return;
     }
 
     // In demo mode, simulate sending
     if (isDemoMode) {
-      alert('Demo mode: Email sending simulated. In live mode, emails would be sent via your connected account.');
+      showToast('Demo mode: Email sending simulated. In live mode, emails would be sent via your connected account.', 'info');
       setShowEmailModal(false);
       setEmailSubject('');
       setEmailBody('');
@@ -1496,7 +1494,7 @@ ${getCurrentUsername() || 'Your Name'}`);
 
     const registeredEmail = getCurrentUserEmail();
     if (!registeredEmail) {
-      alert('Registered email not found. Please log in again so the campaign can be sent from your account.');
+      showToast('Registered email not found. Please log in again so the campaign can be sent from your account.', 'warning');
       return;
     }
 
@@ -1514,7 +1512,7 @@ ${getCurrentUsername() || 'Your Name'}`);
     }
     
     if (validEmails.length === 0) {
-      alert("No valid emails found to send to");
+      showToast('No valid emails found to send to', 'warning');
       return;
     }
 
@@ -1535,16 +1533,16 @@ ${getCurrentUsername() || 'Your Name'}`);
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        alert('Successfully sent ' + validEmails.length + ' emails!');
+        showToast('Successfully sent ' + validEmails.length + ' emails!', 'success');
         setShowEmailModal(false);
         setEmailSubject('');
         setEmailBody('');
         setSelectedLead(null);
       } else {
-        alert('Error: ' + data.error);
+        showToast('Error: ' + data.error, 'error');
       }
     } catch (e) {
-      alert('Error sending emails: ' + e.message);
+      showToast('Error sending emails: ' + e.message, 'error');
     } finally {
       setIsSendingEmails(false);
     }

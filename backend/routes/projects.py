@@ -69,12 +69,14 @@ def create_project():
     data = request.get_json()
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
-    agents = data.get('agents', [])
+    # Default to all agents if none specified
+    agents = data.get('agents') or [
+        'marketResearch', 'salesHelper', 'contentMarketing',
+        'communityNetwork', 'eventNetworking', 'executiveAssistant', 'dataInsights'
+    ]
 
     if not name:
         return jsonify({'error': 'Project name is required'}), 400
-    if not agents:
-        return jsonify({'error': 'At least one agent must be selected'}), 400
 
     team = get_user_team(user_email)
     project = Project(

@@ -1,9 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
+// Contexts
+import { ModeProvider } from './contexts';
+
 // Shared UI
 import Login from './core/Login';
 import SkipLink from './components/SkipLink';
+import { ErrorBoundary } from './components';
 import RegisterUser from './core/RegisterUser';
 import Settings from './settings/Settings';
 import Team from './team/Team';
@@ -36,11 +40,13 @@ function RootRedirect() {
 
 function App() {
   return (
-    <Router>
-      <SkipLink />
-      <div className="App">
-        <main id="main-content">
-        <Routes>
+    <ModeProvider>
+      <Router>
+        <SkipLink />
+        <div className="App">
+          <ErrorBoundary>
+          <main id="main-content">
+          <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
@@ -65,10 +71,12 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/team" element={<Team />} />
           <Route path="/projects" element={<Projects />} />
-        </Routes>
-        </main>
-      </div>
-    </Router>
+          </Routes>
+          </main>
+          </ErrorBoundary>
+        </div>
+      </Router>
+    </ModeProvider>
   );
 }
 

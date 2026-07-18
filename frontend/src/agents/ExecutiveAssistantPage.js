@@ -648,31 +648,50 @@ function ExecutiveAssistantPage() {
             </div>
 
             {showPersonForm && (
-              <div className="inline-panel">
-                <div className="inline-panel-header"><h3>Add Person</h3></div>
-                <div className="inline-panel-body">
-                  <div className="field">
-                    <label className="input-label input-required">Name</label>
-                    <Input placeholder="Full name" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} />
+              <div className="inline-panel person-form-panel">
+                <div className="inline-panel-header">
+                  <div className="panel-header-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
                   </div>
-                  <div className="field">
-                    <label className="input-label input-required">Email</label>
-                    <Input type="email" placeholder="email@company.com" value={newPerson.email} onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })} />
+                  <div className="panel-header-text">
+                    <h3>Add Team Member</h3>
+                    <p>Add a person to collaborate with or send reminders to</p>
                   </div>
-                  <div className="field-row">
+                </div>
+                <div className="inline-panel-body person-form-body">
+                  <div className="person-form-grid">
                     <div className="field">
-                      <label className="input-label">Role</label>
-                      <Input placeholder="e.g. Product Manager" value={newPerson.role} onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })} />
+                      <label className="input-label input-required">Full Name</label>
+                      <Input placeholder="John Smith" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} />
                     </div>
                     <div className="field">
-                      <label className="input-label">Phone (optional)</label>
-                      <Input placeholder="+1 555-0100" value={newPerson.phone} onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })} />
+                      <label className="input-label input-required">Email Address</label>
+                      <Input type="email" placeholder="john@company.com" value={newPerson.email} onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })} />
+                    </div>
+                    <div className="field">
+                      <label className="input-label">Role / Title</label>
+                      <Input placeholder="Product Manager" value={newPerson.role} onChange={(e) => setNewPerson({ ...newPerson, role: e.target.value })} />
+                    </div>
+                    <div className="field">
+                      <label className="input-label">Phone</label>
+                      <Input type="tel" placeholder="+1 (555) 123-4567" value={newPerson.phone} onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })} />
                     </div>
                   </div>
                 </div>
                 <div className="inline-panel-footer">
-                  <button type="button" className="btn-secondary" onClick={() => setShowPersonForm(false)}>Cancel</button>
-                  <button type="button" className="btn-primary" onClick={handleAddPerson}>Add Person</button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setShowPersonForm(false)}>Cancel</button>
+                  <button type="button" className="btn btn-primary" onClick={handleAddPerson} disabled={!newPerson.name.trim() || !newPerson.email.trim()}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="8.5" cy="7" r="4" />
+                      <line x1="20" y1="8" x2="20" y2="14" />
+                      <line x1="23" y1="11" x2="17" y2="11" />
+                    </svg>
+                    Add Person
+                  </button>
                 </div>
               </div>
             )}

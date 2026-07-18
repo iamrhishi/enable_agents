@@ -47,6 +47,9 @@ export { Modal, ModalTabs } from './Modal';
 // Dialogs
 export { ConfirmDialog, showConfirm, showAlert } from './ConfirmDialog';
 
+// Error handling
+export { default as ErrorBoundary } from './ErrorBoundary';
+
 // Reminder
 export { default as ReminderModal } from './ReminderModal';
 

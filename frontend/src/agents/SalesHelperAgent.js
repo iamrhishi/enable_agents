@@ -8,6 +8,7 @@ import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
+import { useMode } from '../contexts';
 
 // Demo mock data for Sales Helper
 const DEMO_SAVED_PROJECTS = [
@@ -34,25 +35,7 @@ const DEMO_DOCUMENTS = [
 
 function SalesHelperAgent() {
   const selectedProjectId = useSelectedProjectId();
-
-  // Demo mode detection
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    const stored = localStorage.getItem('enableAgentsMode');
-    return stored !== 'live';
-  });
-
-  useEffect(() => {
-    const handleModeChange = () => {
-      const stored = localStorage.getItem('enableAgentsMode');
-      setIsDemoMode(stored !== 'live');
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
-  }, []);
+  const { isDemoMode } = useMode();
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,

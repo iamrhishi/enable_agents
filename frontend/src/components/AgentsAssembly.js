@@ -11,6 +11,7 @@ import { Modal, ModalTabs } from './Modal';
 import { CardGrid, StatusIndicator } from './Card';
 import Select from './Select';
 import LiveModeHint from './LiveModeHint';
+import { useMode } from '../contexts';
 
 
 
@@ -72,25 +73,8 @@ function AgentsAssembly() {
   const [registryAgents, setRegistryAgents] = useState([]);
 
   // Live/Demo mode - read from localStorage (synced with Header and Settings)
-  const [isLiveMode, setIsLiveMode] = useState(() => {
-    const stored = localStorage.getItem('enableAgentsMode');
-    return stored === 'live';
-  });
-
-  // Listen for mode changes from Header toggle
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const stored = localStorage.getItem('enableAgentsMode');
-      setIsLiveMode(stored === 'live');
-    };
-    window.addEventListener('storage', handleStorageChange);
-    // Also poll for changes (for same-tab updates)
-    const interval = setInterval(handleStorageChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, []);
+  const { isDemoMode } = useMode();
+  const isLiveMode = !isDemoMode;
 
   const navigate = useNavigate();
   const chatHistoryRef = useRef(null);

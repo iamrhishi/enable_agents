@@ -7,6 +7,7 @@ import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useMode } from '../contexts';
 
 // Demo network data
 const DEMO_NETWORK_DATA = [
@@ -19,11 +20,8 @@ const DEMO_NETWORK_DATA = [
 
 function CommunityNetworkAgent() {
   const selectedProjectId = useSelectedProjectId();
-
-  // Demo mode detection with change listener
-  const [isDemoMode, setIsDemoMode] = React.useState(() => {
-    return localStorage.getItem('enableAgentsMode') !== 'live';
-  });
+  const { isDemoMode } = useMode();
+  const prevModeRef = useRef(isDemoMode);
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -45,22 +43,13 @@ function CommunityNetworkAgent() {
   const currentUserId = localStorage.getItem('userEmail') || 'anonymous';
   const [userFavorites, setUserFavorites] = useState([]);
 
-  // Listen for mode changes and clear demo data when switching to live
+  // Handle mode change side effects
   useEffect(() => {
-    const handleModeChange = () => {
-      const newMode = localStorage.getItem('enableAgentsMode') !== 'live';
-      if (isDemoMode && !newMode) {
-        // Switching to live: clear chat
-        clearChat();
-      }
-      setIsDemoMode(newMode);
-    };
-    window.addEventListener('storage', handleModeChange);
-    const interval = setInterval(handleModeChange, 1000);
-    return () => {
-      window.removeEventListener('storage', handleModeChange);
-      clearInterval(interval);
-    };
+    if (prevModeRef.current && !isDemoMode) {
+      // Switching from demo to live: clear chat
+      clearChat();
+    }
+    prevModeRef.current = isDemoMode;
   }, [isDemoMode, clearChat]);
 
   // Preload demo network data when a project is selected in demo mode

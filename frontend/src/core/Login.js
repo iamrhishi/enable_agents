@@ -20,7 +20,7 @@ function Login() {
     handleChange,
     handleBlur,
     validate,
-    setValue
+    reset
   } = useValidation({
     email: {
       value: '',
@@ -108,6 +108,7 @@ function Login() {
   };
 
   const handleGoogleLogin = async () => {
+    reset(); // Clear validation state before OAuth redirect
     setLoading(true);
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/auth/google/start`);
