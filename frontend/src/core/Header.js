@@ -5,6 +5,7 @@ import '../styles/Header.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from './toast';
 import { Modal, ModalTabs } from '../components/Modal';
+import { useMode } from '../contexts';
 
 
 function Header({ onProcessClick, onModeChange }) {
@@ -19,18 +20,15 @@ function Header({ onProcessClick, onModeChange }) {
   const location = useLocation();
   const [selectedSystemTab, setSelectedSystemTab] = useState('tools');
 
-  // Live/Demo mode toggle - persisted in localStorage
-  const [isLiveMode, setIsLiveMode] = useState(() => {
-    const stored = localStorage.getItem('enableAgentsMode');
-    return stored === 'live';
-  });
+  // Live/Demo mode toggle - from context
+  const { isDemoMode, setMode } = useMode();
+  const isLiveMode = !isDemoMode;
 
   const handleModeToggle = () => {
-    const newMode = !isLiveMode;
-    setIsLiveMode(newMode);
-    localStorage.setItem('enableAgentsMode', newMode ? 'live' : 'demo');
-    showToast(newMode ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
-    onModeChange?.(newMode ? 'live' : 'demo');
+    const newIsLive = !isLiveMode;
+    setMode(!newIsLive); // setMode takes isDemoMode (opposite of isLiveMode)
+    showToast(newIsLive ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
+    onModeChange?.(newIsLive ? 'live' : 'demo');
   };
   const userDropdownRef = useRef(null);
 
