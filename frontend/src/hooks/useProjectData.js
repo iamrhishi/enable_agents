@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { getDemoProjectsWithData } from '../data/demo';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -242,93 +243,25 @@ export function useProjectData(agentKey, options = {}) {
 
 /**
  * Initialize demo projects in localStorage if not present
+ * Uses demo data from JSON files in src/data/demo/
  */
 export function initializeDemoProjects() {
   const existing = getStoredProjects();
   if (existing.length > 0) return;
 
-  const demoProjects = [
-    {
-      id: 'proj-1',
-      name: 'Q3 Product Launch',
-      description: 'New product launch campaign across all channels',
-      owner: 'demo@example.com',
-      agents: ['executiveAssistant', 'contentMarketing', 'salesHelper', 'dataInsights'],
-      status: 'active',
-      createdAt: '2026-06-15',
-      updatedAt: new Date().toISOString(),
-      data: {
-        executiveAssistant: {
-          tasks: [
-            { id: 't1', title: 'Finalize launch timeline', status: 'in-progress', priority: 'high' },
-            { id: 't2', title: 'Review marketing materials', status: 'pending', priority: 'medium' },
-          ],
-          notes: 'Q3 launch on track. Marketing team aligned.',
-        },
-        salesHelper: {
-          leads: [
-            { id: 'l1', name: 'Acme Corp', status: 'qualified', value: 50000 },
-            { id: 'l2', name: 'TechStart', status: 'contacted', value: 25000 },
-          ],
-          totalPipeline: 75000,
-        },
-        contentMarketing: {
-          drafts: 3,
-          published: 1,
-          topics: ['Product Features', 'Customer Success', 'Industry Trends'],
-        },
-      },
-    },
-    {
-      id: 'proj-2',
-      name: 'Enterprise Outreach',
-      description: 'B2B sales campaign targeting enterprise customers',
-      owner: 'demo@example.com',
-      agents: ['marketResearch', 'salesHelper', 'contentMarketing', 'communityNetwork'],
-      status: 'active',
-      createdAt: '2026-06-20',
-      updatedAt: new Date().toISOString(),
-      data: {
-        salesHelper: {
-          leads: [
-            { id: 'l3', name: 'Enterprise Corp', status: 'qualified', value: 150000 },
-            { id: 'l4', name: 'BigCo Inc', status: 'negotiation', value: 200000 },
-          ],
-          totalPipeline: 350000,
-        },
-        communityNetwork: {
-          connections: 45,
-          warmIntros: 8,
-          recentActivity: 'Connected with VP at Enterprise Corp',
-        },
-      },
-    },
-    {
-      id: 'proj-3',
-      name: 'Tech Summit 2026',
-      description: 'Event networking and follow-up management',
-      owner: 'demo@example.com',
-      agents: ['eventNetworking', 'communityNetwork', 'executiveAssistant'],
-      status: 'active',
-      createdAt: '2026-07-01',
-      updatedAt: new Date().toISOString(),
-      data: {
-        eventNetworking: {
-          attendees: 85,
-          followUps: 23,
-          meetings: 12,
-        },
-        executiveAssistant: {
-          tasks: [
-            { id: 't3', title: 'Send thank you emails', status: 'pending', priority: 'high' },
-            { id: 't4', title: 'Schedule follow-up calls', status: 'in-progress', priority: 'high' },
-          ],
-        },
-      },
-    },
-  ];
-
+  // Load demo projects with full agent data from JSON files
+  const demoProjects = getDemoProjectsWithData();
   saveStoredProjects(demoProjects);
+}
+
+/**
+ * Reset demo data to defaults from JSON files
+ * Useful for "Reset Demo Data" button
+ */
+export function resetDemoProjects() {
+  const demoProjects = getDemoProjectsWithData();
+  saveStoredProjects(demoProjects);
+  return demoProjects;
 }
 
 export default useProjectData;

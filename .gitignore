@@ -32,6 +32,9 @@ data/
 # Scope json exclusions tightly — broad *.json would hide agent manifests
 **/data/*.json
 **/uploads/*.json
+# Exception: include frontend demo data (JSON files for easy editing)
+!frontend/src/data/
+!frontend/src/data/**
 
 # ── Celery runtime ────────────────────────────────────────────────────────────
 celerybeat-schedule
