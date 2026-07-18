@@ -798,8 +798,8 @@ def _get_or_create_quota(username):
 
     quota = EmailExtractionQuota(
         username=username,
-        total_allowed=DEFAULT_EMAIL_EXTRACTION_LIMIT,
-        used_count=0
+        monthly_limit=DEFAULT_EMAIL_EXTRACTION_LIMIT,
+        emails_used_this_month=0
     )
     db.session.add(quota)
     db.session.commit()
@@ -808,12 +808,12 @@ def _get_or_create_quota(username):
 
 def _build_usage_summary(username, quota=None):
     quota = quota or _get_or_create_quota(username)
-    used = max(quota.used_count, 0)
-    remaining = max(quota.total_allowed - used, 0)
+    used = max(quota.emails_used_this_month, 0)
+    remaining = max(quota.monthly_limit - used, 0)
 
     return {
         'username': username,
-        'totalAllowed': quota.total_allowed,
+        'totalAllowed': quota.monthly_limit,
         'usedCount': used,
         'remainingCount': remaining,
         'unitCost': EMAIL_EXTRACTION_UNIT_COST,
@@ -7655,7 +7655,7 @@ def enrich_businesses_with_emails():
             1 for business in enriched_businesses if _is_billable_email(business.get('email'))
         )
         charged_count = min(billable_count, usage_before['remainingCount'])
-        quota.used_count += charged_count
+        quota.emails_used_this_month += charged_count
         db.session.add(quota)
 
         request_id = str(uuid4())
