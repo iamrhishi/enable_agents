@@ -412,6 +412,20 @@ run_migrations() {
   }
 }
 
+# Clean up orphaned data (SavedProject/SavedLead without platform Project association)
+cleanup_orphaned_data() {
+  local backend_url="${1:-http://127.0.0.1:${PORT_BACKEND}}"
+  echo "Cleaning up orphaned data (legacy records without project association)..."
+  local response
+  response=$(curl -s -X POST "${backend_url}/api/admin/cleanup-orphaned-data" 2>/dev/null || echo '{"success":false}')
+  if echo "$response" | grep -q '"success":true'; then
+    echo "  ✓ Orphaned data cleanup complete"
+    echo "    $response"
+  else
+    echo "  ⚠ Orphaned data cleanup skipped or failed (may not have any orphaned data)"
+  fi
+}
+
 # Load environment variables from .env.docker
 load_env() {
   if [ -f "$PROJECT_ROOT/.env.docker" ]; then
@@ -542,6 +556,7 @@ case "${1:-}" in
       exit 1
     }
     run_migrations "backend-dev"
+    cleanup_orphaned_data "http://127.0.0.1:${PORT_BACKEND}"
     echo ""
     echo "Waiting for services to become ready..."
     sleep 3
@@ -576,6 +591,7 @@ case "${1:-}" in
       exit 1
     }
     run_migrations "backend"
+    cleanup_orphaned_data "http://127.0.0.1:${PORT_BACKEND}"
     echo ""
     echo "Waiting for services to become ready..."
     sleep 3
@@ -646,6 +662,7 @@ case "${1:-}" in
       exit 1
     }
     run_migrations "backend-remote"
+    cleanup_orphaned_data "http://127.0.0.1:${PORT_BACKEND}"
 
     echo ""
     echo "Waiting for services to become ready..."
