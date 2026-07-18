@@ -484,6 +484,32 @@
   cursor: not-allowed;
 }
 
+/* Team select row */
+.team-select-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.team-select-row select {
+  flex: 1;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .projects-header {

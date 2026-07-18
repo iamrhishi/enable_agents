@@ -76,12 +76,43 @@ function Projects() {
   const [newProject, setNewProject] = useState({
     name: '',
     description: '',
+    team_id: '',
   });
   const [creating, setCreating] = useState(false);
+  const [teams, setTeams] = useState([]);
+  const [loadingTeams, setLoadingTeams] = useState(false);
 
   useEffect(() => {
     fetchProjects();
   }, [isDemoMode]);
+
+  // Fetch teams when create modal opens
+  useEffect(() => {
+    if (showCreateModal && !isDemoMode) {
+      fetchTeams();
+    }
+  }, [showCreateModal, isDemoMode]);
+
+  const fetchTeams = async () => {
+    setLoadingTeams(true);
+    try {
+      const res = await fetch(`${API_URL}/api/team`, {
+        headers: { 'X-User-Id': userEmail },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTeams(data.members ? [{ id: 'default', name: 'My Team' }] : []);
+        // If there's a default team, select it
+        if (data.team_id) {
+          setNewProject(prev => ({ ...prev, team_id: data.team_id }));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch teams:', err);
+    } finally {
+      setLoadingTeams(false);
+    }
+  };
 
   const fetchProjects = async () => {
     if (isDemoMode) {
@@ -132,7 +163,7 @@ function Projects() {
       const updatedProjects = [...projects, project];
       setProjects(updatedProjects);
       saveStoredProjects(updatedProjects);
-      setNewProject({ name: '', description: '' });
+      setNewProject({ name: '', description: '', team_id: '' });
       setShowCreateModal(false);
       showToast('Project created', 'success');
       return;
@@ -151,7 +182,7 @@ function Projects() {
 
       if (res.ok) {
         showToast('Project created', 'success');
-        setNewProject({ name: '', description: '' });
+        setNewProject({ name: '', description: '', team_id: '' });
         setShowCreateModal(false);
         fetchProjects();
       } else {
@@ -329,6 +360,30 @@ function Projects() {
                   rows={2}
                 />
               </div>
+              {!isDemoMode && (
+                <div className="field">
+                  <label>Team</label>
+                  <div className="team-select-row">
+                    <select
+                      value={newProject.team_id}
+                      onChange={(e) => setNewProject({ ...newProject, team_id: e.target.value })}
+                      disabled={loadingTeams}
+                    >
+                      <option value="">Select team...</option>
+                      {teams.map(team => (
+                        <option key={team.id} value={team.id}>{team.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => navigate('/team')}
+                    >
+                      Manage Team
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="field-hint" style={{ marginTop: '8px', color: 'var(--color-text-muted)' }}>
                 All agents will have access to this project.
               </p>
