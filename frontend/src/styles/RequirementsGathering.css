@@ -589,13 +589,13 @@
   cursor: not-allowed;
 }
 
-/* Secondary action button (Extract LinkedIn, etc.) */
+/* Secondary action button (Extract LinkedIn, etc.) - uses accent color */
 .table-btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-1) var(--space-3);
-  background: var(--color-primary);
+  background: var(--color-accent);
   color: #ffffff;
   border: none;
   border-radius: var(--radius-sm);
@@ -608,10 +608,38 @@
 }
 
 .table-btn-secondary:hover:not(:disabled) {
-  background: var(--color-primary-dark);
+  background: var(--color-accent-dark);
 }
 
 .table-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Extract Email button - outline style with accent */
+.extract-email-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-caption);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.extract-email-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+.extract-email-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -637,6 +665,12 @@
 .table-btn-outline:hover:not(:disabled) {
   background: var(--color-accent);
   color: #ffffff;
+}
+
+/* Phone cell - prevent line breaks */
+.phone-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Table text styles */

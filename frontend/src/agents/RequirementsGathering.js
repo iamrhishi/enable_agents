@@ -1776,7 +1776,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                             <tr key={index}>
                               <td>{business.name || 'N/A'}</td>
                               <td>{business.address || 'N/A'}</td>
-                              <td>{business.phone || 'N/A'}</td>
+                              <td className="phone-cell">{business.phone || 'N/A'}</td>
                               <td>{business.website ? <a href={business.website} target="_blank" rel="noopener noreferrer">Visit</a> : 'N/A'}</td>
                               <td>{business.email && business.email !== 'N/A' ? <span>{business.email}</span> : <span className="text-na">N/A</span>}</td>
                               <td>{business.linkedin ? (business.linkedin !== 'N/A' ? <a href={business.linkedin} target="_blank" rel="noopener noreferrer" className="link-profile">View Profile</a> : <span className="text-na-italic">Not Found</span>) : <span className="text-na">N/A</span>}</td>
@@ -1946,7 +1946,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                                     <tr key={index}>
                                       <td>{business.name || 'N/A'}</td>
                                       <td>{business.address || 'N/A'}</td>
-                                      <td>{business.phone || 'N/A'}</td>
+                                      <td className="phone-cell">{business.phone || 'N/A'}</td>
                                       <td>
                                         {business.website ? (
                                           <a href={business.website} target="_blank" rel="noopener noreferrer">
