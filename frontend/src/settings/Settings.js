@@ -839,17 +839,9 @@ function Settings() {
             </section>
           )}
 
-          {/* Backend settings tabs */}
+          {/* Backend settings tabs - no duplicate header since tab already shows title */}
           {settings && settings[activeCategory] && (
-            <section className="settings-section">
-              <div className="section-header">
-                <div className="section-icon">{getIcon(settings[activeCategory].icon)}</div>
-                <div>
-                  <h2>{settings[activeCategory].label}</h2>
-                  <p>{settings[activeCategory].description}</p>
-                </div>
-              </div>
-
+            <section className="settings-section no-header">
               {/* Render as cards for connectors/oauth, list for others */}
               {(activeCategory === 'connectors' || activeCategory === 'oauth') ? (
                 <div className="connector-cards">

@@ -359,10 +359,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 20px;
   background: var(--color-background);
   border-radius: 10px;
   margin-bottom: 0;
+  gap: 24px;
 }
 
 .setting-item.inline-row .setting-info {
@@ -373,6 +374,8 @@
 .setting-item.inline-row .setting-control {
   flex: none;
   width: auto;
+  display: flex;
+  align-items: center;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -476,27 +479,29 @@
   gap: 12px;
 }
 
-.google-connected-badge {
+.google-connected-badge,
+.google-connected .btn-secondary {
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+}
+
+.google-connected-badge {
   gap: 6px;
-  padding: 0 14px;
+  padding: 0 16px;
+  margin-top: 15px;
   background: #dcfce7;
   color: #16a34a;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  height: 36px;
 }
 
 .google-connected-badge svg {
   width: 14px;
   height: 14px;
-}
-
-.google-connected .btn-secondary {
-  height: 36px;
 }
 
 .oauth-setting {
