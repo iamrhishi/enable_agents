@@ -42,20 +42,9 @@ def upgrade():
         new_column_name='uploaded_by'
     )
 
-    # Add foreign key to projects table if it exists
-    # (wrapped in try/except for flexibility)
-    try:
-        op.create_foreign_key(
-            'fk_processed_documents_project',
-            'processed_documents',
-            'projects',
-            ['project_id'],
-            ['id'],
-            ondelete='SET NULL'
-        )
-    except Exception:
-        # Projects table may not exist yet, skip FK
-        pass
+    # Note: FK to projects table will be added by a later migration
+    # (i6d5e4f3a2b1) after the projects table is created.
+    # Don't create FK here as projects table doesn't exist yet.
 
 
 def downgrade():

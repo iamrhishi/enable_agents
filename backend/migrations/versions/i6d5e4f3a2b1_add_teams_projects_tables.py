@@ -64,8 +64,21 @@ def upgrade():
         sa.UniqueConstraint('team_id', 'email', name='uq_pending_invite'),
     )
 
+    # Add FK from processed_documents.project_id to projects.project_id
+    # (deferred from h5c4d3e2f1a0 since projects table didn't exist)
+    op.create_foreign_key(
+        'fk_processed_documents_project',
+        'processed_documents',
+        'projects',
+        ['project_id'],
+        ['project_id'],
+        ondelete='SET NULL'
+    )
+
 
 def downgrade():
+    # Drop FK before dropping projects table
+    op.drop_constraint('fk_processed_documents_project', 'processed_documents', type_='foreignkey')
     op.drop_table('pending_invites')
     op.drop_table('projects')
     op.drop_table('team_members')

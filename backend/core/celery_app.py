@@ -12,11 +12,12 @@ The celery instance is created lazily when make_celery is called, or
 when the module is imported by a worker (which triggers app import).
 """
 import os
+from typing import Optional
 from celery import Celery
 from flask import Flask
 
-celery: Celery | None = None
-_flask_app: Flask | None = None
+celery: Optional[Celery] = None
+_flask_app: Optional[Flask] = None
 
 
 def get_flask_app() -> Flask:
