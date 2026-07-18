@@ -55,8 +55,11 @@ export const getAllModeData = (isDemo = isDemoMode()) => {
  * @param {boolean} isDemo - Override demo mode check
  */
 export const getAgentData = (agentKey, isDemo = isDemoMode()) => {
+  const key = getStorageKey(isDemo);
   const allData = getAllModeData(isDemo);
-  return allData[agentKey] || null;
+  const result = allData[agentKey] || null;
+  console.log('[STORAGE_DEBUG] getAgentData:', agentKey, 'isDemo:', isDemo, 'storageKey:', key, 'hasData:', !!result);
+  return result;
 };
 
 /**
@@ -68,6 +71,7 @@ export const getAgentData = (agentKey, isDemo = isDemoMode()) => {
 export const setAgentData = (agentKey, data, isDemo = isDemoMode()) => {
   try {
     const key = getStorageKey(isDemo);
+    console.log('[STORAGE_DEBUG] setAgentData:', agentKey, 'isDemo:', isDemo, 'storageKey:', key);
     const allData = getAllModeData(isDemo);
     allData[agentKey] = data;
     localStorage.setItem(key, JSON.stringify(allData));

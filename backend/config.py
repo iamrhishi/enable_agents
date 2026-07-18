@@ -69,11 +69,10 @@ class Config:
     else:
         os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '0'
     
-    # Database
-    DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get(
-        'DATABASE_URI',
-        'sqlite:///instance/enable_agents.db'
-    )
+    # Database - PostgreSQL required
+    DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_URI')
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL or DATABASE_URI environment variable is required.")
     
     @classmethod
     def print_config(cls):

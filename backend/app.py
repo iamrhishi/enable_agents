@@ -247,10 +247,9 @@ if os.getenv('ENVIRONMENT') != 'production':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev only
 
 # Database config (env override + local fallback)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI',
-    'sqlite:///enable_agents.db'
-)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
+if not app.config['SQLALCHEMY_DATABASE_URI']:
+    raise ValueError("DATABASE_URI environment variable is required. PostgreSQL connection string expected.")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize shared db instance from core.database
@@ -8230,7 +8229,7 @@ def delete_saved_project(project_id):
         project = db.session.get(SavedProject, project_id)
         if not project or project.username != trusted_uid:
             return jsonify({'success': False, 'error': 'Project not found or unauthorized'}), 404
-            
+
         db.session.delete(project)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Project deleted successfully'})
@@ -8239,6 +8238,42 @@ def delete_saved_project(project_id):
          import traceback
          traceback.print_exc()
          return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/cleanup-orphaned-data', methods=['POST'])
+@cross_origin()
+def cleanup_orphaned_data():
+    """
+    Delete all orphaned data that doesn't belong to a platform Project.
+    This includes SavedProject/SavedLead records from Market Research
+    that were created before project-scoping was implemented.
+    """
+    try:
+        # Count before deletion
+        saved_projects_count = SavedProject.query.count()
+        saved_leads_count = SavedLead.query.count()
+
+        # Delete all SavedLeads first (due to FK constraint)
+        SavedLead.query.delete()
+        # Delete all SavedProjects
+        SavedProject.query.delete()
+
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Orphaned data cleaned up successfully',
+            'deleted': {
+                'saved_projects': saved_projects_count,
+                'saved_leads': saved_leads_count
+            }
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/sales-helper-chat', methods=['POST'])
 @cross_origin()

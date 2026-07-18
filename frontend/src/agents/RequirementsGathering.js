@@ -112,11 +112,13 @@ function RequirementsGathering() {
 
   // Reset initial load flag when mode changes
   useEffect(() => {
+    console.log('[MODE_DEBUG] Mode changed, isDemoMode:', isDemoMode);
     isInitialLoadRef.current = true;
     // Mark initial load complete after state updates
     const timer = setTimeout(() => {
       isInitialLoadRef.current = false;
       lastSavedModeRef.current = isDemoMode;
+      console.log('[MODE_DEBUG] Initial load complete, lastSavedModeRef set to:', isDemoMode);
     }, 100);
     return () => clearTimeout(timer);
   }, [isDemoMode]);
@@ -157,10 +159,14 @@ function RequirementsGathering() {
   // Only save after initial load is complete and mode matches last saved mode
   useEffect(() => {
     // Skip saving during initial load or mode transitions
-    if (isInitialLoadRef.current) return;
+    if (isInitialLoadRef.current) {
+      console.log('[MODE_DEBUG] Save skipped - initial load in progress');
+      return;
+    }
 
     // Only save if we have results and mode matches what we last loaded
     if (customerResearchResults !== null && lastSavedModeRef.current === isDemoMode) {
+      console.log('[MODE_DEBUG] Saving data for mode:', isDemoMode ? 'DEMO' : 'LIVE', 'results count:', customerResearchResults?.businesses?.length);
       setAgentData(AGENT_KEYS.MARKET_RESEARCH, {
         results: customerResearchResults,
         showTable: showCustomerResearchTable,
@@ -170,11 +176,15 @@ function RequirementsGathering() {
         countries,
         responseFormat,
       }, isDemoMode);
+    } else {
+      console.log('[MODE_DEBUG] Save skipped - results:', customerResearchResults !== null, 'modeMatch:', lastSavedModeRef.current === isDemoMode, 'lastSavedMode:', lastSavedModeRef.current, 'isDemoMode:', isDemoMode);
     }
   }, [customerResearchResults, showCustomerResearchTable, minimizedCustomerResearch, overview, industries, countries, responseFormat, isDemoMode]);
 
   // Load data when mode changes
   useEffect(() => {
+    console.log('[MODE_DEBUG] Loading data for mode:', isDemoMode ? 'DEMO' : 'LIVE');
+
     // Clear state first
     setCustomerResearchResults(null);
     setShowCustomerResearchTable(false);
@@ -186,9 +196,11 @@ function RequirementsGathering() {
 
     // Load data for current mode
     const savedData = getAgentData(AGENT_KEYS.MARKET_RESEARCH, isDemoMode);
+    console.log('[MODE_DEBUG] Retrieved savedData:', savedData ? { hasResults: !!savedData.results, resultsCount: savedData.results?.businesses?.length } : 'null');
 
     if (isDemoMode && !savedData?.results) {
       // Demo mode with no saved data - load demo defaults
+      console.log('[MODE_DEBUG] Loading DEMO defaults (no saved data)');
       setCustomerResearchResults(DEMO_MOCK_DATA.results);
       setShowCustomerResearchTable(true);
       setOverview(DEMO_MOCK_DATA.overview);
@@ -196,19 +208,25 @@ function RequirementsGathering() {
       setCountries(DEMO_MOCK_DATA.countries);
       setResponseFormat(DEMO_MOCK_DATA.responseFormat);
     } else if (savedData?.results) {
+      console.log('[MODE_DEBUG] Loading saved data for', isDemoMode ? 'DEMO' : 'LIVE', 'businesses:', savedData.results?.businesses?.length);
       setCustomerResearchResults(savedData.results);
-      setShowCustomerResearchTable(savedData.showTable || false);
+      // Show table if we have results with businesses, or if showTable was explicitly saved as true
+      const hasBusinesses = savedData.results?.businesses?.length > 0;
+      setShowCustomerResearchTable(hasBusinesses || savedData.showTable || false);
       setMinimizedCustomerResearch(savedData.minimized || false);
       if (savedData.overview) setOverview(savedData.overview);
       if (savedData.industries) setIndustries(savedData.industries);
       if (savedData.countries) setCountries(savedData.countries);
       if (savedData.responseFormat) setResponseFormat(savedData.responseFormat);
+    } else {
+      console.log('[MODE_DEBUG] No data to load for', isDemoMode ? 'DEMO' : 'LIVE');
     }
 
     // Mark initial load as complete after state updates
     setTimeout(() => {
       isInitialLoadRef.current = false;
       lastSavedModeRef.current = isDemoMode;
+      console.log('[MODE_DEBUG] Load complete, refs updated');
     }, 100);
   }, [isDemoMode]);
 

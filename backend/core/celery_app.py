@@ -28,10 +28,10 @@ def get_flask_app() -> Flask:
 
     _flask_app = Flask(__name__)
 
-    # Database config
-    database_url = os.environ.get("DATABASE_URL") or os.environ.get(
-        "DATABASE_URI", "sqlite:///instance/enable_agents.db"
-    )
+    # Database config - PostgreSQL required
+    database_url = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URI")
+    if not database_url:
+        raise ValueError("DATABASE_URL or DATABASE_URI environment variable is required.")
     _flask_app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     _flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
