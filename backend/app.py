@@ -287,91 +287,11 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # Content Marketing Agent Configuration
 CONTENT_MARKETING_UPLOAD_FOLDER = os.environ.get('CONTENT_MARKETING_UPLOAD_FOLDER', os.path.join(os.path.dirname(__file__), 'data', 'content_marketing_uploads'))
-CONTENT_MARKETING_DB_PATH = os.environ.get('CONTENT_MARKETING_DB_PATH', os.path.join(os.path.dirname(__file__), 'data', 'content_marketing.db'))
 CONTENT_MARKETING_ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'xlsx', 'html', 'md'}
 os.makedirs(CONTENT_MARKETING_UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(os.path.dirname(CONTENT_MARKETING_DB_PATH), exist_ok=True)
 
-# Initialize Content Marketing Database
-def init_content_marketing_db():
-    """Initialize SQLite database for content marketing agent"""
-    conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS projects (
-            project_id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            project_name TEXT NOT NULL,
-            description TEXT,
-            industry TEXT,
-            sector TEXT,
-            function TEXT,
-            role TEXT,
-            created_at TIMESTAMP,
-            updated_at TIMESTAMP,
-            metadata JSON
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS documents (
-            doc_id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            file_name TEXT NOT NULL,
-            file_type TEXT,
-            file_path TEXT,
-            file_size INTEGER,
-            upload_date TIMESTAMP,
-            document_type TEXT,
-            extracted_content TEXT,
-            FOREIGN KEY(project_id) REFERENCES projects(project_id)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS knowledge_graphs (
-            kg_id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            kg_data JSON,
-            entities INT,
-            relationships INT,
-            created_at TIMESTAMP,
-            FOREIGN KEY(project_id) REFERENCES projects(project_id)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS generated_content (
-            content_id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            channel TEXT,
-            content_type TEXT,
-            content TEXT,
-            source_docs JSON,
-            domain_context JSON,
-            created_at TIMESTAMP,
-            modified_at TIMESTAMP,
-            FOREIGN KEY(project_id) REFERENCES projects(project_id)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS conversation_history (
-            msg_id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            user_message TEXT,
-            agent_response TEXT,
-            context JSON,
-            timestamp TIMESTAMP,
-            FOREIGN KEY(project_id) REFERENCES projects(project_id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-init_content_marketing_db()
+# Content Marketing tables are now in PostgreSQL via SQLAlchemy models
+# See: agents/content_marketing/models.py
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -5950,166 +5870,100 @@ def kg_rag_cache_status():
 
 
 # ====== CONTENT MARKETING AGENT API ENDPOINTS ======
+# All SQLite code migrated to PostgreSQL via SQLAlchemy
+# See: agents/content_marketing/service.py and agents/content_marketing/models.py
+
+from agents.content_marketing import service as cm_service
+from agents.content_marketing.models import CMProject, CMDocument, CMKnowledgeGraph, CMGeneratedContent, CMConversation
 
 @app.route('/api/content-marketing/projects', methods=['POST'])
 @cross_origin()
 def create_content_marketing_project():
     """Create a new content marketing project"""
-    try:
-        data = request.json
-        user_id = data.get('user_id', 'default_user')
-        project_name = data.get('project_name', 'Untitled Project')
-        industry = data.get('industry')
-        sector = data.get('sector')
-        
-        project_id = f"project_{uuid4().hex[:12]}"
-        
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO projects 
-            (project_id, user_id, project_name, industry, sector, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (project_id, user_id, project_name, industry, sector, datetime.now(), datetime.now()))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'project_id': project_id,
-            'message': f'Project "{project_name}" created successfully'
-        }), 201
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return cm_service.create_project()
 
 
 @app.route('/api/content-marketing/projects/<project_id>', methods=['GET'])
 @cross_origin()
 def get_content_marketing_project(project_id):
     """Get project details"""
-    try:
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM projects WHERE project_id = ?', (project_id,))
-        project = cursor.fetchone()
-        
-        if not project:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Project not found'}), 404
-        
-        # Get documents count
-        cursor.execute('SELECT COUNT(*) FROM documents WHERE project_id = ?', (project_id,))
-        doc_count = cursor.fetchone()[0]
-        
-        # Get knowledge graph
-        cursor.execute('SELECT kg_data FROM knowledge_graphs WHERE project_id = ?', (project_id,))
-        kg_row = cursor.fetchone()
-        has_kg = kg_row is not None
-        
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'project': dict(project),
-            'statistics': {
-                'documents': doc_count,
-                'has_knowledge_graph': has_kg
-            }
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return cm_service.get_project(project_id)
 
 
 @app.route('/api/content-marketing/documents/upload', methods=['POST'])
 @cross_origin()
 def upload_content_marketing_documents():
-    """
-    Upload documents to project
-    Extracts text and creates initial knowledge graph using existing RAG
-    """
+    """Upload documents to project and build knowledge graph"""
     try:
         project_id = request.form.get('project_id')
         if not project_id:
             return jsonify({'success': False, 'error': 'project_id required'}), 400
-        
+
+        project = CMProject.query.filter_by(project_id=project_id).first()
+        if not project:
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+
         uploaded_files = request.files.getlist('files')
         if not uploaded_files:
             return jsonify({'success': False, 'error': 'No files provided'}), 400
-        
+
         analyzer = DomainSpecializationAnalyzer()
-        
         extracted_documents = []
         doc_ids = []
-        
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        cursor = conn.cursor()
-        
+
         for file in uploaded_files:
             if not file.filename:
                 continue
-            
+
             filename = secure_filename(file.filename)
             file_type = filename.split('.')[-1].lower()
-            
+
             if file_type not in CONTENT_MARKETING_ALLOWED_EXTENSIONS:
                 continue
-            
+
             file_path = os.path.join(CONTENT_MARKETING_UPLOAD_FOLDER, project_id, filename)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             file.save(file_path)
-            
-            # Extract text from document
+
+            # Extract text
             text_content = extract_text_from_file_content_marketing(file_path, file_type)
-            
-            # Store in database
+
+            # Store in PostgreSQL
             doc_id = f"doc_{uuid4().hex[:12]}"
-            cursor.execute('''
-                INSERT INTO documents
-                (doc_id, project_id, file_name, file_type, file_path, 
-                 file_size, upload_date, extracted_content)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (doc_id, project_id, filename, file_type, file_path,
-                  os.path.getsize(file_path), datetime.now(), text_content))
-            
+            doc = CMDocument(
+                doc_id=doc_id,
+                project_id=project_id,
+                file_name=filename,
+                file_type=file_type,
+                file_path=file_path,
+                file_size=os.path.getsize(file_path),
+                extracted_content=text_content
+            )
+            db.session.add(doc)
             extracted_documents.append(text_content)
             doc_ids.append(doc_id)
-        
-        conn.commit()
-        conn.close()
-        
+
+        db.session.commit()
+
         # Analyze domain specialization
         domain_context = analyzer.analyze_documents(extracted_documents)
-        
-        # Build knowledge graph using existing RAG embeddings
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        cursor = conn.cursor()
+
+        # Build knowledge graph
         kg_id = f"kg_{uuid4().hex[:12]}"
-        
-        # Simple KG structure using the text
         kg_data = {
             'entities': [f'Entity_{i}' for i in range(min(10, len(extracted_documents)))],
             'relationships': [],
             'domain_context': domain_context,
             'documents_count': len(doc_ids)
         }
-        
-        cursor.execute('''
-            INSERT INTO knowledge_graphs
-            (kg_id, project_id, kg_data, entities, relationships, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (kg_id, project_id, json.dumps(kg_data),
-              len(kg_data.get('entities', [])),
-              len(kg_data.get('relationships', [])),
-              datetime.now()))
-        conn.commit()
-        conn.close()
-        
+
+        kg = CMKnowledgeGraph(kg_id=kg_id, project_id=project_id)
+        kg.kg_data = kg_data
+        kg.entities = len(kg_data.get('entities', []))
+        kg.relationships = len(kg_data.get('relationships', []))
+        db.session.add(kg)
+        db.session.commit()
+
         return jsonify({
             'success': True,
             'uploaded_files': len(doc_ids),
@@ -6117,8 +5971,9 @@ def upload_content_marketing_documents():
             'knowledge_graph_id': kg_id,
             'domain_specialization': domain_context
         }), 201
-    
+
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -6126,227 +5981,135 @@ def upload_content_marketing_documents():
 @cross_origin()
 def list_content_marketing_documents(project_id):
     """List all documents in a project"""
-    try:
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT doc_id, file_name, file_type, upload_date, file_size
-            FROM documents WHERE project_id = ?
-            ORDER BY upload_date DESC
-        ''', (project_id,))
-        
-        documents = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'documents': documents,
-            'count': len(documents)
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return cm_service.list_documents(project_id)
 
 
 @app.route('/api/content-marketing/generate-content', methods=['POST'])
 @cross_origin()
 def generate_content_marketing():
-    """
-    Generate marketing content for specified channel
-    Uses existing RAG endpoint with knowledge graph for content creation
-    """
+    """Generate marketing content for specified channel"""
     try:
         data = request.json
         project_id = data.get('project_id')
         channel = data.get('channel', 'linkedin')
         content_type = data.get('content_type', 'post')
         user_context = data.get('context', '')
-        
+
         if not project_id:
             return jsonify({'success': False, 'error': 'project_id required'}), 400
-        
-        # Get project and documents
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM projects WHERE project_id = ?', (project_id,))
-        project_row = cursor.fetchone()
-        if not project_row:
-            conn.close()
+
+        project = CMProject.query.filter_by(project_id=project_id).first()
+        if not project:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
-        
-        project = dict(project_row)
-        
-        cursor.execute('''
-            SELECT extracted_content FROM documents WHERE project_id = ?
-        ''', (project_id,))
-        
-        documents = cursor.fetchall()
-        doc_texts = [doc[0] for doc in documents if doc[0]]
-        
-        # Get knowledge graph
-        cursor.execute('''
-            SELECT kg_data FROM knowledge_graphs WHERE project_id = ?
-            ORDER BY created_at DESC LIMIT 1
-        ''', (project_id,))
-        
-        kg_row = cursor.fetchone()
-        kg_data = json.loads(kg_row[0]) if kg_row else None
-        
-        conn.close()
-        
+
+        docs = CMDocument.query.filter_by(project_id=project_id).all()
+        doc_texts = [d.extracted_content for d in docs if d.extracted_content]
+
         if not doc_texts:
             return jsonify({'success': False, 'error': 'No documents found in project'}), 400
-        
-        # Use existing RAG endpoint to generate content
+
+        kg = CMKnowledgeGraph.query.filter_by(project_id=project_id).order_by(CMKnowledgeGraph.created_at.desc()).first()
+
         channel_config = {
-            'linkedin': {
-                'tone': 'professional',
-                'max_length': 3000,
-                'include_hashtags': True,
-                'call_to_action': 'Connect with us'
-            },
-            'email': {
-                'tone': 'persuasive',
-                'max_length': 500,
-                'include_subject': True,
-                'call_to_action': 'Learn more'
-            },
-            'social': {
-                'tone': 'casual',
-                'max_length': 280,
-                'include_hashtags': True,
-                'call_to_action': 'Follow us'
-            },
-            'google_ads': {
-                'tone': 'direct',
-                'max_length': 150,
-                'include_headline': True,
-                'call_to_action': 'Click here'
-            }
+            'linkedin': {'tone': 'professional', 'max_length': 3000},
+            'email': {'tone': 'persuasive', 'max_length': 500},
+            'social': {'tone': 'casual', 'max_length': 280},
+            'google_ads': {'tone': 'direct', 'max_length': 150}
         }
-        
         config = channel_config.get(channel, channel_config['linkedin'])
-        
-        # Simple content generation using context
+
         prompt = f"""Generate marketing content for {channel} channel.
-        
-Industry: {project.get('industry', 'General')}
+Industry: {project.industry or 'General'}
 Tone: {config['tone']}
 Max Length: {config['max_length']} characters
 Content Type: {content_type}
 User Context: {user_context}
-
 Documents Summary: {' '.join([doc[:200] for doc in doc_texts[:3]])}
 
-Generate compelling marketing {content_type} content that is {config['tone']}, 
-stays within {config['max_length']} characters, and resonates with the target audience."""
-        
+Generate compelling marketing {content_type} content."""
+
         llm = ChatOpenAI(model="gpt-4", temperature=0.7)
         response = llm.predict(prompt)
-        
-        # Store generated content
+
+        # Store in PostgreSQL
         content_id = f"content_{uuid4().hex[:12]}"
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO generated_content
-            (content_id, project_id, channel, content_type, content, source_docs, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (content_id, project_id, channel, content_type,
-              response, json.dumps([d[:100] for d in doc_texts]),
-              datetime.now()))
-        
-        conn.commit()
-        conn.close()
-        
+        content = CMGeneratedContent(
+            content_id=content_id,
+            project_id=project_id,
+            channel=channel,
+            content_type=content_type,
+            content=response
+        )
+        content.source_docs = [d.doc_id for d in docs]
+        content.domain_context = {"industry": project.industry, "prompt": user_context}
+        db.session.add(content)
+        db.session.commit()
+
         return jsonify({
             'success': True,
             'content_id': content_id,
             'channel': channel,
             'content_type': content_type,
             'content': response,
-            'variations': [response],  # Could generate multiple variations
+            'variations': [response],
             'metadata': config
         }), 201
-    
+
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/content-marketing/chat', methods=['POST'])
 @cross_origin()
 def content_marketing_chat():
-    """
-    Conversational endpoint for iterative content refinement
-    """
+    """Conversational endpoint for iterative content refinement"""
     try:
         data = request.json
         project_id = data.get('project_id')
         message = data.get('message')
-        
+
         if not all([project_id, message]):
             return jsonify({'success': False, 'error': 'project_id and message required'}), 400
-        
-        # Retrieve context
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT extracted_content FROM documents WHERE project_id = ?
-            LIMIT 10
-        ''', (project_id,))
-        documents = [row[0] for row in cursor.fetchall()]
-        
-        cursor.execute('''
-            SELECT kg_data FROM knowledge_graphs WHERE project_id = ?
-            ORDER BY created_at DESC LIMIT 1
-        ''', (project_id,))
-        kg_row = cursor.fetchone()
-        kg_data = json.loads(kg_row[0]) if kg_row else None
-        
-        conn.close()
-        
-        # Generate response using LLM
-        context_text = ' '.join([doc[:500] for doc in documents[:3]]) if documents else ''
-        
+
+        project = CMProject.query.filter_by(project_id=project_id).first()
+        if not project:
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+
+        docs = CMDocument.query.filter_by(project_id=project_id).limit(10).all()
+        kg = CMKnowledgeGraph.query.filter_by(project_id=project_id).order_by(CMKnowledgeGraph.created_at.desc()).first()
+
+        context_text = ' '.join([d.extracted_content[:500] for d in docs if d.extracted_content])
+
         prompt = f"""Based on the following document context and knowledge graph, provide helpful marketing advice.
-
 Document Context: {context_text}
-
-Knowledge Graph: {json.dumps(kg_data)[:500] if kg_data else 'No KG available'}
-
+Knowledge Graph: {json.dumps(kg.kg_data)[:500] if kg else 'No KG available'}
 User Question: {message}
-
 Provide a helpful, concise response focused on marketing strategy and content improvement."""
-        
+
         llm = ChatOpenAI(model="gpt-4", temperature=0.7)
         response = llm.predict(prompt)
-        
-        # Store conversation
+
+        # Store in PostgreSQL
         msg_id = f"msg_{uuid4().hex[:12]}"
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO conversation_history
-            (msg_id, project_id, user_message, agent_response, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (msg_id, project_id, message, response, datetime.now()))
-        conn.commit()
-        conn.close()
-        
+        conv = CMConversation(
+            msg_id=msg_id,
+            project_id=project_id,
+            user_message=message,
+            agent_response=response
+        )
+        conv.context = {"project_name": project.project_name, "doc_count": len(docs)}
+        db.session.add(conv)
+        db.session.commit()
+
         return jsonify({
             'success': True,
             'response': response,
             'message_id': msg_id
         }), 200
-    
+
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -6354,37 +6117,7 @@ Provide a helpful, concise response focused on marketing strategy and content im
 @cross_origin()
 def get_content_marketing_knowledge_graph(project_id):
     """Retrieve knowledge graph for visualization"""
-    try:
-        conn = sqlite3.connect(CONTENT_MARKETING_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT kg_data, entities, relationships, created_at
-            FROM knowledge_graphs WHERE project_id = ?
-            ORDER BY created_at DESC LIMIT 1
-        ''', (project_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return jsonify({'success': False, 'error': 'Knowledge graph not found'}), 404
-        
-        kg_data = json.loads(row[0])
-        
-        return jsonify({
-            'success': True,
-            'graph': kg_data,
-            'statistics': {
-                'entities': row[1],
-                'relationships': row[2],
-                'created_at': str(row[3])
-            }
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return cm_service.get_knowledge_graph(project_id)
 
 
 @app.route('/api/get-google-credentials', methods=['GET'])
