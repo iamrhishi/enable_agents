@@ -431,20 +431,6 @@ function Header({ onProcessClick, onModeChange }) {
               <span className="mode-toggle-label">{isLiveMode ? 'Live' : 'Demo'}</span>
             </button>
           </div>
-          {/* SYSTEM OPTION */}
-          <button
-            className="header-icon-button"
-            onClick={handleSystemClick}
-            aria-label="Open system overview"
-            title="System Overview"
-          >
-            <img
-              src="/assets/icons/puzzle.png"
-              alt=""
-              className="icon"
-            />
-            <span className="icon-label">system</span>
-          </button>
           {/* HIDDEN: Landscape feature requires Chrome history API - not functional
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <img

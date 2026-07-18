@@ -48,3 +48,11 @@ export {
   prefersReducedMotion,
   getAnimationDuration
 } from './accessibility';
+
+export {
+  // Demo mode API helpers
+  isDemoMode as isDemoModeApi,
+  demoFetch,
+  demoAiFetch,
+  showDemoWarning,
+} from './demoApi';
