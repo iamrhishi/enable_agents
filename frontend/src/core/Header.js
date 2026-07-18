@@ -453,6 +453,15 @@ function Header({ onProcessClick, onModeChange }) {
             <span className="icon-label" style={{ fontSize: '0.95em', marginTop: '2px' }}>process</span>
           </div>
           */}
+          {/* Notifications */}
+          <button
+            className="header-icon-button"
+            onClick={() => navigate('/settings?tab=notifications')}
+            aria-label="Notifications"
+            title="Notifications"
+          >
+            <img src="/assets/icons/notifications.png" alt="" className="icon" />
+          </button>
           <div className="user-icon-wrapper" ref={userDropdownRef}>
             <button
               className="header-icon-button"
