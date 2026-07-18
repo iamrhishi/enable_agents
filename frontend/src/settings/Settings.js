@@ -596,8 +596,8 @@ function Settings() {
               </div>
 
               <div className="settings-list">
-                {/* Email - full width */}
-                <div className="setting-item full-width">
+                {/* Email */}
+                <div className="setting-item">
                   <div className="setting-info">
                     <div className="setting-label">Email</div>
                     <div className="setting-description">Your login email address</div>
@@ -612,41 +612,42 @@ function Settings() {
                   </div>
                 </div>
 
-                {/* First Name - left column */}
-                <div className="setting-item">
-                  <div className="setting-info">
-                    <div className="setting-label">First Name</div>
+                {/* Name row - side by side */}
+                <div className="name-row">
+                  <div className="setting-item">
+                    <div className="setting-info">
+                      <div className="setting-label">First Name</div>
+                    </div>
+                    <div className="setting-control">
+                      <input
+                        type="text"
+                        value={accountForm.firstName}
+                        onChange={(e) => handleAccountChange('firstName', e.target.value)}
+                        className="setting-input"
+                        placeholder="First name"
+                      />
+                    </div>
                   </div>
-                  <div className="setting-control">
-                    <input
-                      type="text"
-                      value={accountForm.firstName}
-                      onChange={(e) => handleAccountChange('firstName', e.target.value)}
-                      className="setting-input"
-                      placeholder="First name"
-                    />
+
+                  <div className="setting-item">
+                    <div className="setting-info">
+                      <div className="setting-label">Last Name</div>
+                    </div>
+                    <div className="setting-control">
+                      <input
+                        type="text"
+                        value={accountForm.lastName}
+                        onChange={(e) => handleAccountChange('lastName', e.target.value)}
+                        className="setting-input"
+                        placeholder="Last name"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Last Name - right column */}
-                <div className="setting-item">
+                {/* Google Account - inline row */}
+                <div className="setting-item inline-row">
                   <div className="setting-info">
-                    <div className="setting-label">Last Name</div>
-                  </div>
-                  <div className="setting-control">
-                    <input
-                      type="text"
-                      value={accountForm.lastName}
-                      onChange={(e) => handleAccountChange('lastName', e.target.value)}
-                      className="setting-input"
-                      placeholder="Last name"
-                    />
-                  </div>
-                </div>
-
-                {/* Google Account - full width, inline layout */}
-                <div className="setting-item full-width" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-background)', padding: '16px 20px', borderRadius: '12px' }}>
-                  <div className="setting-info" style={{ flex: 'none' }}>
                     <div className="setting-label">Google Account</div>
                     <div className="setting-description">
                       {localStorage.getItem('googleConnected') || localStorage.getItem('authProvider') === 'google'
@@ -654,7 +655,7 @@ function Settings() {
                         : 'Connect for single sign-on'}
                     </div>
                   </div>
-                  <div className="setting-control" style={{ flex: 'none', width: 'auto' }}>
+                  <div className="setting-control">
                     {localStorage.getItem('googleConnected') || localStorage.getItem('authProvider') === 'google' ? (
                       <div className="google-connected">
                         <span className="google-connected-badge">
