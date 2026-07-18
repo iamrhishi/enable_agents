@@ -53,11 +53,6 @@ function Header({ onProcessClick, onModeChange }) {
     };
   }, [showUserDropdown]);
 
-  const handleProfileClick = () => {
-    setShowUserDropdown(false);
-    navigate('/settings?tab=account');
-  };
-
   const handleSignOutClick = () => {
     localStorage.removeItem('firstName');
     localStorage.removeItem('userEmail');
@@ -478,9 +473,8 @@ function Header({ onProcessClick, onModeChange }) {
             </button>
             {showUserDropdown && (
               <div className="user-dropdown-menu" role="menu">
-                <button className="user-dropdown-item" role="menuitem" onClick={handleProfileClick}>Profile</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/settings'); }}>Settings</button>
-                <button className="user-dropdown-item" role="menuitem" onClick={handleSignOutClick}>Sign Out</button>
+                <button className="user-dropdown-item user-dropdown-item--danger" role="menuitem" onClick={handleSignOutClick}>Sign Out</button>
               </div>
             )}
           </div>
