@@ -264,17 +264,6 @@ function Projects() {
                   <p className="project-description">{project.description}</p>
                 )}
 
-                <div className="project-agents">
-                  <span className="label">Agents:</span>
-                  <div className="agent-tags">
-                    {project.agents.map(agentId => (
-                      <span key={agentId} className="agent-tag">
-                        {getAgentName(agentId)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="project-meta">
                   <span className="meta-item">
                     Created {project.createdAt}

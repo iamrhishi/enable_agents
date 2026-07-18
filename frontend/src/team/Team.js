@@ -346,33 +346,6 @@ function Team() {
                 </div>
               </section>
             )}
-
-            {/* Role Info */}
-            <section className="card roles-info">
-              <h2>Roles</h2>
-              <div className="roles-grid">
-                <div className="role-item">
-                  <span className="role-dot role-owner"></span>
-                  <strong>Owner</strong>
-                  <span>Full access, manage team & billing</span>
-                </div>
-                <div className="role-item">
-                  <span className="role-dot role-admin"></span>
-                  <strong>Admin</strong>
-                  <span>Manage projects, invite members</span>
-                </div>
-                <div className="role-item">
-                  <span className="role-dot role-member"></span>
-                  <strong>Member</strong>
-                  <span>Create & edit projects</span>
-                </div>
-                <div className="role-item">
-                  <span className="role-dot role-viewer"></span>
-                  <strong>Viewer</strong>
-                  <span>View-only access</span>
-                </div>
-              </div>
-            </section>
           </>
         )}
       </div>
