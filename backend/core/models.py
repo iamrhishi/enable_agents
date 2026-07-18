@@ -5,8 +5,13 @@ Only models that are unique to the agent registry / context system live here.
 The primary application models (User, GoogleOAuthToken, EmailCampaign, etc.)
 are defined in app.py alongside the routes that own them, using the same db
 instance created there.
+
+Platform-wide models (Team, Project) also live here as they are shared
+across all agents and the core system.
 """
 from datetime import datetime
+import json
+from typing import Dict, Any, List
 from core.database import db
 
 
@@ -62,3 +67,138 @@ class UserSettingModel(db.Model):
         db.UniqueConstraint("user_id", "category", "key", name="uq_user_setting"),
         db.Index("ix_user_settings_user_category", "user_id", "category"),
     )
+
+
+# =============================================================================
+# Platform-wide models: Team, TeamMember, Project
+# =============================================================================
+
+class Team(db.Model):
+    """
+    Team represents a group of users who can share projects and collaborate.
+    """
+    __tablename__ = "teams"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    team_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    owner_id = db.Column(db.String(255), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    members = db.relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
+    projects = db.relationship("Project", back_populates="team", cascade="all, delete-orphan")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "team_id": self.team_id,
+            "owner_id": self.owner_id,
+            "name": self.name,
+            "members": [m.to_dict() for m in self.members],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class TeamMember(db.Model):
+    """TeamMember links a user to a team with a role (owner/admin/member/viewer)."""
+    __tablename__ = "team_members"
+    __table_args__ = (db.UniqueConstraint("team_id", "user_id", name="uq_team_member"),)
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    member_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    team_id = db.Column(db.String(36), db.ForeignKey("teams.team_id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.String(255), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=True)
+    role = db.Column(db.String(50), nullable=False, default="member")
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    team = db.relationship("Team", back_populates="members")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.member_id,
+            "email": self.user_id,
+            "name": self.name or self.user_id.split("@")[0],
+            "role": self.role,
+            "joined_at": self.joined_at.isoformat() if self.joined_at else None,
+        }
+
+
+class Project(db.Model):
+    """Project is a shared workspace with multiple agents enabled."""
+    __tablename__ = "projects"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    team_id = db.Column(db.String(36), db.ForeignKey("teams.team_id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id = db.Column(db.String(255), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(50), nullable=False, default="active", index=True)
+    _agents = db.Column("agents", db.Text, nullable=False, default="[]")
+    _data = db.Column("data", db.Text, nullable=False, default="{}")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    team = db.relationship("Team", back_populates="projects")
+
+    @property
+    def agents(self) -> List[str]:
+        return json.loads(self._agents or "[]")
+
+    @agents.setter
+    def agents(self, value: List[str]):
+        self._agents = json.dumps(value)
+
+    @property
+    def data(self) -> Dict[str, Any]:
+        return json.loads(self._data or "{}")
+
+    @data.setter
+    def data(self, value: Dict[str, Any]):
+        self._data = json.dumps(value, default=str)
+
+    def get_agent_data(self, agent_key: str) -> Dict[str, Any]:
+        return self.data.get(agent_key, {})
+
+    def set_agent_data(self, agent_key: str, agent_data: Dict[str, Any]):
+        current = self.data
+        current[agent_key] = agent_data
+        self.data = current
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.project_id,
+            "name": self.name,
+            "description": self.description,
+            "owner": self.owner_id,
+            "team_id": self.team_id,
+            "agents": self.agents,
+            "status": self.status,
+            "data": self.data,
+            "createdAt": self.created_at.strftime("%Y-%m-%d") if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class PendingInvite(db.Model):
+    """Pending team invitation."""
+    __tablename__ = "pending_invites"
+    __table_args__ = (db.UniqueConstraint("team_id", "email", name="uq_pending_invite"),)
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    invite_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    team_id = db.Column(db.String(36), db.ForeignKey("teams.team_id", ondelete="CASCADE"), nullable=False, index=True)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    role = db.Column(db.String(50), nullable=False, default="member")
+    invited_by = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.invite_id,
+            "email": self.email,
+            "role": self.role,
+            "invited_by": self.invited_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

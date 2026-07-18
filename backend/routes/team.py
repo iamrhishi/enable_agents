@@ -1,0 +1,160 @@
+"""
+Team Management API Routes.
+
+Handles team CRUD, member management, and invitations.
+Uses SQLAlchemy models for persistence.
+"""
+
+from flask import Blueprint, request, jsonify
+from datetime import datetime
+import uuid
+
+from core.database import db
+from core.models import Team, TeamMember, PendingInvite
+
+team_bp = Blueprint('team', __name__)
+
+
+def get_or_create_team(user_email: str) -> Team:
+    """Get existing team or create new one with user as owner."""
+    member = TeamMember.query.filter_by(user_id=user_email).first()
+    if member:
+        return member.team
+
+    team_id = str(uuid.uuid4())
+    team = Team(
+        team_id=team_id,
+        owner_id=user_email,
+        name=f"{user_email.split('@')[0]}'s Team"
+    )
+    db.session.add(team)
+
+    member = TeamMember(
+        member_id=str(uuid.uuid4()),
+        team_id=team_id,
+        user_id=user_email,
+        name=user_email.split('@')[0],
+        role='owner'
+    )
+    db.session.add(member)
+    db.session.commit()
+    return team
+
+
+@team_bp.route('/api/team', methods=['GET'])
+def get_team():
+    """Get current user's team."""
+    user_email = request.headers.get('X-User-Id', '')
+    if not user_email:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    team = get_or_create_team(user_email)
+    pending = PendingInvite.query.filter_by(team_id=team.team_id).all()
+
+    return jsonify({
+        'team_id': team.team_id,
+        'members': [m.to_dict() for m in team.members],
+        'pending_invites': [i.to_dict() for i in pending],
+    })
+
+
+@team_bp.route('/api/team/invite', methods=['POST'])
+def invite_member():
+    """Invite a new member to the team."""
+    user_email = request.headers.get('X-User-Id', '')
+    if not user_email:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.get_json()
+    invite_email = data.get('email', '').lower().strip()
+    role = data.get('role', 'member')
+
+    if not invite_email:
+        return jsonify({'error': 'Email is required'}), 400
+    if role not in ['admin', 'member', 'viewer']:
+        return jsonify({'error': 'Invalid role'}), 400
+
+    team = get_or_create_team(user_email)
+
+    # Check permission
+    current = TeamMember.query.filter_by(team_id=team.team_id, user_id=user_email).first()
+    if not current or current.role not in ['owner', 'admin']:
+        return jsonify({'error': 'Not authorized to invite members'}), 403
+
+    # Check if already member
+    if TeamMember.query.filter_by(team_id=team.team_id, user_id=invite_email).first():
+        return jsonify({'error': 'Already a team member'}), 400
+
+    # Auto-accept invite for now (real email flow later)
+    new_member = TeamMember(
+        member_id=str(uuid.uuid4()),
+        team_id=team.team_id,
+        user_id=invite_email,
+        name=invite_email.split('@')[0],
+        role=role
+    )
+    db.session.add(new_member)
+    db.session.commit()
+
+    return jsonify({'message': 'Member added', 'member': new_member.to_dict()})
+
+
+@team_bp.route('/api/team/members/<member_id>', methods=['DELETE'])
+def remove_member(member_id):
+    """Remove a member from the team."""
+    user_email = request.headers.get('X-User-Id', '')
+    if not user_email:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    member = TeamMember.query.filter_by(user_id=user_email).first()
+    if not member:
+        return jsonify({'error': 'Team not found'}), 404
+
+    team = member.team
+    current = TeamMember.query.filter_by(team_id=team.team_id, user_id=user_email).first()
+    if not current or current.role not in ['owner', 'admin']:
+        return jsonify({'error': 'Not authorized'}), 403
+
+    to_remove = TeamMember.query.filter_by(member_id=member_id, team_id=team.team_id).first()
+    if not to_remove:
+        return jsonify({'error': 'Member not found'}), 404
+    if to_remove.role == 'owner':
+        return jsonify({'error': 'Cannot remove owner'}), 400
+    if to_remove.user_id == user_email:
+        return jsonify({'error': 'Cannot remove yourself'}), 400
+
+    db.session.delete(to_remove)
+    db.session.commit()
+    return jsonify({'message': 'Member removed'})
+
+
+@team_bp.route('/api/team/members/<member_id>/role', methods=['PUT'])
+def update_member_role(member_id):
+    """Update a member's role (owner only)."""
+    user_email = request.headers.get('X-User-Id', '')
+    if not user_email:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.get_json()
+    new_role = data.get('role')
+    if new_role not in ['admin', 'member', 'viewer']:
+        return jsonify({'error': 'Invalid role'}), 400
+
+    member = TeamMember.query.filter_by(user_id=user_email).first()
+    if not member:
+        return jsonify({'error': 'Team not found'}), 404
+
+    team = member.team
+    current = TeamMember.query.filter_by(team_id=team.team_id, user_id=user_email).first()
+    if not current or current.role != 'owner':
+        return jsonify({'error': 'Only owner can change roles'}), 403
+
+    target = TeamMember.query.filter_by(member_id=member_id, team_id=team.team_id).first()
+    if not target:
+        return jsonify({'error': 'Member not found'}), 404
+    if target.role == 'owner':
+        return jsonify({'error': 'Cannot change owner role'}), 400
+
+    target.role = new_role
+    db.session.commit()
+    return jsonify({'message': 'Role updated', 'member': target.to_dict()})

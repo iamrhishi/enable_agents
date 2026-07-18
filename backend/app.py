@@ -255,6 +255,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize shared db instance from core.database
 db.init_app(app)
+
+# Import models for Flask-Migrate to detect them
+from core import models as core_models  # noqa: F401
+
 migrate = Migrate(app, db)
 
 # Initialize Celery
@@ -8781,6 +8785,12 @@ app.register_blueprint(connectors_bp)
 # Register settings API routes
 from core.settings_routes import bp as settings_bp
 app.register_blueprint(settings_bp)
+
+# Register team and projects API routes
+from routes.team import team_bp
+from routes.projects import projects_bp
+app.register_blueprint(team_bp)
+app.register_blueprint(projects_bp)
 
 
 if __name__ == '__main__':
