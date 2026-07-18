@@ -596,7 +596,8 @@ function Settings() {
               </div>
 
               <div className="settings-list">
-                <div className="setting-item">
+                {/* Email - full width */}
+                <div className="setting-item full-width">
                   <div className="setting-info">
                     <div className="setting-label">Email</div>
                     <div className="setting-description">Your login email address</div>
@@ -611,6 +612,7 @@ function Settings() {
                   </div>
                 </div>
 
+                {/* First Name - left column */}
                 <div className="setting-item">
                   <div className="setting-info">
                     <div className="setting-label">First Name</div>
@@ -626,6 +628,7 @@ function Settings() {
                   </div>
                 </div>
 
+                {/* Last Name - right column */}
                 <div className="setting-item">
                   <div className="setting-info">
                     <div className="setting-label">Last Name</div>
@@ -641,16 +644,17 @@ function Settings() {
                   </div>
                 </div>
 
-                <div className="setting-item full-width">
-                  <div className="setting-info">
+                {/* Google Account - full width, inline layout */}
+                <div className="setting-item full-width" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-background)', padding: '16px 20px', borderRadius: '12px' }}>
+                  <div className="setting-info" style={{ flex: 'none' }}>
                     <div className="setting-label">Google Account</div>
                     <div className="setting-description">
                       {localStorage.getItem('googleConnected') || localStorage.getItem('authProvider') === 'google'
-                        ? 'Your Google account is connected'
-                        : 'Connect your Google account for single sign-on'}
+                        ? 'Connected for single sign-on'
+                        : 'Connect for single sign-on'}
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className="setting-control" style={{ flex: 'none', width: 'auto' }}>
                     {localStorage.getItem('googleConnected') || localStorage.getItem('authProvider') === 'google' ? (
                       <div className="google-connected">
                         <span className="google-connected-badge">
