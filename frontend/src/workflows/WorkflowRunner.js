@@ -1,12 +1,45 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
-import { BackButton, Card, EmptyState } from '../components';
+import { BackButton, EmptyState } from '../components';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders } from '../core/authHeaders';
 import { showToast } from '../core/toast';
 import WorkflowProgress from './WorkflowProgress';
 import './WorkflowRunner.css';
+
+// Demo instance data for showcase
+const DEMO_INSTANCE = {
+  id: 'demo-instance-1',
+  name: 'Apex Manufacturing - Aluminum Housing Sourcing',
+  templateId: 'supplier-qualification',
+  templateName: 'Supplier Qualification Pipeline',
+  status: 'completed',
+  currentStageIndex: 6,
+  totalStages: 6,
+  currentStage: null,
+  stageStates: {
+    requirement_capture: { status: 'completed', completedAt: '2026-07-15T10:30:00Z' },
+    market_research: { status: 'completed', completedAt: '2026-07-16T14:00:00Z' },
+    supplier_outreach: { status: 'completed', completedAt: '2026-07-17T09:00:00Z' },
+    response_tracking: { status: 'completed', completedAt: '2026-07-18T16:00:00Z' },
+    qualification_audit: { status: 'completed', completedAt: '2026-07-19T11:00:00Z' },
+    final_selection: { status: 'completed', completedAt: '2026-07-20T14:30:00Z' },
+  },
+  context: {
+    client_name: 'Apex Manufacturing Inc.',
+    client_location: 'Detroit, Michigan, USA',
+    component_type: 'CNC Machined Aluminum Housing',
+    material: '6061-T6 Aluminum',
+    annual_volume: '50,000 units',
+    selected_supplier: 'Bharat Precision Engineering',
+    quote: '$12.80/unit',
+    lead_time: '6 weeks',
+    backup_supplier: 'Precision Components Pvt Ltd',
+  },
+  createdAt: '2026-07-15T10:00:00Z',
+  completedAt: '2026-07-20T14:30:00Z',
+};
 
 function WorkflowRunner() {
   const { instanceId } = useParams();
@@ -16,7 +49,17 @@ function WorkflowRunner() {
   const [stageData, setStageData] = useState({});
   const [completing, setCompleting] = useState(false);
 
+  // Demo mode detection
+  const isDemoMode = localStorage.getItem('enableAgentsMode') !== 'live';
+
   const fetchInstance = useCallback(async () => {
+    // Demo mode: use demo data
+    if (isDemoMode && instanceId.startsWith('demo-')) {
+      setInstance(DEMO_INSTANCE);
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/instances/${instanceId}`, {
         headers: authJsonHeaders(),
@@ -34,7 +77,7 @@ function WorkflowRunner() {
     } finally {
       setLoading(false);
     }
-  }, [instanceId, navigate]);
+  }, [instanceId, navigate, isDemoMode]);
 
   useEffect(() => {
     fetchInstance();

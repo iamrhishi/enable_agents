@@ -1,19 +1,98 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../core/Header';
-import { BackButton, Card, EmptyState, ProjectSelector, ProjectGate } from '../components';
+import { BackButton, EmptyState, ProjectSelector, ProjectGate } from '../components';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders } from '../core/authHeaders';
 import { showToast } from '../core/toast';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import './WorkflowsPage.css';
 
-const CATEGORY_ICONS = {
-  marketing: 'megaphone',
-  sales: 'trending-up',
-  operations: 'settings',
-  research: 'search',
-  custom: 'plus-circle',
-};
+// Demo data for showcasing workflows without backend
+const DEMO_TEMPLATES = [
+  {
+    id: 'supplier-qualification',
+    name: 'Supplier Qualification Pipeline',
+    description: 'End-to-end workflow for qualifying suppliers for OEM requirements. Covers requirement capture, supplier research, RFQ management, and final selection.',
+    category: 'procurement',
+    icon: 'truck',
+    stageCount: 6,
+    isSystem: true,
+  },
+  {
+    id: 'lead-nurture',
+    name: 'Lead Nurturing',
+    description: 'Multi-touch campaign to convert leads into customers through personalized outreach.',
+    category: 'marketing',
+    icon: 'users',
+    stageCount: 4,
+    isSystem: true,
+  },
+  {
+    id: 'market-launch',
+    name: 'New Market Launch',
+    description: 'Complete workflow for launching into a new market: research, content creation, and outreach.',
+    category: 'marketing',
+    icon: 'rocket',
+    stageCount: 3,
+    isSystem: true,
+  },
+  {
+    id: 'vendor-evaluation',
+    name: 'Vendor Evaluation',
+    description: 'Research and evaluate potential vendors/suppliers for your business needs.',
+    category: 'procurement',
+    icon: 'clipboard-check',
+    stageCount: 4,
+    isSystem: true,
+  },
+];
+
+const DEMO_INSTANCES = [
+  {
+    id: 'demo-instance-1',
+    name: 'Apex Manufacturing - Aluminum Housing Sourcing',
+    templateId: 'supplier-qualification',
+    templateName: 'Supplier Qualification Pipeline',
+    status: 'completed',
+    currentStageIndex: 6,
+    totalStages: 6,
+    currentStage: null,
+    context: {
+      client_name: 'Apex Manufacturing Inc.',
+      selected_supplier: 'Bharat Precision Engineering',
+      quote: '$12.80/unit',
+    },
+    createdAt: '2026-07-15T10:00:00Z',
+    completedAt: '2026-07-20T14:30:00Z',
+  },
+  {
+    id: 'demo-instance-2',
+    name: 'TechCorp Q3 Lead Campaign',
+    templateId: 'lead-nurture',
+    templateName: 'Lead Nurturing',
+    status: 'running',
+    currentStageIndex: 2,
+    totalStages: 4,
+    currentStage: { id: 'outreach', name: 'Personalized Outreach', agent: 'content_marketing' },
+    context: {
+      total_leads: 156,
+      emails_sent: 89,
+    },
+    createdAt: '2026-07-18T09:00:00Z',
+  },
+  {
+    id: 'demo-instance-3',
+    name: 'Southeast Asia Market Entry',
+    templateId: 'market-launch',
+    templateName: 'New Market Launch',
+    status: 'pending',
+    currentStageIndex: 0,
+    totalStages: 3,
+    currentStage: { id: 'research', name: 'Market Research', agent: 'market_research' },
+    context: {},
+    createdAt: '2026-07-20T08:00:00Z',
+  },
+];
 
 function WorkflowsPage() {
   const [templates, setTemplates] = useState([]);
@@ -23,7 +102,18 @@ function WorkflowsPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const selectedProjectId = useSelectedProjectId();
 
+  // Demo mode detection
+  const [isDemoMode] = useState(() => {
+    return localStorage.getItem('enableAgentsMode') !== 'live';
+  });
+
   const fetchTemplates = useCallback(async () => {
+    // Use demo data in demo mode
+    if (isDemoMode) {
+      setTemplates(DEMO_TEMPLATES);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/templates`, {
         headers: authJsonHeaders(),
@@ -35,9 +125,15 @@ function WorkflowsPage() {
     } catch (err) {
       console.error('Error fetching templates:', err);
     }
-  }, []);
+  }, [isDemoMode]);
 
   const fetchInstances = useCallback(async () => {
+    // Use demo data in demo mode
+    if (isDemoMode) {
+      setInstances(DEMO_INSTANCES);
+      return;
+    }
+
     try {
       const url = selectedProjectId
         ? `${API_CONFIG.BASE_URL}/workflows/instances?project_id=${selectedProjectId}`
@@ -50,7 +146,7 @@ function WorkflowsPage() {
     } catch (err) {
       console.error('Error fetching instances:', err);
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, isDemoMode]);
 
   useEffect(() => {
     const load = async () => {
@@ -64,6 +160,27 @@ function WorkflowsPage() {
   const handleStartWorkflow = async (templateId) => {
     if (!selectedProjectId) {
       showToast('Select a project first', 'warning');
+      return;
+    }
+
+    // Demo mode: simulate starting workflow
+    if (isDemoMode) {
+      const template = templates.find((t) => t.id === templateId);
+      const newInstance = {
+        id: `demo-${Date.now()}`,
+        name: `${template?.name || 'New Workflow'} - Demo`,
+        templateId,
+        templateName: template?.name || 'Workflow',
+        status: 'pending',
+        currentStageIndex: 0,
+        totalStages: template?.stageCount || 3,
+        currentStage: { id: 'step-1', name: 'First Stage', agent: 'requirements_gathering' },
+        context: {},
+        createdAt: new Date().toISOString(),
+      };
+      setInstances((prev) => [newInstance, ...prev]);
+      showToast('Demo workflow created', 'success');
+      setActiveTab('active');
       return;
     }
 
@@ -90,6 +207,13 @@ function WorkflowsPage() {
   };
 
   const handleDeleteInstance = async (instanceId) => {
+    // Demo mode: just remove from state
+    if (isDemoMode) {
+      setInstances((prev) => prev.filter((i) => i.id !== instanceId));
+      showToast('Demo workflow deleted', 'success');
+      return;
+    }
+
     try {
       const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/instances/${instanceId}`, {
         method: 'DELETE',
