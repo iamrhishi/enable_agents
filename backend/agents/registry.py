@@ -166,6 +166,24 @@ def agent_health(agent_id: str):
     return jsonify({"id": agent_id, "enabled": manifest.get("enabled"), "status": "ok"})
 
 
+@registry_bp.get("/<agent_id>/dependencies")
+def agent_dependencies(agent_id: str):
+    """Check dependency status for an agent."""
+    from flask import request
+    from core.dependency_validator import get_dependency_status
+
+    manifest = _registry.get(agent_id)
+    if not manifest:
+        return jsonify({"error": "agent not found"}), 404
+
+    user_id = request.headers.get("X-User-Id", "")
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    status = get_dependency_status(agent_id, user_id)
+    return jsonify(status)
+
+
 @registry_bp.patch("/<agent_id>")
 def toggle_agent(agent_id: str):
     """Toggle an agent's enabled flag at runtime and persist to manifest.json."""

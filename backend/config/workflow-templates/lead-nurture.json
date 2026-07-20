@@ -1,0 +1,45 @@
+{
+  "id": "lead-nurture",
+  "name": "Lead Nurturing",
+  "description": "Multi-touch campaign to convert leads into customers.",
+  "category": "sales",
+  "icon": "users",
+  "stages": [
+    {
+      "stage_id": "qualify",
+      "name": "Lead Qualification",
+      "agent": "market_research",
+      "description": "Research and qualify leads based on fit criteria.",
+      "required_inputs": ["lead_list"],
+      "outputs": ["qualified_leads"],
+      "config": {}
+    },
+    {
+      "stage_id": "personalize",
+      "name": "Content Personalization",
+      "agent": "content_marketing",
+      "description": "Create personalized content for each lead segment.",
+      "required_inputs": ["qualified_leads"],
+      "outputs": ["personalized_content"],
+      "config": {}
+    },
+    {
+      "stage_id": "sequence",
+      "name": "Email Sequence",
+      "agent": "email_outreach",
+      "description": "Set up automated email sequences.",
+      "required_inputs": ["personalized_content", "qualified_leads"],
+      "outputs": ["email_sequence"],
+      "config": {"sequence_length": 5}
+    },
+    {
+      "stage_id": "followup",
+      "name": "Follow-up Tasks",
+      "agent": "executive_assistant",
+      "description": "Track responses and create follow-up tasks.",
+      "required_inputs": ["email_sequence"],
+      "outputs": ["follow_up_tasks"],
+      "config": {}
+    }
+  ]
+}

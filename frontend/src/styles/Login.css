@@ -335,7 +335,29 @@
   text-decoration: underline;
 }
 
-/* Responsive design — Tablet */
+/* Responsive design — Tablet landscape */
+@media (max-width: 768px) {
+  .login-page {
+    padding: var(--space-4);
+  }
+
+  .login-card-container {
+    max-width: 400px;
+    padding: var(--space-8) var(--space-6);
+  }
+
+  .login-split-layout {
+    flex-direction: column;
+  }
+
+  .login-branding,
+  .login-form-side {
+    width: 100%;
+    padding: var(--space-6);
+  }
+}
+
+/* Responsive design — Tablet portrait */
 @media (max-width: 600px) {
   .login-card-container {
     max-width: 360px;

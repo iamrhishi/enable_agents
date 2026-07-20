@@ -33,10 +33,12 @@ export { default as DemoModeBadge } from './DemoModeBadge';
 export { default as LiveModeHint } from './LiveModeHint';
 export { default as AgentOutcomesStrip } from './AgentOutcomesStrip';
 export { default as AgentPlaceholderShell } from './AgentPlaceholderShell';
+export { default as AgentPrerequisiteGate } from './AgentPrerequisiteGate';
 export { default as NetworkProfileCard, NetworkSearchResults, normalizeSearchProfile } from './NetworkProfileCard';
 
 // Accessibility
 export { default as VisuallyHidden } from './VisuallyHidden';
+export { AriaLive, AriaLiveRegion, useAnnounce } from './AriaLive';
 
 // Cards
 export { Card, CardGrid, ModuleCard, StatusIndicator } from './Card';

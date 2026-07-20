@@ -8560,6 +8560,17 @@ from routes.projects import projects_bp
 app.register_blueprint(team_bp)
 app.register_blueprint(projects_bp)
 
+# Register workflow API routes
+from routes.workflows import workflows_bp, load_system_templates
+app.register_blueprint(workflows_bp)
+
+# Register dependencies API routes
+from routes.dependencies import dependencies_bp
+app.register_blueprint(dependencies_bp)
+
+# Import workflow models for db.create_all()
+from models.workflow import WorkflowTemplate, WorkflowInstance
+
 
 if __name__ == '__main__':
     with app.app_context():

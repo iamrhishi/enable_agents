@@ -1,0 +1,183 @@
+"""
+Agent Dependency Validator.
+
+Validates that required context data is available before an agent executes.
+Can operate in warn mode (log warnings) or strict mode (block execution).
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
+from functools import wraps
+from flask import request, jsonify, current_app
+
+from core.context import ContextStore
+
+CONFIG_PATH = Path(__file__).parent.parent / "config" / "agent-dependencies.json"
+
+
+class DependencyValidator:
+    """Validates agent dependencies against available context data."""
+
+    def __init__(self):
+        self._config: Optional[Dict[str, Any]] = None
+        self._loaded = False
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        if not self._loaded:
+            self._load_config()
+        return self._config or {}
+
+    def _load_config(self):
+        """Load dependency configuration from JSON file."""
+        try:
+            if CONFIG_PATH.exists():
+                self._config = json.loads(CONFIG_PATH.read_text())
+            else:
+                self._config = {"dependencies": {}, "enforcement": {"mode": "warn"}}
+        except Exception as e:
+            print(f"[dependency_validator] Error loading config: {e}")
+            self._config = {"dependencies": {}, "enforcement": {"mode": "warn"}}
+        self._loaded = True
+
+    def reload_config(self):
+        """Force reload of configuration."""
+        self._loaded = False
+        self._load_config()
+
+    def get_agent_requirements(self, agent_id: str) -> List[str]:
+        """Get list of dependency keys required by an agent."""
+        deps = self.config.get("dependencies", {})
+        requirements = []
+        for dep_key, dep_info in deps.items():
+            if agent_id in dep_info.get("required_by", []):
+                requirements.append(dep_key)
+        return requirements
+
+    def get_providers(self, dep_key: str) -> List[str]:
+        """Get list of agents that provide a dependency."""
+        deps = self.config.get("dependencies", {})
+        dep_info = deps.get(dep_key, {})
+        return dep_info.get("provided_by", [])
+
+    def check_dependencies(
+        self, agent_id: str, user_id: str, project_id: Optional[str] = None
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        Check if all dependencies for an agent are satisfied.
+
+        Returns:
+            Tuple of (all_satisfied: bool, missing: List[{key, description, providers}])
+        """
+        requirements = self.get_agent_requirements(agent_id)
+        if not requirements:
+            return True, []
+
+        missing = []
+        context_store = ContextStore()
+
+        for dep_key in requirements:
+            # Check if data exists in context store
+            # Try to get from any agent that might provide this key
+            value = context_store.get(user_id, "*", dep_key)
+            if not value:
+                deps = self.config.get("dependencies", {})
+                dep_info = deps.get(dep_key, {})
+                missing.append({
+                    "key": dep_key,
+                    "description": dep_info.get("description", ""),
+                    "providers": dep_info.get("provided_by", []),
+                    "fallback_provider": dep_info.get("fallback_provider"),
+                })
+
+        return len(missing) == 0, missing
+
+    def get_enforcement_mode(self) -> str:
+        """Get current enforcement mode: 'warn', 'strict', or 'off'."""
+        return self.config.get("enforcement", {}).get("mode", "warn")
+
+    def is_strict_for_agent(self, agent_id: str) -> bool:
+        """Check if strict enforcement applies to a specific agent."""
+        enforcement = self.config.get("enforcement", {})
+        if enforcement.get("mode") == "strict":
+            return True
+        return agent_id in enforcement.get("strict_agents", [])
+
+
+# Global validator instance
+validator = DependencyValidator()
+
+
+def require_dependencies(agent_id: str):
+    """
+    Decorator for route handlers that enforces dependency checks.
+
+    Usage:
+        @bp.route('/api/some-agent/action', methods=['POST'])
+        @require_dependencies('some_agent')
+        def some_action():
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            user_id = request.headers.get("X-User-Id", "")
+            if not user_id:
+                return jsonify({"error": "Not authenticated"}), 401
+
+            # Check demo mode bypass
+            is_demo = request.headers.get("X-Demo-Mode", "false").lower() == "true"
+            enforcement = validator.config.get("enforcement", {})
+            if is_demo and enforcement.get("bypass_in_demo_mode", True):
+                return f(*args, **kwargs)
+
+            # Check dependencies
+            satisfied, missing = validator.check_dependencies(agent_id, user_id)
+
+            if not satisfied:
+                mode = validator.get_enforcement_mode()
+                is_strict = validator.is_strict_for_agent(agent_id)
+
+                if mode == "strict" or is_strict:
+                    return jsonify({
+                        "error": "Missing required dependencies",
+                        "missing_dependencies": missing,
+                        "message": f"Agent '{agent_id}' requires data from: {', '.join(m['key'] for m in missing)}",
+                    }), 428  # Precondition Required
+
+                else:
+                    # Warn mode - log but allow
+                    current_app.logger.warning(
+                        f"[dependency_validator] Agent '{agent_id}' missing dependencies: "
+                        f"{[m['key'] for m in missing]}"
+                    )
+
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def get_dependency_status(agent_id: str, user_id: str) -> Dict[str, Any]:
+    """
+    Get full dependency status for an agent.
+
+    Returns dict with:
+        - requirements: List of required dependency keys
+        - satisfied: List of satisfied dependencies
+        - missing: List of missing dependencies with details
+        - ready: Boolean if agent can run
+    """
+    requirements = validator.get_agent_requirements(agent_id)
+    satisfied, missing = validator.check_dependencies(agent_id, user_id)
+
+    satisfied_keys = [r for r in requirements if r not in [m["key"] for m in missing]]
+
+    return {
+        "agent_id": agent_id,
+        "requirements": requirements,
+        "satisfied": satisfied_keys,
+        "missing": missing,
+        "ready": satisfied,
+        "enforcement_mode": validator.get_enforcement_mode(),
+    }

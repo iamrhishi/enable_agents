@@ -1,0 +1,36 @@
+{
+  "id": "market-launch",
+  "name": "New Market Launch",
+  "description": "Complete workflow for launching into a new market: research, content creation, and outreach.",
+  "category": "marketing",
+  "icon": "rocket",
+  "stages": [
+    {
+      "stage_id": "research",
+      "name": "Market Research",
+      "agent": "market_research",
+      "description": "Research the target market, competitors, and customer needs.",
+      "required_inputs": ["industry", "target_market"],
+      "outputs": ["company_profile", "competitor_analysis", "market_size"],
+      "config": {}
+    },
+    {
+      "stage_id": "content",
+      "name": "Content Creation",
+      "agent": "content_marketing",
+      "description": "Create marketing content based on research findings.",
+      "required_inputs": ["company_profile"],
+      "outputs": ["content_pieces", "campaign_plan"],
+      "config": {}
+    },
+    {
+      "stage_id": "outreach",
+      "name": "Email Outreach",
+      "agent": "email_outreach",
+      "description": "Set up email campaigns to reach prospects.",
+      "required_inputs": ["prospect_list", "content_pieces"],
+      "outputs": ["campaign_stats"],
+      "config": {}
+    }
+  ]
+}

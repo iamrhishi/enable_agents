@@ -1,0 +1,45 @@
+{
+  "id": "vendor-evaluation",
+  "name": "Vendor Evaluation",
+  "description": "Research and evaluate potential vendors/suppliers for procurement decisions.",
+  "category": "operations",
+  "icon": "clipboard-check",
+  "stages": [
+    {
+      "stage_id": "requirements",
+      "name": "Requirements Definition",
+      "agent": "market_research",
+      "description": "Define what you need from vendors.",
+      "required_inputs": ["product_category", "budget_range"],
+      "outputs": ["requirements_doc"],
+      "config": {}
+    },
+    {
+      "stage_id": "vendor-search",
+      "name": "Vendor Search",
+      "agent": "market_research",
+      "description": "Search for potential vendors matching requirements.",
+      "required_inputs": ["requirements_doc"],
+      "outputs": ["vendor_list"],
+      "config": {"search_type": "vendors"}
+    },
+    {
+      "stage_id": "outreach",
+      "name": "Vendor Outreach",
+      "agent": "email_outreach",
+      "description": "Contact vendors for quotes and information.",
+      "required_inputs": ["vendor_list"],
+      "outputs": ["vendor_responses"],
+      "config": {}
+    },
+    {
+      "stage_id": "evaluation",
+      "name": "Evaluation & Decision",
+      "agent": "executive_assistant",
+      "description": "Track responses and make final vendor selection.",
+      "required_inputs": ["vendor_responses"],
+      "outputs": ["selected_vendor"],
+      "config": {}
+    }
+  ]
+}

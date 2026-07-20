@@ -1,5 +1,7 @@
 # Enable Agents — Context (Source of Truth)
 
+**Last updated:** 2026-07-20
+
 ## Product purpose
 Enable Agents is a multi-agent platform for business workflows. It combines a Flask API backend with a React frontend, PostgreSQL database (with pgvector for embeddings), Redis cache/queue, and a plug-and-play agent architecture.
 
@@ -254,3 +256,98 @@ Agents use:
 ./scripts/run.sh prod   # Production
 ./scripts/run.sh stop   # Stop
 ```
+
+---
+
+## Agent Dependency Graph
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    AGENT DATA DEPENDENCIES                               │
+│                                                                         │
+│  market_research ──provides──▶ company_profile, prospect_list           │
+│         │                                                               │
+│         ▼                                                               │
+│  content_marketing ──consumes──▶ company_profile, user_profile          │
+│         │                                                               │
+│         ▼                                                               │
+│  email_outreach ──consumes──▶ company_profile, prospect_list,           │
+│                               user_profile                              │
+│                                                                         │
+│  document_intelligence ──consumes──▶ user_profile                       │
+│                                                                         │
+│  ⚠️ GAP: user_profile consumed by 3 agents but NO agent provides it    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Dependency Enforcement Status
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| Manifest declarations | ✅ Done | `backend/agents/*/manifest.json` |
+| Registry loading | ✅ Done | `backend/agents/registry.py` |
+| Runtime validation | ✅ Done | `backend/core/dependency_validator.py` |
+| API endpoint | ✅ Done | `GET /api/dependencies/status/<agent_id>` |
+| Frontend gating | ✅ Done | `frontend/src/components/AgentPrerequisiteGate.js` |
+| Config file | ✅ Done | `backend/config/agent-dependencies.json` |
+
+---
+
+## Known Gaps (July 2026 Audit) — MOSTLY RESOLVED
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| **Executive Assistant backend** | ✅ DONE | Routes, service, models at `backend/agents/executive_assistant/` |
+| **Dependency enforcement** | ✅ DONE | Validator with warn/strict modes, frontend gate |
+| **Workflow Templates** | ✅ DONE | Full CRUD, state machine, progress UI |
+| **CI/CD Pipeline** | ✅ DONE | GitHub Actions, Playwright E2E tests |
+| **Projects persistence** | ✅ DONE | SQLAlchemy models in `core/models.py` |
+| **Teams persistence** | ✅ DONE | SQLAlchemy models in `core/models.py` |
+| **No user_profile provider** | ⚠️ TODO | Settings fallback exists, dedicated provider needed |
+| **RequirementsGathering.js** | ✅ FIXED | Restored from git commit 51846a4b |
+
+---
+
+## Workflow Templates System ✅ IMPLEMENTED
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     WORKFLOW TEMPLATE SYSTEM                             │
+│                                                                         │
+│  Backend:                                                               │
+│  ├── backend/models/workflow.py — SQLAlchemy models                     │
+│  ├── backend/routes/workflows.py — CRUD + state transitions             │
+│  └── backend/config/workflow-templates/*.json — System templates        │
+│                                                                         │
+│  Frontend:                                                              │
+│  ├── frontend/src/workflows/WorkflowsPage.js — Template listing         │
+│  ├── frontend/src/workflows/WorkflowRunner.js — Active workflow UI      │
+│  └── frontend/src/workflows/WorkflowProgress.js — Progress tracker      │
+│                                                                         │
+│  API Endpoints:                                                         │
+│  ├── GET/POST /api/workflows/templates — Template CRUD                  │
+│  ├── GET/POST /api/workflows/instances — Instance management            │
+│  ├── POST /api/workflows/instances/:id/start — Start workflow           │
+│  ├── POST /api/workflows/instances/:id/complete-stage — Advance         │
+│  └── POST /api/workflows/instances/:id/pause — Pause workflow           │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### UX Features
+
+- **Progress bar** with "X / Y stages completed"
+- **Timeline view** showing completed (✓), current (number), pending stages
+- **Current stage panel** with description, required inputs, and actions
+- **Context sidebar** showing data collected from completed stages
+- **State machine** with pending → running → paused → completed flow
+
+### Current Limitations (Potential LangGraph Migration)
+
+- **Linear progression only** — No conditional branching
+- **Forward-only** — Cannot go back to previous stages
+- **Manual agent invocation** — User must manually run agent, then mark complete
+- **No agent output piping** — Stage outputs don't auto-feed into next agent
+
+**LangGraph would add:** Conditional routing, parallel execution, checkpointing, automatic agent composition, interrupt/resume from any point.

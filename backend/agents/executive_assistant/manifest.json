@@ -1,0 +1,27 @@
+{
+  "id": "executive_assistant",
+  "name": "Executive Assistant",
+  "description": "Task management, stakeholder tracking, and reminder scheduling for executive workflows. Supports WhatsApp and email notifications.",
+  "enabled": true,
+  "routes_prefix": "/api/executive-assistant",
+  "required_env": [],
+  "provides": {
+    "task_list": {
+      "tasks": "array",
+      "stakeholders": "array"
+    },
+    "reminders": {
+      "pending_reminders": "array"
+    }
+  },
+  "consumes": ["user_profile", "company_profile"],
+  "input_schema": {
+    "projectId": "string",
+    "title": "string",
+    "description": "string",
+    "assignedTo": "string",
+    "dueDate": "string",
+    "priority": "string"
+  },
+  "version": "1.0.0"
+}

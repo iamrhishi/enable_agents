@@ -83,20 +83,24 @@
    STATE VARIANTS
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-.input--error {
+.input--error,
+.input-error {
   border-color: var(--color-error);
 }
 
-.input--error:focus {
+.input--error:focus,
+.input-error:focus {
   border-color: var(--color-error);
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
 }
 
-.input--success {
+.input--success,
+.input-success {
   border-color: var(--color-success);
 }
 
-.input--success:focus {
+.input--success:focus,
+.input-success:focus {
   border-color: var(--color-success);
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
 }

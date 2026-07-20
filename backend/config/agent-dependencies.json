@@ -1,0 +1,34 @@
+{
+  "_comment": "Agent dependency configuration. Defines what each agent provides and consumes.",
+  "dependencies": {
+    "user_profile": {
+      "description": "User profile data (name, company, industry, role)",
+      "required_by": ["market_research", "content_marketing", "executive_assistant"],
+      "provided_by": ["settings"],
+      "fallback_provider": "settings"
+    },
+    "company_profile": {
+      "description": "Company research data (competitors, market size, etc)",
+      "required_by": ["content_marketing", "email_outreach", "executive_assistant"],
+      "provided_by": ["market_research"],
+      "fallback_provider": null
+    },
+    "prospect_list": {
+      "description": "List of potential customers/leads",
+      "required_by": ["email_outreach", "content_marketing"],
+      "provided_by": ["market_research"],
+      "fallback_provider": null
+    },
+    "content_pieces": {
+      "description": "Marketing content (blog posts, emails, social)",
+      "required_by": ["email_outreach"],
+      "provided_by": ["content_marketing"],
+      "fallback_provider": null
+    }
+  },
+  "enforcement": {
+    "mode": "warn",
+    "strict_agents": [],
+    "bypass_in_demo_mode": true
+  }
+}

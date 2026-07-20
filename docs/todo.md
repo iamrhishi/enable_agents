@@ -637,6 +637,114 @@ Enterprise products (Atlassian, Linear, Stripe Dashboard, Material 3) separate *
 
 ---
 
+## Workflow Templates ✅ IMPLEMENTED
+
+**Status:** Done — Linear state machine working. LangGraph migration optional for advanced features.
+
+### Backend Tasks
+- [x] Create `backend/models/workflow.py` — WorkflowTemplate, WorkflowStage, WorkflowInstance
+- [x] Create `backend/routes/workflows.py` — CRUD + state transitions
+- [x] Create `backend/config/workflow-templates/` — JSON template definitions
+- [x] Add workflow state machine logic
+
+### Frontend Tasks
+- [x] Create `frontend/src/workflows/WorkflowsPage.js` — Templates listing
+- [x] Create `frontend/src/workflows/WorkflowRunner.js` — Active workflow UI
+- [x] Create `frontend/src/workflows/WorkflowProgress.js` — Progress tracker
+- [ ] Add Workflows section to landing page (navigation exists via /workflows route)
+
+---
+
+## Agent Dependency System ✅ IMPLEMENTED
+
+**Status:** Done — Validator with warn/strict modes, API endpoints, frontend gate.
+
+### Backend Tasks
+- [x] Create `backend/config/agent-dependencies.json` — dependency config
+- [x] Create `backend/core/dependency_validator.py` — validation middleware
+- [x] Create `backend/routes/dependencies.py` — API endpoints
+- [ ] Add `user_profile` provider agent (gap: 3 agents need it, settings fallback exists)
+
+### Frontend Tasks
+- [x] Create `frontend/src/components/AgentPrerequisiteGate.js` — UI gate
+- [x] Show user what's needed before using an agent
+
+---
+
+## CI/CD + QA Automation
+
+### QA Test Automation (from QA_Test_Checklist.xlsx audit)
+
+| Category | Total | Automatable | Notes |
+|----------|-------|-------------|-------|
+| E2E tests | 52 | ~45 (87%) | Playwright/Cypress |
+| Partially automatable | - | ~5 (10%) | Drag/drop, AI responses, async |
+| Manual preferred | - | ~2 (3%) | External channel, AI quality |
+
+### CI/CD Tasks ✅ IMPLEMENTED
+- [x] Create `.github/workflows/ci.yml` — GitHub Actions pipeline
+- [x] Add Playwright to `frontend/package.json`
+- [x] Create `frontend/e2e/` — test directory
+- [x] Create `frontend/playwright.config.js`
+- [x] Add pytest job for backend
+- [x] Add ESLint + Prettier job
+
+### Priority E2E Tests ✅ IMPLEMENTED
+- [x] Login/logout flow — `e2e/auth.spec.js`
+- [x] Project creation — `e2e/projects.spec.js`
+- [x] Agent navigation — `e2e/navigation.spec.js`
+- [x] Settings save/load — `e2e/settings.spec.js`
+- [ ] Document upload (needs backend test fixtures)
+- [ ] Demo mode toggle (needs frontend implementation)
+
+---
+
+## Backend Critical Gaps (July 2026 Audit) — STATUS UPDATE
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| **Executive Assistant no backend** | ✅ DONE | Full CRUD for tasks, reminders, stakeholders |
+| **Projects in-memory** | ✅ DONE | Uses SQLAlchemy models in `core/models.py` |
+| **Teams in-memory** | ✅ DONE | Uses SQLAlchemy models in `core/models.py` |
+| **No user_profile provider** | ⚠️ TODO | Settings fallback exists in dependency config |
+| **Dependency enforcement** | ✅ DONE | Validator with warn/strict modes + API |
+
+### Executive Assistant Backend ✅ IMPLEMENTED
+- [x] Create `backend/agents/executive_assistant/routes.py`
+- [x] Create `backend/agents/executive_assistant/service.py`
+- [x] Create `backend/agents/executive_assistant/models.py`
+- [x] Add task management endpoints (CRUD)
+- [x] Add reminder endpoints (CRUD, linked to tasks)
+- [x] Add stakeholder endpoints (CRUD)
+- [ ] Integrate with calendar/email connectors (future)
+
+### Projects Persistence
+- [ ] Create SQLAlchemy Project model
+- [ ] Migrate `backend/routes/projects.py` from dict to DB
+- [ ] Add project-agent association table
+
+### Teams Persistence
+- [ ] Create SQLAlchemy Team, TeamMember models
+- [ ] Migrate `backend/routes/team.py` from dict to DB
+- [ ] Add invitation system with email
+
+---
+
+## Frontend Critical Gaps (July 2026 Audit) — STATUS UPDATE
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| **RequirementsGathering.js empty** | ✅ FIXED | Restored from git (2381 lines) |
+| **Event Networking no Header** | ✅ DONE | Already has Header (line 1238) |
+| **Orphan files removed** | ✅ DONE | Deleted ExecutiveAssistantAgent.js, AvatarAgent.css |
+
+### RequirementsGathering Restore ✅ DONE
+- [x] Check git history: `git log --all -- frontend/src/agents/RequirementsGathering.js`
+- [x] Restore last working version (commit 51846a4b)
+- [x] File restored with 2381 lines + existing CSS
+
+---
+
 ## Backend P2 Tasks
 
 - [ ] Image OCR for documents

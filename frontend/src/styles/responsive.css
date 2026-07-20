@@ -1,0 +1,233 @@
+/**
+ * Responsive Utilities
+ *
+ * Global responsive helper classes and breakpoint-specific styles.
+ * Import in components that need responsive behavior.
+ *
+ * Breakpoints:
+ *   xs: 480px  (Small phones)
+ *   sm: 640px  (Large phones)
+ *   md: 768px  (Tablets)
+ *   lg: 1024px (Small laptops)
+ *   xl: 1280px (Desktops)
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   VISIBILITY UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Hide on mobile (show on tablet+) */
+.hide-mobile {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+/* Show on mobile only */
+.show-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .show-mobile {
+    display: block;
+  }
+}
+
+/* Hide on small phones */
+.hide-xs {
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .hide-xs {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FLEX UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Stack on mobile (row on desktop, column on mobile) */
+.stack-mobile {
+  display: flex;
+  gap: var(--space-3);
+}
+
+@media (max-width: 768px) {
+  .stack-mobile {
+    flex-direction: column;
+  }
+}
+
+/* Full width on mobile */
+.full-width-mobile {
+  width: auto;
+}
+
+@media (max-width: 768px) {
+  .full-width-mobile {
+    width: 100%;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SPACING UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Reduce padding on mobile */
+.compact-mobile {
+  padding: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .compact-mobile {
+    padding: var(--space-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .compact-mobile {
+    padding: var(--space-2);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   GRID UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* 2-column grid that becomes single column on mobile */
+.grid-2-col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .grid-2-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 3-column grid that adapts on smaller screens */
+.grid-3-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 1024px) {
+  .grid-3-col {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-3-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Auto-fit grid (as many columns as fit) */
+.grid-auto-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 480px) {
+  .grid-auto-fit {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TEXT UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Center text on mobile */
+.text-center-mobile {
+  text-align: left;
+}
+
+@media (max-width: 768px) {
+  .text-center-mobile {
+    text-align: center;
+  }
+}
+
+/* Truncate text on mobile */
+.truncate-mobile {
+  white-space: normal;
+}
+
+@media (max-width: 768px) {
+  .truncate-mobile {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   LANDSCAPE ORIENTATION
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Reduce vertical spacing in landscape mode on phones */
+  .landscape-compact {
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  /* Hide large headers in landscape */
+  .landscape-hide {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TOUCH DEVICE UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media (hover: none) {
+  /* Remove hover effects on touch devices */
+  .hover-effect-only:hover {
+    transform: none;
+    box-shadow: inherit;
+  }
+
+  /* Increase touch targets */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PRINT UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+  }
+}

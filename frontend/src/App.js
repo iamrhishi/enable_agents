@@ -27,6 +27,10 @@ import InvestAgent from './agents/InvestAgent';
 import SupplyChainAgent from './agents/SupplyChainAgent';
 import ExecutiveAssistantPage from './agents/ExecutiveAssistantPage';
 
+// Workflows
+import WorkflowsPage from './workflows/WorkflowsPage';
+import WorkflowRunner from './workflows/WorkflowRunner';
+
 
 // Check if user is logged in (has session token)
 function isLoggedIn() {
@@ -71,6 +75,8 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/team" element={<Team />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/workflows" element={<WorkflowsPage />} />
+          <Route path="/workflows/:instanceId" element={<WorkflowRunner />} />
           </Routes>
           </main>
           </ErrorBoundary>
