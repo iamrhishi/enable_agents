@@ -1,0 +1,52 @@
+{
+  "id": "supplier-qualification",
+  "name": "Supplier Qualification Pipeline",
+  "description": "End-to-end workflow for qualifying suppliers for OEM requirements. Covers requirement capture, supplier research, RFQ management, response tracking, audits, and final selection.",
+  "category": "procurement",
+  "icon": "truck",
+  "isSystem": true,
+  "stages": [
+    {
+      "id": "requirement_capture",
+      "name": "Capture OEM Requirements",
+      "agent": "requirements_gathering",
+      "description": "Document OEM specifications including tolerances, volumes, certifications, and timeline",
+      "required_inputs": ["client_name", "component_type", "material", "annual_volume"]
+    },
+    {
+      "id": "market_research",
+      "name": "Identify Suppliers",
+      "agent": "market_research",
+      "description": "Research suppliers with relevant capabilities (machining, material expertise, certifications)",
+      "required_inputs": ["search_criteria", "location_preference"]
+    },
+    {
+      "id": "supplier_outreach",
+      "name": "Send RFQs",
+      "agent": "content_marketing",
+      "description": "Generate and send RFQ emails to shortlisted suppliers",
+      "required_inputs": ["supplier_list", "rfq_details"]
+    },
+    {
+      "id": "response_tracking",
+      "name": "Track Responses",
+      "agent": "sales_helper",
+      "description": "Log supplier responses, quotes, and capabilities. Score each supplier.",
+      "required_inputs": []
+    },
+    {
+      "id": "qualification_audit",
+      "name": "Schedule Audits",
+      "agent": "executive_assistant",
+      "description": "Coordinate site audits, manage stakeholder communications, track qualification tasks",
+      "required_inputs": ["audit_dates", "auditor_name"]
+    },
+    {
+      "id": "final_selection",
+      "name": "Final Supplier Selection",
+      "agent": "campaign_dashboard",
+      "description": "Compare qualified suppliers and make final recommendation to client",
+      "required_inputs": []
+    }
+  ]
+}

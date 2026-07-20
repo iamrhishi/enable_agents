@@ -474,6 +474,7 @@ function Header({ onProcessClick, onModeChange }) {
             {showUserDropdown && (
               <div className="user-dropdown-menu" role="menu">
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/projects'); }}>Projects</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/workflows'); }}>Workflows</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/team'); }}>Team</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/settings'); }}>Settings</button>
                 <div className="user-dropdown-divider"></div>

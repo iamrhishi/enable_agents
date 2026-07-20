@@ -8564,6 +8564,10 @@ app.register_blueprint(projects_bp)
 from routes.workflows import workflows_bp, load_system_templates
 app.register_blueprint(workflows_bp)
 
+# Load system workflow templates on startup
+with app.app_context():
+    load_system_templates()
+
 # Register dependencies API routes
 from routes.dependencies import dependencies_bp
 app.register_blueprint(dependencies_bp)
@@ -8575,4 +8579,5 @@ from models.workflow import WorkflowTemplate, WorkflowInstance
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        load_system_templates()
     app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
