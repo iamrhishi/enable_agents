@@ -8,6 +8,7 @@ import useValidation, { validators } from '../hooks/useValidation';
 
 function RegisterUser() {
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const navigate = useNavigate();
 
   // Form validation
@@ -71,6 +72,7 @@ function RegisterUser() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    setSubmitted(true);
     if (!validate()) return;
 
     setLoading(true);
@@ -133,19 +135,19 @@ function RegisterUser() {
 
         <form onSubmit={handleRegister} className="login-form" noValidate>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', width: '100%' }}>
-            <FormField htmlFor="firstName" error={touched.firstName && errors.firstName}>
-              <input type="text" name="firstName" id="firstName" placeholder="First Name" value={values.firstName} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="First name" />
+            <FormField htmlFor="firstName" error={submitted && errors.firstName}>
+              <input type="text" name="firstName" id="firstName" placeholder="First Name" value={values.firstName} onChange={handleChange} onBlur={handleBlur} className={`styled-input centered-placeholder ${submitted && errors.firstName ? 'input-error' : ''}`} disabled={loading} aria-label="First name" />
             </FormField>
-            <FormField htmlFor="lastName" error={touched.lastName && errors.lastName}>
-              <input type="text" name="lastName" id="lastName" placeholder="Last Name" value={values.lastName} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Last name" />
+            <FormField htmlFor="lastName" error={submitted && errors.lastName}>
+              <input type="text" name="lastName" id="lastName" placeholder="Last Name" value={values.lastName} onChange={handleChange} onBlur={handleBlur} className={`styled-input centered-placeholder ${submitted && errors.lastName ? 'input-error' : ''}`} disabled={loading} aria-label="Last name" />
             </FormField>
           </div>
 
-          <FormField htmlFor="email" error={touched.email && errors.email}>
-            <input type="email" name="email" id="email" placeholder="Email Address" value={values.email} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Email address" />
+          <FormField htmlFor="email" error={submitted && errors.email}>
+            <input type="email" name="email" id="email" placeholder="Email Address" value={values.email} onChange={handleChange} onBlur={handleBlur} className={`styled-input centered-placeholder ${submitted && errors.email ? 'input-error' : ''}`} disabled={loading} aria-label="Email address" />
           </FormField>
-          <FormField htmlFor="password" error={touched.password && errors.password}>
-            <input type="password" name="password" id="password" placeholder="Password (min 8 characters)" value={values.password} onChange={handleChange} onBlur={handleBlur} className="styled-input centered-placeholder" disabled={loading} aria-label="Password" />
+          <FormField htmlFor="password" error={submitted && errors.password}>
+            <input type="password" name="password" id="password" placeholder="Password (min 8 characters)" value={values.password} onChange={handleChange} onBlur={handleBlur} className={`styled-input centered-placeholder ${submitted && errors.password ? 'input-error' : ''}`} disabled={loading} aria-label="Password" />
           </FormField>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', width: '100%' }}>

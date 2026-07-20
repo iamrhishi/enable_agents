@@ -9,6 +9,7 @@ import useValidation, { validators } from '../hooks/useValidation';
 function Login() {
   const [step, setStep] = useState('email');
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // Track form submission attempts
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -71,12 +72,19 @@ function Login() {
 
   const handleEmailSubmit = (e) => {
     e.preventDefault();
+    setSubmitted(true);
     // Validate just the email field
     const emailError = validators.required('Email is required')(values.email) ||
                        validators.email()(values.email);
     if (!emailError) {
+      setSubmitted(false);
       setStep('password');
     }
+  };
+
+  const handleBackToEmail = () => {
+    setStep('email');
+    setSubmitted(false);
   };
 
   const handlePasswordSubmit = async (e) => {
@@ -145,7 +153,7 @@ function Login() {
           <form onSubmit={handleEmailSubmit} className="login-form" noValidate>
             <FormField
               htmlFor="email"
-              error={touched.email && errors.email}
+              error={submitted && errors.email}
             >
               <input
                 type="email"
@@ -155,14 +163,15 @@ function Login() {
                 value={values.email}
                 onChange={handleChange}
                 onBlur={handleBlur}
-                className="styled-input"
+                className={`styled-input ${submitted && errors.email ? 'input-error' : ''}`}
                 autoFocus
                 disabled={loading}
                 aria-label="Email address"
+                aria-invalid={submitted && !!errors.email}
               />
             </FormField>
-            <button type="submit" className="primary-button" disabled={loading || !values.email}>
-              Continue
+            <button type="submit" className="primary-button" disabled={loading}>
+              {loading ? 'Please wait…' : 'Continue'}
             </button>
             <div className="form-divider">OR</div>
             <button
@@ -185,6 +194,10 @@ function Login() {
 
         {step === 'password' && (
           <form onSubmit={handlePasswordSubmit} className="login-form" noValidate>
+            <div className="login-email-display">
+              <span className="login-email-label">Signing in as</span>
+              <span className="login-email-value">{values.email}</span>
+            </div>
             <FormField
               htmlFor="password"
               error={touched.password && errors.password}
@@ -193,27 +206,38 @@ function Login() {
                 type="password"
                 name="password"
                 id="password"
-                placeholder="Password"
+                placeholder="Enter your password"
                 value={values.password}
                 onChange={handleChange}
                 onBlur={handleBlur}
-                className="styled-input"
+                className={`styled-input ${touched.password && errors.password ? 'input-error' : ''}`}
                 autoFocus
                 disabled={loading}
                 aria-label="Password"
+                aria-invalid={touched.password && !!errors.password}
               />
             </FormField>
-            <button type="submit" className="primary-button" disabled={loading || !values.password}>
+            <button type="submit" className="primary-button" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setStep('email')}
-              disabled={loading}
-            >
-              Back to Email
-            </button>
+            <div className="login-links">
+              <button
+                type="button"
+                className="text-link"
+                onClick={handleBackToEmail}
+                disabled={loading}
+              >
+                ← Use different email
+              </button>
+              <button
+                type="button"
+                className="text-link"
+                onClick={() => showToast('Password reset coming soon', 'info')}
+                disabled={loading}
+              >
+                Forgot password?
+              </button>
+            </div>
           </form>
         )}
       </div>

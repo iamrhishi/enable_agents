@@ -310,6 +310,72 @@
   font-weight: var(--font-medium);
 }
 
+/* Email display on password step */
+.login-email-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-background-subtle, #f8f6f4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+
+.login-email-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.login-email-value {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  font-weight: var(--font-medium);
+}
+
+/* Login links row */
+.login-links {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+.text-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.text-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.text-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input error state */
+.styled-input.input-error {
+  border-color: var(--color-error, #dc2626);
+  background: rgba(220, 38, 38, 0.03);
+}
+
+.styled-input.input-error:focus {
+  border-color: var(--color-error, #dc2626);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
 /* Footer text */
 .footer-text {
   position: fixed;
