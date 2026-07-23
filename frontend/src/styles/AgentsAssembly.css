@@ -741,7 +741,7 @@
 
 .recommended-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-4);
 }
 
@@ -1261,7 +1261,7 @@
 /* Updated modules container - Modern professional spacing */
 .modules-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   grid-auto-rows: 1fr;
   gap: var(--space-4);
   padding: var(--space-2) 0;

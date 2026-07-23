@@ -104,11 +104,23 @@ export function showToast(message, type = 'info', duration = 4000) {
   const toast = document.createElement('div');
   toast.className = `ea-toast ea-toast--${type}`;
   toast.title = 'Click to dismiss';
-  toast.innerHTML = `
-    <span class="ea-toast__icon">${ICONS[type] ?? ICONS.info}</span>
-    <span class="ea-toast__msg">${message}</span>
-    <span class="ea-toast__progress" style="animation-duration:${duration}ms"></span>
-  `;
+
+  // Build with safe DOM APIs (not innerHTML) - error messages routinely
+  // contain raw exception text (e.g. Python's "<HttpError 403 ...>" repr),
+  // and innerHTML would parse that as markup, silently mangling the message.
+  const icon = document.createElement('span');
+  icon.className = 'ea-toast__icon';
+  icon.textContent = ICONS[type] ?? ICONS.info;
+
+  const msg = document.createElement('span');
+  msg.className = 'ea-toast__msg';
+  msg.textContent = message;
+
+  const progress = document.createElement('span');
+  progress.className = 'ea-toast__progress';
+  progress.style.animationDuration = `${duration}ms`;
+
+  toast.append(icon, msg, progress);
 
   const dismiss = () => {
     toast.classList.add('ea-toast-out');

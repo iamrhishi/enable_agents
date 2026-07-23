@@ -7003,18 +7003,20 @@ def send_bulk_emails():
                     thread_id = sent_msg.get('threadId')
                     msg_id = sent_msg.get('id')
                 except Exception as send_error:
-                    send_error_text = str(send_error).lower()
-                    if 'invalid_grant' in send_error_text or 'invalid credentials' in send_error_text or 'unauthorized' in send_error_text:
-                        print(f"[SEND_EMAILS] Gmail API failed, falling back to SMTP: {send_error}")
-                        service = None
-                        server, smtp_sender_email, smtp_err = _connect_smtp_server()
-                        if smtp_err:
-                            return jsonify({'success': False, 'error': f'Gmail auth failed and SMTP fallback is unavailable: {smtp_err}'}), 500
-                        _set_from_header(msg, user_email or smtp_sender_email or recipient)
-                        _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
-                        server.send_message(msg)
-                    else:
-                        raise
+                    # Any Gmail API failure (expired/invalid creds, API not
+                    # enabled on the project, quota, etc.) should fall back to
+                    # SMTP rather than only specific credential error strings -
+                    # narrowly matching text meant only one failure mode ever
+                    # got a second chance.
+                    print(f"[SEND_EMAILS] Gmail API failed, falling back to SMTP: {send_error}")
+                    gmail_error_summary = str(send_error).split('.', 1)[0][:200]
+                    service = None
+                    server, smtp_sender_email, smtp_err = _connect_smtp_server()
+                    if smtp_err:
+                        return jsonify({'success': False, 'error': f'Gmail send failed ({gmail_error_summary}) and SMTP fallback is unavailable: {smtp_err}'}), 500
+                    _set_from_header(msg, user_email or smtp_sender_email or recipient)
+                    _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
+                    server.send_message(msg)
             else:
                 _set_from_header(msg, user_email or smtp_sender_email or recipient)
                 _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)

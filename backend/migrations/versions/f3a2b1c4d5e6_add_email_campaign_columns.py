@@ -18,32 +18,29 @@ depends_on = None
 
 
 def upgrade():
-    # Add missing columns to email_campaigns
-    with op.batch_alter_table('email_campaigns', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('body_template', sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column('sent_at', sa.DateTime(), nullable=True))
-        batch_op.add_column(sa.Column('status', sa.String(length=50), nullable=True, server_default='draft'))
+    # Uses IF NOT EXISTS because some environments already had a subset of
+    # these columns applied out-of-band before this migration existed,
+    # which made the plain add_column version fail with DuplicateColumn.
+    op.execute("ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS body_template TEXT")
+    op.execute("ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP")
+    op.execute("ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'draft'")
 
-    # Add missing columns to email_campaign_recipients
-    with op.batch_alter_table('email_campaign_recipients', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('company', sa.String(length=255), nullable=True))
-        batch_op.add_column(sa.Column('personalised_body', sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column('reply_subject', sa.String(length=512), nullable=True))
-        batch_op.add_column(sa.Column('reply_snippet', sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column('reply_body', sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column('error_message', sa.Text(), nullable=True))
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS company VARCHAR(255)")
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS personalised_body TEXT")
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS reply_subject VARCHAR(512)")
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS reply_snippet TEXT")
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS reply_body TEXT")
+    op.execute("ALTER TABLE email_campaign_recipients ADD COLUMN IF NOT EXISTS error_message TEXT")
 
 
 def downgrade():
-    with op.batch_alter_table('email_campaign_recipients', schema=None) as batch_op:
-        batch_op.drop_column('error_message')
-        batch_op.drop_column('reply_body')
-        batch_op.drop_column('reply_snippet')
-        batch_op.drop_column('reply_subject')
-        batch_op.drop_column('personalised_body')
-        batch_op.drop_column('company')
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS error_message")
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS reply_body")
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS reply_snippet")
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS reply_subject")
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS personalised_body")
+    op.execute("ALTER TABLE email_campaign_recipients DROP COLUMN IF EXISTS company")
 
-    with op.batch_alter_table('email_campaigns', schema=None) as batch_op:
-        batch_op.drop_column('status')
-        batch_op.drop_column('sent_at')
-        batch_op.drop_column('body_template')
+    op.execute("ALTER TABLE email_campaigns DROP COLUMN IF EXISTS status")
+    op.execute("ALTER TABLE email_campaigns DROP COLUMN IF EXISTS sent_at")
+    op.execute("ALTER TABLE email_campaigns DROP COLUMN IF EXISTS body_template")
