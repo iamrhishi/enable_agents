@@ -20,12 +20,20 @@ depends_on = None
 
 
 def upgrade():
+    # Guarded with existence checks: some environments already had this
+    # migration's changes applied out-of-band, which made the plain
+    # version fail (rename source column missing / column already exists).
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    cols = {c['name'] for c in insp.get_columns('email_extraction_quotas')}
+
     with op.batch_alter_table('email_extraction_quotas', schema=None) as batch_op:
-        # Rename columns to match model
-        batch_op.alter_column('total_allowed', new_column_name='monthly_limit')
-        batch_op.alter_column('used_count', new_column_name='emails_used_this_month')
-        # Add reset_date column
-        batch_op.add_column(sa.Column('reset_date', sa.DateTime(), nullable=True))
+        if 'total_allowed' in cols and 'monthly_limit' not in cols:
+            batch_op.alter_column('total_allowed', new_column_name='monthly_limit')
+        if 'used_count' in cols and 'emails_used_this_month' not in cols:
+            batch_op.alter_column('used_count', new_column_name='emails_used_this_month')
+        if 'reset_date' not in cols:
+            batch_op.add_column(sa.Column('reset_date', sa.DateTime(), nullable=True))
 
 
 def downgrade():

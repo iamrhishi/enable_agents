@@ -22,25 +22,33 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    cols = {c['name'] for c in insp.get_columns('processed_documents')}
+    indexes = {ix['name'] for ix in insp.get_indexes('processed_documents')}
+
     # Add project_id column (nullable initially for existing data)
-    op.add_column(
-        'processed_documents',
-        sa.Column('project_id', sa.String(36), nullable=True)
-    )
+    if 'project_id' not in cols:
+        op.add_column(
+            'processed_documents',
+            sa.Column('project_id', sa.String(36), nullable=True)
+        )
 
     # Add index on project_id
-    op.create_index(
-        'ix_processed_documents_project_id',
-        'processed_documents',
-        ['project_id']
-    )
+    if 'ix_processed_documents_project_id' not in indexes:
+        op.create_index(
+            'ix_processed_documents_project_id',
+            'processed_documents',
+            ['project_id']
+        )
 
     # Rename user_id to uploaded_by
-    op.alter_column(
-        'processed_documents',
-        'user_id',
-        new_column_name='uploaded_by'
-    )
+    if 'user_id' in cols and 'uploaded_by' not in cols:
+        op.alter_column(
+            'processed_documents',
+            'user_id',
+            new_column_name='uploaded_by'
+        )
 
     # Note: FK to projects table will be added by a later migration
     # (i6d5e4f3a2b1) after the projects table is created.
