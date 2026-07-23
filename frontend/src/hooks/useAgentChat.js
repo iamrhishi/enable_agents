@@ -15,6 +15,11 @@ import { API_CONFIG } from '../config/apiConfig';
 export function useAgentChat(welcomeText, folderName, agentId = folderName) {
   const storageKey = `enableAgents_chat_${agentId}`;
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Date.now() alone can collide when multiple messages are added within the
+  // same millisecond (e.g. a "Searching..." message immediately followed by
+  // results) - this counter guarantees uniqueness even then.
+  const messageSeqRef = useRef(0);
+  const nextMessageId = () => `${Date.now()}-${++messageSeqRef.current}`;
 
   // Initialize messages from localStorage or with welcome message
   const [messages, setMessages] = useState(() => {
@@ -77,7 +82,7 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: nextMessageId(),
         text,
         sender,
         timestamp: new Date().toISOString(),

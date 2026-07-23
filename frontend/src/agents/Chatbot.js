@@ -1,5 +1,6 @@
 import { API_CONFIG } from '../config/apiConfig';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
 import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate } from '../components';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
@@ -196,7 +197,7 @@ function Chatbot() {
                       key={idx}
                       className={`chatbot-message ${msg.sender === 'user' ? 'user' : 'ai'}`}
                     >
-                      {msg.text}
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
                     </div>
                   ))}
                   <div ref={chatEndRef} />

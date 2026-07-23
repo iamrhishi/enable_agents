@@ -7,6 +7,7 @@ import '../styles/ContentMarketingAgent.css';
 import { showToast } from '../core/toast';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useWorkflowContext } from '../hooks';
 import { useMode } from '../contexts';
 
 // Storage key for state persistence
@@ -90,12 +91,17 @@ function ContentMarketingAgent() {
   }, []);
 
   const { isDemoMode } = useMode();
+  const { isInWorkflow, isHistoryView, stageData, saveStageData } = useWorkflowContext();
   const prevModeRef = useRef(isDemoMode);
 
   const savedState = loadPersistedState();
   const [step, setStep] = useState(savedState.step || 'upload'); // upload | generate
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // Content Marketing keeps its own project record (CMProject) distinct from
+  // the platform-wide project - this is its resolved/created id, used for
+  // every content-marketing API call instead of the raw platform project id.
+  const [cmProjectId, setCmProjectId] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [knowledgeGraph, setKnowledgeGraph] = useState(null);
   // eslint-disable-next-line no-unused-vars
@@ -237,6 +243,7 @@ function ContentMarketingAgent() {
       setKnowledgeGraph(null);
       setGeneratedContent(null);
       setMessages([]);
+      setCmProjectId(null);
       return;
     }
 
@@ -256,6 +263,7 @@ function ContentMarketingAgent() {
     }
 
     setStep('upload');
+    setCmProjectId(null);
     setMessages([
       {
         id: 1,
@@ -265,7 +273,59 @@ function ContentMarketingAgent() {
         format: 'markdown',
       },
     ]);
+
+    // Resolve (or create) the content-marketing project backing this
+    // platform project - every subsequent call needs this id, not the
+    // platform project id directly.
+    (async () => {
+      try {
+        const userId = localStorage.getItem('userEmail') || 'default_user';
+        const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/projects`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            platform_project_id: selectedProjectId,
+            project_name: `Platform project ${selectedProjectId}`,
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          setCmProjectId(data.project_id);
+        }
+      } catch (error) {
+        console.error('Error resolving content-marketing project:', error);
+      }
+    })();
   }, [isDemoMode, selectedProjectId]);
+
+  // Load workflow data when viewing a completed stage's history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    const data = stageData && Object.keys(stageData).length > 0 ? stageData : null;
+    if (!data) return;
+
+    console.log('[ContentMarketing] Loading workflow history:', { isHistoryView, stageData: data });
+
+    if (data.channel) setSelectedChannel(data.channel);
+    if (data.content_type) setContentType(data.content_type);
+    if (data.personalized_content || data.content) {
+      setGeneratedContent({
+        content: data.personalized_content || data.content,
+        variations: data.variations || [],
+      });
+    }
+    setStep('generate');
+    setMessages([{
+      id: 1,
+      text: `**Workflow History Loaded**\n\nThis stage's content was already generated for **${data.channel || selectedChannel}** (${data.content_type || contentType}) and is shown read-only below.`,
+      sender: 'agent',
+      timestamp: new Date().toISOString(),
+      format: 'markdown',
+    }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHistoryView, stageData]);
 
   // Handle mode change side effects
   useEffect(() => {
@@ -288,9 +348,14 @@ function ContentMarketingAgent() {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
+    if (!cmProjectId) {
+      addMessage('Still setting up this project - please try again in a moment.', 'agent');
+      return;
+    }
+
     setIsLoading(true);
     const formData = new FormData();
-    formData.append('project_id', projectId);
+    formData.append('project_id', cmProjectId);
     
     files.forEach(file => {
       formData.append('files', file);
@@ -365,6 +430,19 @@ function ContentMarketingAgent() {
         `I also generated ${demoData.variations.length} variations. Type 'show variations' to see them.`,
         'agent'
       );
+      if (isInWorkflow) {
+        saveStageData({
+          personalized_content: demoData.content,
+          channel: selectedChannel,
+          content_type: contentType,
+          variations: demoData.variations,
+        });
+      }
+      return;
+    }
+
+    if (!cmProjectId) {
+      showToast('Still setting up this project - please try again in a moment.', 'warning');
       return;
     }
 
@@ -374,7 +452,7 @@ function ContentMarketingAgent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_id: projectId,
+          project_id: cmProjectId,
           channel: selectedChannel,
           content_type: contentType,
           context: userContext
@@ -392,6 +470,14 @@ function ContentMarketingAgent() {
           `I also generated ${data.variations.length} variations. Type 'show variations' to see them.`,
           'agent'
         );
+        if (isInWorkflow) {
+          saveStageData({
+            personalized_content: data.content,
+            channel: selectedChannel,
+            content_type: contentType,
+            variations: data.variations,
+          });
+        }
       } else {
         addMessage(`Error: ${data.error}`, 'agent');
       }
@@ -427,7 +513,7 @@ function ContentMarketingAgent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_id: projectId,
+          project_id: cmProjectId,
           message: inputMessage
         })
       });
@@ -463,6 +549,12 @@ function ContentMarketingAgent() {
       <div className="cma-config-panel">
         <h3>Content Settings</h3>
 
+        {isHistoryView && (
+          <div className="workflow-history-banner">
+            🔒 Viewing completed stage - read-only
+          </div>
+        )}
+
         {/* Channel Selection */}
         <div className="config-section">
           <label className="config-label">Channel</label>
@@ -473,6 +565,7 @@ function ContentMarketingAgent() {
                 type="button"
                 className={`config-pill ${selectedChannel === channel.toLowerCase() ? 'selected' : ''}`}
                 onClick={() => setSelectedChannel(channel.toLowerCase())}
+                disabled={isHistoryView}
               >
                 {channel}
               </button>
@@ -490,6 +583,7 @@ function ContentMarketingAgent() {
                 type="button"
                 className={`config-pill ${contentType === type.toLowerCase().replace(' ', '_') ? 'selected' : ''}`}
                 onClick={() => setContentType(type.toLowerCase().replace(' ', '_'))}
+                disabled={isHistoryView}
               >
                 {type}
               </button>
@@ -504,7 +598,11 @@ function ContentMarketingAgent() {
             <span className="docs-count">{uploadedFiles.length} docs</span>
           </div>
 
-          <div className="docs-upload-inline" onClick={() => fileInputRef.current?.click()}>
+          <div
+            className="docs-upload-inline"
+            onClick={() => !isHistoryView && fileInputRef.current?.click()}
+            style={isHistoryView ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          >
             <img src="/assets/icons/document.png" alt="" className="docs-upload-icon" />
             <span>Add documents</span>
           </div>
@@ -515,6 +613,7 @@ function ContentMarketingAgent() {
             multiple
             accept=".pdf,.docx,.txt,.xlsx,.html,.md"
             onChange={handleFileSelect}
+            disabled={isHistoryView}
             style={{ display: 'none' }}
           />
 
@@ -532,7 +631,7 @@ function ContentMarketingAgent() {
         <button
           className="generate-btn"
           onClick={handleGenerateContent}
-          disabled={isLoading}
+          disabled={isLoading || isHistoryView}
         >
           {isLoading ? 'Generating...' : 'Generate Content'}
         </button>
@@ -549,6 +648,7 @@ function ContentMarketingAgent() {
             onChange={(e) => setUserContext(e.target.value)}
             rows={6}
             className="context-textarea-large"
+            disabled={isHistoryView}
           />
         </div>
 

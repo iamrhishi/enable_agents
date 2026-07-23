@@ -1,0 +1,190 @@
+/* Email Outreach Agent Styles */
+@import '../styles/agent-shell.css';
+
+.email-outreach-page {
+  padding: var(--space-4) var(--space-5);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.email-outreach-page .workflow-context-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: #dbeafe;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-caption);
+  color: #2563eb;
+}
+
+.email-outreach-page .workflow-context-banner img {
+  width: 16px;
+  height: 16px;
+}
+
+.email-outreach-page .email-outreach-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.email-outreach-page .email-section {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+}
+
+.email-outreach-page .email-section h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body);
+  font-weight: 600;
+  margin: 0 0 var(--space-3) 0;
+}
+
+.email-outreach-page .email-section h2 img {
+  width: 18px;
+  height: 18px;
+}
+
+/* Templates */
+.email-outreach-page .template-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.email-outreach-page .template-card {
+  padding: var(--space-3);
+  background: var(--color-background);
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.email-outreach-page .template-card:hover {
+  border-color: var(--color-border);
+}
+
+.email-outreach-page .template-card.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
+.email-outreach-page .template-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+
+.email-outreach-page .template-subject {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compose Form */
+.email-outreach-page .compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.email-outreach-page .form-field label {
+  display: block;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.email-outreach-page .form-field input,
+.email-outreach-page .form-field textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-family: inherit;
+  background: var(--color-background);
+}
+
+.email-outreach-page .form-field input:focus,
+.email-outreach-page .form-field textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.email-outreach-page .form-field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.email-outreach-page .compose-hint {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Recipients */
+.email-outreach-page .recipients-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.email-outreach-page .recipient-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-background);
+  border-radius: var(--radius-md);
+}
+
+.email-outreach-page .recipient-row.sent {
+  opacity: 0.6;
+}
+
+.email-outreach-page .recipient-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.email-outreach-page .recipient-name {
+  font-weight: 500;
+}
+
+.email-outreach-page .recipient-email {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.email-outreach-page .recipient-status {
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.email-outreach-page .recipient-status.sent {
+  color: var(--color-success);
+}
+
+.email-outreach-page .recipient-status.pending {
+  color: var(--color-text-muted);
+}
+
+/* Actions */
+.email-outreach-page .email-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+}

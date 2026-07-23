@@ -242,7 +242,7 @@ class GoogleBusinessSearcher:
         """
         try:
             api_key = os.getenv('GOOGLE_PLACES_API_KEY')
-            if not api_key:
+            if not api_key or 'your-google-places' in api_key.lower():
                 return {
                     'success': False,
                     'error': 'Google Places API key not configured.',
@@ -278,7 +278,8 @@ class GoogleBusinessSearcher:
             all_businesses = []
             seen_place_ids = set()
             api_page_size = min(60, page_size)  # Google API API page limit
-            
+            last_error = None
+
             # Fetch across all variations until max_results is reached
             for current_query in query_variations:
                 if len(all_businesses) >= max_results:
@@ -305,10 +306,15 @@ class GoogleBusinessSearcher:
                     )
                     
                     if response.status_code != 200:
-                        print(f"[PLACES_API] Error {response.status_code}: {response.text}")
+                        try:
+                            last_error = response.json().get('error', {}).get('message', response.text)
+                        except Exception:
+                            last_error = response.text
+                        print(f"[PLACES_API] Error {response.status_code}: {last_error}")
                         # If a variation fails, break and try the next variation instead of failing the whole request
                         break
-                    
+
+                    last_error = None
                     api_results = response.json()
                     places = api_results.get('places', [])
                     
@@ -344,7 +350,17 @@ class GoogleBusinessSearcher:
                         break
             
             print(f"[PLACES_API] Found {len(all_businesses)} total results")
-            
+
+            # If every query variation failed with the same API error (invalid
+            # key, quota exceeded, etc.), surface it - don't report a fake
+            # "0 results" success, which reads as a legitimate empty search.
+            if not all_businesses and last_error:
+                return {
+                    'success': False,
+                    'error': f'Google Places API error: {last_error}',
+                    'code': 'PLACES_API_ERROR',
+                }
+
             # Apply pagination to results
             start_idx = (page - 1) * page_size
             end_idx = start_idx + page_size

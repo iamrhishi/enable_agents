@@ -39,6 +39,23 @@ export const STRINGS = {
     LOADING: 'Loading...',
     SAVING: 'Saving...',
     PROCESSING: 'Processing...',
+    ANALYZING: 'Analyzing...',
+    GENERATING: 'Generating...',
+    THINKING: 'Working on it...',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOADING STATES — Specific loading messages
+  // ═══════════════════════════════════════════════════════════════════════════
+  LOADING: {
+    WORKFLOWS: 'Loading workflows...',
+    DOCUMENTS: 'Loading documents...',
+    AGENTS: 'Loading assistants...',
+    PROJECTS: 'Loading projects...',
+    TEAM: 'Loading team members...',
+    SETTINGS: 'Loading settings...',
+    CHAT_HISTORY: 'Loading conversation...',
+    RECOMMENDATIONS: 'Analyzing your needs...',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

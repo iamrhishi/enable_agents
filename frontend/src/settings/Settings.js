@@ -5,6 +5,7 @@ import { showToast } from '../core/toast';
 import { showConfirm } from '../components/ConfirmDialog';
 import Header from '../core/Header';
 import Skeleton from '../components/SkeletonLoader';
+import { useMode } from '../contexts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -164,11 +165,9 @@ function Settings() {
     email: userEmail,
   });
 
-  // Preferences state
-  const [isLiveMode, setIsLiveMode] = useState(() => {
-    const stored = localStorage.getItem('enableAgentsMode');
-    return stored === 'live';
-  });
+  // Preferences state - using shared context
+  const { isDemoMode, setMode } = useMode();
+  const isLiveMode = !isDemoMode;
 
   // Business context state (persisted to localStorage for now, can move to API later)
   const [businessContext, setBusinessContext] = useState(() => {
@@ -331,10 +330,9 @@ function Settings() {
 
   // Preferences handlers
   const handleModeToggle = () => {
-    const newMode = !isLiveMode;
-    setIsLiveMode(newMode);
-    localStorage.setItem('enableAgentsMode', newMode ? 'live' : 'demo');
-    showToast(newMode ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
+    const newIsLive = !isLiveMode;
+    setMode(!newIsLive); // setMode takes isDemoMode (opposite of isLiveMode)
+    showToast(newIsLive ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
   };
 
   // Business context handlers
@@ -724,7 +722,8 @@ function Settings() {
                     </button>
                   </div>
                   <div className="setting-description preference-description">
-                    <strong>Live:</strong> Real data from connected services. <strong>Demo:</strong> Sample data for exploration.
+                    <strong>Live:</strong> Real data and AI interactions.<br/>
+                    <strong>Demo:</strong> Sample data only, safe for exploration.
                   </div>
                 </div>
               </div>
@@ -919,7 +918,7 @@ function Settings() {
                               rel="noopener noreferrer"
                               className="help-link"
                             >
-                              Get API key <Icons.ExternalLink />
+                              Get connection key <Icons.ExternalLink />
                             </a>
                           )}
                         </div>

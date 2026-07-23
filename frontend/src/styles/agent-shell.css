@@ -500,6 +500,15 @@
   .messages-container { padding: var(--space-4); }
   .input-container { padding: var(--space-4) var(--space-5); }
   .message-content { max-width: 95%; }
+
+  /* Smaller footprint so the fixed chat launcher is less likely to sit on
+     top of wrapped inline controls (e.g. pill rows) further down the page. */
+  .floating-chat-btn {
+    width: 44px;
+    height: 44px;
+    bottom: var(--space-4);
+    right: var(--space-4);
+  }
 }
 
 /* ── Inline panels (preferred over modals for create/edit) ──────────────── */
@@ -777,6 +786,7 @@
 
 .btn-primary:hover:not(:disabled) {
   background: var(--color-primary-dark);
+  color: var(--color-text-inverse);
 }
 
 .btn-accent {
@@ -787,6 +797,7 @@
 
 .btn-accent:hover:not(:disabled) {
   opacity: 0.9;
+  color: var(--color-text-inverse);
 }
 
 .btn-secondary {

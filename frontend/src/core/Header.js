@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import '../styles/Header.css';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders } from './authHeaders';
 import { showToast } from './toast';
 import { Modal, ModalTabs } from '../components/Modal';
 import { useMode } from '../contexts';
@@ -20,16 +21,8 @@ function Header({ onProcessClick, onModeChange }) {
   const location = useLocation();
   const [selectedSystemTab, setSelectedSystemTab] = useState('tools');
 
-  // Live/Demo mode toggle - from context
-  const { isDemoMode, setMode } = useMode();
-  const isLiveMode = !isDemoMode;
-
-  const handleModeToggle = () => {
-    const newIsLive = !isLiveMode;
-    setMode(!newIsLive); // setMode takes isDemoMode (opposite of isLiveMode)
-    showToast(newIsLive ? 'Switched to Live mode' : 'Switched to Demo mode', 'info');
-    onModeChange?.(newIsLive ? 'live' : 'demo');
-  };
+  // Mode from context - toggle moved to Settings, but still needed for demo data logic
+  const { isDemoMode } = useMode();
   const userDropdownRef = useRef(null);
 
   const handleUserIconClick = () => {
@@ -316,6 +309,93 @@ function Header({ onProcessClick, onModeChange }) {
   const [editingContext, setEditingContext] = useState(false);
   const [recommendedAgents, setRecommendedAgents] = useState('');
 
+  // Notifications state
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const notifDropdownRef = useRef(null);
+
+  // Fetch notifications
+  const fetchNotifications = useCallback(async () => {
+    if (isDemoMode) {
+      // Demo notifications
+      setNotifications([
+        { id: 'n1', type: 'task_assigned', title: 'New task assigned', message: 'Verify component dimensions', link: '/workflows/demo-instance-1', is_read: false, created_at: new Date().toISOString() },
+        { id: 'n2', type: 'task_completed', title: 'Task completed', message: 'Confirm client specifications', link: '/workflows/demo-instance-1', is_read: true, created_at: new Date(Date.now() - 3600000).toISOString() },
+      ]);
+      setUnreadCount(1);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/api/notifications?unread_only=false`, {
+        headers: authJsonHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unread_count || 0);
+      }
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  }, [isDemoMode]);
+
+  useEffect(() => {
+    fetchNotifications();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target)) {
+        setShowNotifDropdown(false);
+      }
+    };
+    if (showNotifDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifDropdown]);
+
+  const handleMarkNotifRead = async (notifId) => {
+    if (isDemoMode) {
+      setNotifications(notifications.map(n => n.id === notifId ? { ...n, is_read: true } : n));
+      setUnreadCount(Math.max(0, unreadCount - 1));
+      return;
+    }
+    try {
+      await fetch(`${API_CONFIG.BASE_URL}/api/notifications/${notifId}/read`, {
+        method: 'POST',
+        headers: authJsonHeaders(),
+      });
+      setNotifications(notifications.map(n => n.id === notifId ? { ...n, is_read: true } : n));
+      setUnreadCount(Math.max(0, unreadCount - 1));
+    } catch (err) {
+      console.error('Error marking notification read:', err);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (isDemoMode) {
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      await fetch(`${API_CONFIG.BASE_URL}/api/notifications/read-all`, {
+        method: 'POST',
+        headers: authJsonHeaders(),
+      });
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Error marking all notifications read:', err);
+    }
+  };
+
   function handleBusinessSubmit(e) {
     e.preventDefault();
     setContextStep(1);
@@ -398,7 +478,7 @@ function Header({ onProcessClick, onModeChange }) {
     <>
       <header className="header">
         <div className="header-left">
-          <Link to="/agents" aria-label="Go to home">
+          <Link to="/dashboard" aria-label="Go to home">
             <img
               src={`${process.env.PUBLIC_URL}/logo192.svg`}
               alt="Enable Logo"
@@ -409,21 +489,6 @@ function Header({ onProcessClick, onModeChange }) {
         </div>
 
         <div className="header-icons">
-          {/* Live/Demo Mode Toggle */}
-          <div className="mode-toggle-wrapper">
-            <button
-              className={`mode-toggle ${isLiveMode ? 'mode-toggle--live' : 'mode-toggle--demo'}`}
-              onClick={handleModeToggle}
-              aria-pressed={isLiveMode}
-              aria-label={`Switch to ${isLiveMode ? 'Demo' : 'Live'} mode`}
-              title={isLiveMode ? 'Currently in Live mode - click to switch to Demo' : 'Currently in Demo mode - click to switch to Live'}
-            >
-              <span className="mode-toggle-track">
-                <span className="mode-toggle-thumb" />
-              </span>
-              <span className="mode-toggle-label">{isLiveMode ? 'Live' : 'Demo'}</span>
-            </button>
-          </div>
           {/* HIDDEN: Landscape feature requires Chrome history API - not functional
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <img
@@ -449,14 +514,59 @@ function Header({ onProcessClick, onModeChange }) {
           </div>
           */}
           {/* Notifications */}
-          <button
-            className="header-icon-button"
-            onClick={() => navigate('/settings?tab=notifications')}
-            aria-label="Notifications"
-            title="Notifications"
-          >
-            <img src="/assets/icons/notifications.png" alt="" className="icon" />
-          </button>
+          <div className="notif-icon-wrapper" ref={notifDropdownRef}>
+            <button
+              className="header-icon-button"
+              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+              aria-label="Notifications"
+              title={`${unreadCount} unread notifications`}
+            >
+              <img src="/assets/icons/notifications.png" alt="" className="icon" />
+              {unreadCount > 0 && (
+                <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
+            </button>
+            {showNotifDropdown && (
+              <div className="notif-dropdown" role="menu">
+                <div className="notif-dropdown-header">
+                  <span>Notifications</span>
+                  {unreadCount > 0 && (
+                    <button className="notif-mark-all" onClick={handleMarkAllRead}>
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="notif-empty">No notifications</div>
+                ) : (
+                  <div className="notif-list">
+                    {notifications.slice(0, 5).map(notif => (
+                      <div
+                        key={notif.id}
+                        className={`notif-item ${notif.is_read ? '' : 'unread'}`}
+                        onClick={() => {
+                          if (!notif.is_read) handleMarkNotifRead(notif.id);
+                          if (notif.link) navigate(notif.link);
+                          setShowNotifDropdown(false);
+                        }}
+                      >
+                        <div className="notif-item-title">{notif.title}</div>
+                        <div className="notif-item-message">{notif.message}</div>
+                        <div className="notif-item-time">
+                          {new Date(notif.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="notif-dropdown-footer">
+                  <button onClick={() => { setShowNotifDropdown(false); navigate('/settings?tab=notifications'); }}>
+                    View all notifications
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="user-icon-wrapper" ref={userDropdownRef}>
             <button
               className="header-icon-button"
@@ -473,8 +583,10 @@ function Header({ onProcessClick, onModeChange }) {
             </button>
             {showUserDropdown && (
               <div className="user-dropdown-menu" role="menu">
-                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/projects'); }}>Projects</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/dashboard'); }}>Dashboard</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/agents'); }}>Agents</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/workflows'); }}>Workflows</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/projects'); }}>Projects</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/team'); }}>Team</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/settings'); }}>Settings</button>
                 <div className="user-dropdown-divider"></div>

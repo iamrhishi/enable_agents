@@ -21,14 +21,35 @@ from .models import CMProject, CMDocument, CMKnowledgeGraph, CMGeneratedContent,
 # =============================================================================
 
 def create_project():
-    """Create a new content marketing project."""
+    """Create a new content marketing project.
+
+    If a `platform_project_id` is supplied (the platform-wide Project the
+    user picked via the header ProjectSelector), this is idempotent: the
+    content-marketing project is derived deterministically from it, so
+    repeated calls (e.g. on every page load) reuse the same CMProject
+    instead of piling up duplicates.
+    """
     data = request.get_json(silent=True) or {}
 
     user_id = data.get('user_id', 'default_user')
     project_name = data.get('project_name', 'Untitled Project')
+    platform_project_id = data.get('platform_project_id')
+
+    if platform_project_id:
+        derived_id = f"cmp_{platform_project_id.replace('-', '')[:28]}"
+        existing = CMProject.query.filter_by(project_id=derived_id).first()
+        if existing:
+            return jsonify({
+                "success": True,
+                "project_id": existing.project_id,
+                "message": "Existing project reused",
+            }), 200
+        new_project_id = derived_id
+    else:
+        new_project_id = f"project_{uuid4().hex[:12]}"
 
     project = CMProject(
-        project_id=f"project_{uuid4().hex[:12]}",
+        project_id=new_project_id,
         user_id=user_id,
         project_name=project_name,
         description=data.get("description"),
@@ -38,7 +59,21 @@ def create_project():
         role=data.get("role"),
     )
     db.session.add(project)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        # Two near-simultaneous requests (e.g. React effects firing twice)
+        # can both pass the "existing" check above before either commits -
+        # fall back to the row the other request just created instead of 500ing.
+        db.session.rollback()
+        existing = CMProject.query.filter_by(project_id=new_project_id).first()
+        if existing:
+            return jsonify({
+                "success": True,
+                "project_id": existing.project_id,
+                "message": "Existing project reused",
+            }), 200
+        raise
 
     # Store in context lake
     try:

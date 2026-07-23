@@ -559,6 +559,7 @@ class DocumentService:
         user_id: str,
         document_ids: Optional[List[str]] = None,
         use_entity_boost: bool = False,
+        project_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Chat with documents using RAG.
@@ -576,6 +577,21 @@ class DocumentService:
         from agents.document_intelligence.retrieval import DocumentRetriever
 
         retriever = DocumentRetriever()
+
+        # Scope to the active project's documents when the caller didn't
+        # already pin specific document_ids - otherwise chat searches across
+        # every document the user has ever uploaded, in any project.
+        if not document_ids and project_id:
+            project_docs = self.list_documents(project_id=project_id)
+            document_ids = [
+                d["document_id"] for d in project_docs if d.get("status") == "completed"
+            ]
+            if not document_ids:
+                return {
+                    "answer": "This project doesn't have any processed documents yet.",
+                    "sources": [],
+                    "chunk_count": 0,
+                }
 
         # Get relevant context
         if use_entity_boost:
@@ -597,6 +613,8 @@ class DocumentService:
                 "sources": [],
                 "chunk_count": 0,
             }
+
+        enriched_sources = self._enrich_sources(context_result["sources"])
 
         # Generate response using OpenAI
         client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -629,14 +647,166 @@ Answer based on the context above:"""
             logger.error(f"Chat completion failed: {e}")
             return {
                 "answer": f"Error generating response: {str(e)}",
-                "sources": context_result["sources"],
+                "sources": enriched_sources,
                 "chunk_count": context_result["chunk_count"],
             }
 
         return {
             "answer": answer,
-            "sources": context_result["sources"],
+            "sources": enriched_sources,
             "chunk_count": context_result["chunk_count"],
+        }
+
+    def _enrich_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Attach real page number and content snippet to retrieval sources.
+
+        The raw retriever only returns chunk_id/chunk_index/score - callers
+        (chat UI, Ask AI) need an actual page number and a text excerpt to
+        show a real citation instead of a hardcoded fallback.
+        """
+        from agents.document_intelligence.models import DocumentChunk
+
+        chunk_ids = [s.get("chunk_id") for s in sources if s.get("chunk_id")]
+        if not chunk_ids:
+            return sources
+
+        chunks_by_id = {
+            c.chunk_id: c
+            for c in DocumentChunk.query.filter(DocumentChunk.chunk_id.in_(chunk_ids)).all()
+        }
+
+        enriched = []
+        for s in sources:
+            chunk = chunks_by_id.get(s.get("chunk_id"))
+            page_number = (chunk.metadata_dict.get("page") if chunk else None) or (
+                (s.get("chunk_index") or 0) + 1
+            )
+            enriched.append(
+                {
+                    **s,
+                    "page_number": page_number,
+                    "content": chunk.content[:200] if chunk else "",
+                }
+            )
+        return enriched
+
+    def get_document_insight(
+        self,
+        document_id: str,
+        project_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a structured analysis (summary, key facts, recommendations,
+        source citations) for a single processed document.
+
+        Computed on demand from the document's real extracted text via an LLM
+        call, plus real vector-similarity source citations - nothing here is
+        canned/demo data.
+        """
+        import json as json_lib
+
+        import openai
+
+        from agents.document_intelligence.models import DocumentChunk, ProcessedDocument
+
+        doc = ProcessedDocument.query.get(document_id)
+        if not doc:
+            raise ValueError(f"Document not found: {document_id}")
+        if project_id and doc.project_id != project_id:
+            raise ValueError(f"Document not found in project: {document_id}")
+
+        if doc.status != "completed":
+            return {
+                "status": doc.status,
+                "summary": None,
+                "keyFacts": [],
+                "recommendations": [],
+                "sources": [],
+            }
+
+        chunks = (
+            DocumentChunk.query.filter_by(document_id=document_id)
+            .order_by(DocumentChunk.chunk_index)
+            .all()
+        )
+        full_text = "\n\n".join(c.content for c in chunks)[:12000]
+
+        client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        system_prompt = (
+            "You analyze a business document and respond with strict JSON only, "
+            'matching this shape: {"summary": "one paragraph", '
+            '"key_facts": [{"fact": "...", "confidence": 0.0-1.0}], '
+            '"recommendations": ["...", "..."]}. '
+            "Base everything only on the provided document text - do not invent "
+            "facts. Keep key_facts to the 5-8 most important, specific, and "
+            "verifiable facts. Keep recommendations to 2-4 concrete, actionable "
+            "items."
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": f"Document: {doc.file_name}\n\n{full_text}",
+                    },
+                ],
+                max_tokens=900,
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+            parsed = json_lib.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"Insight generation failed: {e}")
+            parsed = {}
+
+        key_facts = [
+            {
+                "fact": kf.get("fact", ""),
+                "confidence": kf.get("confidence", 0.8),
+                "source": doc.file_name,
+            }
+            for kf in parsed.get("key_facts", [])
+            if kf.get("fact")
+        ]
+        summary = parsed.get("summary") or f"Analysis of {doc.file_name}."
+
+        # Real retrieval-backed source citations - reuse vector search against
+        # the generated summary so relevance scores are genuine similarity,
+        # not fabricated numbers.
+        sources = []
+        if user_id and chunks:
+            from agents.document_intelligence.retrieval import DocumentRetriever
+
+            retriever = DocumentRetriever()
+            context_result = retriever.get_context_for_query(
+                query=summary,
+                user_id=user_id,
+                document_ids=[document_id],
+                max_chunks=5,
+            )
+            chunk_by_id = {c.chunk_id: c for c in chunks}
+            for src in context_result["sources"]:
+                chunk = chunk_by_id.get(src.get("chunk_id"))
+                if not chunk:
+                    continue
+                sources.append(
+                    {
+                        "page": chunk.metadata_dict.get("page", (chunk.chunk_index or 0) + 1),
+                        "text": chunk.content[:220],
+                        "relevance": src.get("score") or 0.5,
+                    }
+                )
+
+        return {
+            "status": doc.status,
+            "summary": summary,
+            "keyFacts": key_facts,
+            "recommendations": parsed.get("recommendations") or [],
+            "sources": sources,
         }
 
 

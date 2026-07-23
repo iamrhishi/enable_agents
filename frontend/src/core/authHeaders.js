@@ -5,23 +5,39 @@ export function authJsonHeaders(extra = {}) {
     'Content-Type': 'application/json',
     ...extra,
   };
-  const token = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('sessionToken')
-    : null;
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+
+  if (typeof localStorage !== 'undefined') {
+    // Add session token for auth
+    const token = localStorage.getItem('sessionToken');
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Add X-User-Id for routes that use it directly
+    const userEmail = localStorage.getItem('userEmail');
+    if (userEmail) {
+      headers['X-User-Id'] = userEmail;
+    }
   }
+
   return headers;
 }
 
 /** For GET requests: only add Authorization when logged in. */
 export function authOptionalHeaders(extra = {}) {
   const headers = { ...extra };
-  const token = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('sessionToken')
-    : null;
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+
+  if (typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('sessionToken');
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const userEmail = localStorage.getItem('userEmail');
+    if (userEmail) {
+      headers['X-User-Id'] = userEmail;
+    }
   }
+
   return headers;
 }

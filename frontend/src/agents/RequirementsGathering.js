@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from '../core/Header';
-import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal, showConfirm } from '../components';
+import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate, Modal, showConfirm, WorkflowExecutionBanner } from '../components';
 import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
@@ -11,6 +12,7 @@ import { getAgentData, setAgentData, AGENT_KEYS } from '../utils';
 import { formatDate } from '../utils/dateFormat';
 import { showToast } from '../core/toast';
 import { useMode } from '../contexts';
+import { useWorkflowContext } from '../hooks';
 import { STRINGS } from '../constants';
 
 const SUPPLIER_TEMPLATE = `Dear [Vendor Name / Sir / Madam],
@@ -105,6 +107,9 @@ const DEMO_MOCK_DATA = {
 function RequirementsGathering() {
   // Demo mode from context (no polling needed)
   const { isDemoMode } = useMode();
+
+  // Workflow context - for loading/saving workflow data
+  const { isInWorkflow, isHistoryView, stageData, context: workflowContext, saveStageData } = useWorkflowContext();
 
   // Track if initial load is done (don't save during initial load or mode transitions)
   const isInitialLoadRef = React.useRef(true);
@@ -211,6 +216,45 @@ function RequirementsGathering() {
       lastSavedModeRef.current = isDemoMode;
     }, 100);
   }, [isDemoMode]);
+
+  // Load workflow data when viewing completed stage history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    // Use stageData first, fall back to workflowContext for older workflows
+    const data = (stageData && Object.keys(stageData).length > 0) ? stageData : workflowContext;
+    const hasData = data && Object.keys(data).length > 0;
+
+    console.log('[RequirementsGathering] Loading workflow history:', {
+      isHistoryView,
+      stageData,
+      workflowContext,
+      usingData: hasData ? data : 'none',
+    });
+
+    if (!hasData) return;
+
+    // Pre-fill inputs from data (what was saved when stage completed)
+    if (data.search_query) setOverview(data.search_query);
+    if (data.location) setCountries(data.location);
+    if (data.industry) setIndustries(data.industry);
+    if (data.component_type) setResponseFormat(data.component_type);
+
+    // If there are saved results, show them
+    if (data.businesses_found || data.top_businesses) {
+      setCustomerResearchResults({
+        query: data.search_query || '',
+        location: data.location || '',
+        industry: data.industry || '',
+        totalResults: data.businesses_found || 0,
+        businesses: data.top_businesses?.map((name, i) => ({
+          name,
+          index: i,
+        })) || [],
+      });
+      setShowCustomerResearchTable(true);
+    }
+  }, [isHistoryView, stageData, workflowContext]);
 
   // Fetch existing campaigns when email modal opens
   useEffect(() => {
@@ -406,16 +450,29 @@ function RequirementsGathering() {
 
         // In demo mode, use mock data instead of API call
         if (isDemoMode) {
-          setCustomerResearchResults({
+          const demoResults = {
             query: overview,
             location: countries,
             industry: industries,
             totalResults: DEMO_MOCK_DATA.results.businesses.length,
             researchType: responseFormat,
             businesses: DEMO_MOCK_DATA.results.businesses
-          });
+          };
+          setCustomerResearchResults(demoResults);
           setShowCustomerResearchTable(true);
-          // Data auto-saved by centralized storage useEffect
+
+          // Save to workflow if in workflow context
+          if (isInWorkflow) {
+            saveStageData({
+              client_name: overview,
+              component_type: responseFormat,
+              search_query: overview,
+              location: countries,
+              industry: industries,
+              businesses_found: demoResults.totalResults,
+              top_businesses: demoResults.businesses.slice(0, 5).map(b => b.name),
+            });
+          }
           return;
         }
 
@@ -450,7 +507,7 @@ function RequirementsGathering() {
         }
 
         // Store results and show table
-        setCustomerResearchResults({
+        const liveResults = {
           query: overview,
           location: countries,
           industry: industries,
@@ -458,14 +515,28 @@ function RequirementsGathering() {
           researchType: responseFormat,
           businesses: searchData.businesses || [],
           totalResults: searchData.totalResults || 0
-        });
-
+        };
+        setCustomerResearchResults(liveResults);
         setShowCustomerResearchTable(true);
         setIsLoadingResearch(false);
+
+        // Save to workflow if in workflow context
+        if (isInWorkflow) {
+          saveStageData({
+            client_name: overview,
+            component_type: responseFormat,
+            search_query: overview,
+            location: countries,
+            industry: industries,
+            businesses_found: liveResults.totalResults,
+            top_businesses: (searchData.businesses || []).slice(0, 5).map(b => b.name),
+          });
+        }
         return;
       }
 
       // Original behavior for other response formats
+      setIsLoadingResearch(true);
       const googleData = await fetchGoogleBusinessData();
 
       const payload = {
@@ -493,6 +564,7 @@ function RequirementsGathering() {
 
       const data = await response.json();
       setAiRequirements(data.requirements.split('\n'));
+      setIsLoadingResearch(false);
     } catch (error) {
       console.error('Error generating requirements:', error);
       showToast('Error: ' + error.message, 'error');
@@ -1555,7 +1627,7 @@ ${getCurrentUsername() || 'Your Name'}`);
 
         <div className="agent-page-header">
           <div className="agent-header-left">
-            <BackButton />
+            {!isInWorkflow && <BackButton />}
             <div className="agent-header-content">
               <div className="agent-title-row">
                 <h1>Market Research</h1>
@@ -1584,6 +1656,7 @@ ${getCurrentUsername() || 'Your Name'}`);
         />
 
         <ProjectGate agentLabel="Market Research workspace">
+        <WorkflowExecutionBanner />
         <div className="requirements-header-bar">
           <div className="header-bar-top">
             <div className="overview-title">
@@ -1601,6 +1674,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                 placeholder="What is the product or service you need research on?"
                 value={overview}
                 onChange={(e) => setOverview(e.target.value)}
+                disabled={isHistoryView}
               />
             </div>
             <div className="input-block">
@@ -1610,6 +1684,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                 placeholder="e.g., Fintech"
                 value={industries}
                 onChange={(e) => setIndustries(e.target.value)}
+                disabled={isHistoryView}
               />
             </div>
             <div className="input-block">
@@ -1619,6 +1694,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                 placeholder="e.g., North America"
                 value={countries}
                 onChange={(e) => setCountries(e.target.value)}
+                disabled={isHistoryView}
               />
             </div>
             <div className="input-block">
@@ -1626,6 +1702,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               <select
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
+                disabled={isHistoryView}
               >
                  <option value="">Select format...</option>
                  <option value="Detailed PRD">Detailed PRD</option>
@@ -1637,8 +1714,8 @@ ${getCurrentUsername() || 'Your Name'}`);
               </select>
             </div>
             <div className="input-block button-block">
-              <input type="file" id="file-input" onChange={handleFileUpload} style={{ display: 'none' }} />
-              <button className="upload-btn" onClick={() => document.getElementById('file-input').click()}>
+              <input type="file" id="file-input" onChange={handleFileUpload} style={{ display: 'none' }} disabled={isHistoryView} />
+              <button className="upload-btn" onClick={() => document.getElementById('file-input').click()} disabled={isHistoryView}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px'}}>
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="17 8 12 3 7 8"></polyline>
@@ -1648,7 +1725,7 @@ ${getCurrentUsername() || 'Your Name'}`);
               </button>
             </div>
             <div className="input-block button-block">
-              <button className="generate-req-btn" onClick={handleGenerate} disabled={isLoadingResearch}>
+              <button className="generate-req-btn" onClick={handleGenerate} disabled={isLoadingResearch || isHistoryView}>
                 {isLoadingResearch ? (
                   <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}>
                     <span className="spinner"></span> Generating...
@@ -1865,10 +1942,10 @@ ${getCurrentUsername() || 'Your Name'}`);
                                   {customerResearchResults.businesses ? customerResearchResults.businesses.filter(b => b.email && b.email !== 'N/A').length : 0}/100
                                 </span>
                               </div>
-                              <button 
+                              <button
                                 className="get-emails-button compact"
                                 onClick={handleGetEmails}
-                                disabled={isLoadingEmails}
+                                disabled={isLoadingEmails || isHistoryView}
                                 style={{ margin: 0, padding: '8px 16px' }}
                               >
                                 {isLoadingEmails ? (
@@ -1878,7 +1955,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                                   </>
                                 ) : 'Extract Emails'}
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={handleCopyToClipboard}
                                 title="Copy to Clipboard"
@@ -1886,7 +1963,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                               >
                                 <img src="/assets/icons/copy.png" alt="Copy to Clipboard" />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={() => setShowExportModal(true)}
                                 title="Export Data"
@@ -1894,7 +1971,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                               >
                                 <img src="/assets/icons/import-export.png" alt="Export Data" />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={() => {
                                   setSaveListMode('create');
@@ -1906,7 +1983,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                               >
                                 <img src="/assets/icons/document.png" alt={responseFormat === 'Supplier Research' ? 'Save Vendors' : 'Save Leads'} />
                               </button>
-                              <button 
+                              <button
                                 className="action-icon-button"
                                 onClick={() => { setScoreQueryText(''); setShowScoreModal(true); }}
                                 title={responseFormat === 'Supplier Research' ? 'Score Vendors' : 'Score Leads'}
@@ -1919,6 +1996,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                                 onClick={() => { prepareSupplierEmailDraft(null); setShowEmailModal(true); }}
                                 title="Send Emails"
                                 aria-label="Send Emails"
+                                disabled={isHistoryView}
                               >
                                 <img src="/assets/icons/mail.png" alt="Send Emails" />
                               </button>
@@ -1957,13 +2035,13 @@ ${getCurrentUsername() || 'Your Name'}`);
                                         )}
                                       </td>
                                       <td>
-                                        {business.email && business.email !== 'N/A' ? ( 
+                                        {business.email && business.email !== 'N/A' ? (
                                           <span>{business.email}</span>
                                         ) : (
                                           <button
                                             className="extract-email-button"
                                             onClick={() => handleExtractEmailForBusiness(business, index)}
-                                            disabled={!!extractingEmailRows[index]}     
+                                            disabled={!!extractingEmailRows[index]}
                                           >
                                             {extractingEmailRows[index] ? 'Extracting...' : 'Extract Email'}
                                           </button>
@@ -1993,7 +2071,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                                           <button
                                             className="table-btn-primary"
                                             onClick={() => handleGeneratePersonalizedEmail(business, index)}
-                                            disabled={!!isGeneratingEmail[index]}
+                                            disabled={!!isGeneratingEmail[index] || isHistoryView}
                                           >
                                             {isGeneratingEmail[index] ? 'Drafting...' : 'Draft Email'}
                                           </button>
@@ -2027,11 +2105,9 @@ ${getCurrentUsername() || 'Your Name'}`);
                   {aiRequirements.length > 0 && (
                     <div className="requirements-list-section">
                       <h3>Generated Requirements</h3>
-                      <ul>
-                        {aiRequirements.map((requirement, index) => (
-                          <li key={index}>{requirement}</li>
-                        ))}
-                      </ul>
+                      <div className="requirements-markdown">
+                        <ReactMarkdown>{aiRequirements.join('\n')}</ReactMarkdown>
+                      </div>
                     </div>
                   )}
 

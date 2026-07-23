@@ -1,0 +1,151 @@
+/**
+ * Workflow Context Card Styles
+ * Shows data from previous workflow stages
+ */
+
+.workflow-context-card {
+  margin-bottom: var(--space-5);
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #bae6fd;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  animation: contextSlideIn 0.4s ease-out;
+}
+
+@keyframes contextSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wf-context-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.wf-context-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: #0c4a6e;
+}
+
+.wf-context-header svg {
+  flex-shrink: 0;
+  color: #0ea5e9;
+}
+
+.wf-context-header h4 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--font-semibold);
+  color: #0c4a6e;
+}
+
+.wf-context-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.wf-context-item {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wf-context-item.wf-context-full {
+  flex-basis: 100%;
+}
+
+.wf-context-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.wf-context-value {
+  font-size: var(--text-body);
+  font-weight: var(--font-medium);
+  color: #0c4a6e;
+}
+
+.wf-badge-success {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.wf-badge-info {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.wf-context-businesses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid #bae6fd;
+}
+
+.wf-business-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.wf-business-chip {
+  padding: var(--space-1) var(--space-3);
+  background: white;
+  border: 1px solid #7dd3fc;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: #0369a1;
+  white-space: nowrap;
+}
+
+.wf-context-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: #0c4a6e;
+}
+
+.wf-context-list li {
+  font-size: var(--text-body);
+  line-height: 1.6;
+  margin-bottom: var(--space-1);
+}
+
+.wf-context-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .wf-context-grid {
+    grid-template-columns: 1fr;
+  }
+}

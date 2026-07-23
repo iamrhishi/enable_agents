@@ -1,0 +1,389 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import Header from '../core/Header';
+import { BackButton, ProjectGate, ProjectSelector, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
+import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders } from '../core/authHeaders';
+import { showToast } from '../core/toast';
+import { useMode } from '../contexts';
+import { useWorkflowContext } from '../hooks';
+import './EmailOutreachAgent.css';
+
+// Demo email templates
+const DEMO_TEMPLATES = [
+  { id: 1, name: 'RFQ Request', subject: 'Request for Quotation - {{component}}', body: 'Dear {{supplier_name}},\n\nWe are seeking quotations for {{component}}...' },
+  { id: 2, name: 'Follow-up', subject: 'Following Up - {{company}}', body: 'Hi {{contact_name}},\n\nI wanted to follow up on our previous conversation...' },
+  { id: 3, name: 'Introduction', subject: 'Introduction from {{company}}', body: 'Hello {{recipient_name}},\n\nI\'m reaching out to introduce {{company}}...' },
+];
+
+const DEMO_RECIPIENTS = [
+  { id: 1, name: 'Bharat Precision Engineering', email: 'sales@bharatprecision.com', status: 'pending' },
+  { id: 2, name: 'Gujarat Metal Works', email: 'info@gujaratmetal.in', status: 'pending' },
+  { id: 3, name: 'Shenzhen MFG Co.', email: 'export@szmfg.cn', status: 'sent' },
+];
+
+function EmailOutreachAgent() {
+  const { isDemoMode } = useMode();
+
+  // Workflow context - for saving results back to workflow
+  const { isInWorkflow, isHistoryView, stageData, stageId, saveStageData, getContext, context: workflowContext } = useWorkflowContext();
+
+  const [templates, setTemplates] = useState(DEMO_TEMPLATES);
+  const [recipients, setRecipients] = useState(isDemoMode ? DEMO_RECIPIENTS : []);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [sending, setSending] = useState(false);
+
+  // Saved lead lists (from Market Research) - the real recipient source in live mode
+  const [savedProjects, setSavedProjects] = useState([]);
+  const [selectedSavedProject, setSelectedSavedProject] = useState(null);
+  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+
+  const getCurrentUserIdentifier = () =>
+    localStorage.getItem('username') || localStorage.getItem('firstName') || 'anonymous';
+  const getCurrentUserEmail = () => localStorage.getItem('userEmail') || '';
+
+  const fetchSavedProjects = async () => {
+    try {
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(getCurrentUserIdentifier())}`);
+      const result = await response.json();
+      if (result.success && Array.isArray(result.projects)) {
+        setSavedProjects(result.projects);
+      }
+    } catch (error) {
+      console.error('Error loading saved lead lists:', error);
+    }
+  };
+
+  const loadSavedProjectLeads = async (projectId) => {
+    if (!projectId) {
+      setSelectedSavedProject(null);
+      setRecipients([]);
+      return;
+    }
+    try {
+      setIsLoadingLeads(true);
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(getCurrentUserIdentifier())}`);
+      const result = await response.json();
+      if (result.success) {
+        setSelectedSavedProject(result.project);
+        const hasRealEmail = (email) => email && email !== 'N/A' && email.includes('@');
+        const leads = (result.leads || [])
+          .filter(l => hasRealEmail(l.email) || (Array.isArray(l.emails) && hasRealEmail(l.emails[0])))
+          .map((l, idx) => ({
+            id: l.id || idx,
+            name: l.name || 'Unknown',
+            email: l.email || l.emails[0],
+            status: 'pending',
+          }));
+        setRecipients(leads);
+      } else {
+        showToast(result.error || 'Failed to load leads', 'error');
+      }
+    } catch (error) {
+      console.error('Error loading saved leads:', error);
+      showToast('Failed to load leads', 'error');
+    } finally {
+      setIsLoadingLeads(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDemoMode) {
+      fetchSavedProjects();
+    } else {
+      setRecipients(DEMO_RECIPIENTS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode]);
+
+  // Load workflow data when viewing completed stage history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    const data = stageData && Object.keys(stageData).length > 0 ? stageData : null;
+    if (!data) return;
+
+    console.log('[EmailOutreach] Loading workflow history:', { isHistoryView, stageData: data });
+
+    // Show email outreach results from saved stageData
+    if (data.emails_sent !== undefined) {
+      // Load email subject and body if saved
+      if (data.email_subject) {
+        setEmailSubject(data.email_subject);
+      }
+      if (data.email_body) {
+        setEmailBody(data.email_body);
+      }
+
+      // Mark recipients as sent and create list from saved data
+      if (data.recipients && data.recipients.length > 0) {
+        // Create recipients list from saved emails
+        const savedRecipients = data.recipients.map((email, idx) => ({
+          id: idx + 1,
+          name: data.recipient_names?.[idx] || email.split('@')[0],
+          email: email,
+          status: 'sent',
+        }));
+        setRecipients(savedRecipients);
+      } else {
+        // Mark all demo recipients as sent
+        setRecipients(prev => prev.map(r => ({ ...r, status: 'sent' })));
+      }
+
+      // Set template if available (fallback for subject/body if not directly saved)
+      if (data.template_used && !data.email_subject) {
+        const template = templates.find(t => t.name === data.template_used);
+        if (template) {
+          setSelectedTemplate(template);
+          setEmailSubject(template.subject);
+          setEmailBody(template.body);
+        }
+      }
+    }
+  }, [isHistoryView, stageData, templates]);
+
+  const handleSelectTemplate = (template) => {
+    setSelectedTemplate(template);
+    setEmailSubject(template.subject);
+    setEmailBody(template.body);
+  };
+
+  const handleSendEmails = async () => {
+    if (isDemoMode) {
+      // In demo mode, simulate sending and save to workflow
+      const pendingCount = recipients.filter(r => r.status === 'pending').length;
+      const totalRecipients = recipients.length;
+      setRecipients(recipients.map(r =>
+        r.status === 'pending' ? { ...r, status: 'sent' } : r
+      ));
+      showToast(`Demo: Simulated sending ${pendingCount} emails`, 'success');
+
+      if (isInWorkflow) {
+        // For demo, use actual counts; rates will be updated when real tracking is available
+        saveStageData({
+          emails_sent: pendingCount,
+          total_recipients: totalRecipients,
+          template_used: selectedTemplate?.name || 'Default Template',
+          email_subject: emailSubject,
+          email_body: emailBody,
+          recipients: recipients.map(r => r.email),
+          recipient_names: recipients.map(r => r.name),
+          status: 'sent',
+        });
+      }
+      return;
+    }
+
+    const pendingRecipients = recipients.filter(r => r.status === 'pending');
+    if (pendingRecipients.length === 0) return;
+
+    const userEmail = getCurrentUserEmail();
+    if (!userEmail) {
+      showToast('Please sign in with an email address before sending campaigns.', 'error');
+      return;
+    }
+
+    setSending(true);
+    try {
+      const response = await fetch(API_CONFIG.SEND_BULK_EMAILS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: emailSubject,
+          body: emailBody,
+          businesses: pendingRecipients.map(r => ({ name: r.name, email: r.email })),
+          userEmail,
+          username: getCurrentUserIdentifier(),
+          campaignName: selectedSavedProject?.name || selectedTemplate?.name || 'Email Outreach Campaign',
+        }),
+      });
+      const result = await response.json();
+
+      if (!result.success) {
+        showToast(result.error || 'Failed to send emails', 'error');
+        setSending(false);
+        return;
+      }
+
+      setRecipients(recipients.map(r =>
+        r.status === 'pending' ? { ...r, status: 'sent' } : r
+      ));
+
+      showToast(result.message || `Sent ${result.count} emails`, 'success');
+
+      // Save to workflow if in workflow context
+      if (isInWorkflow) {
+        saveStageData({
+          emails_sent: result.count,
+          template_used: selectedTemplate?.name,
+          email_subject: emailSubject,
+          email_body: emailBody,
+          recipients: recipients.map(r => r.email),
+          recipient_names: recipients.map(r => r.name),
+          delivery_rate: pendingRecipients.length > 0 ? `${Math.round((result.count / pendingRecipients.length) * 100)}%` : '0%',
+        });
+      }
+    } catch (err) {
+      showToast('Error sending emails', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <Header />
+
+      <div className="agent-page-header">
+        <div className="agent-header-left">
+          {!isInWorkflow && <BackButton />}
+          <div className="agent-header-content">
+            <div className="agent-title-row">
+              <h1>Email Outreach</h1>
+            </div>
+            <p className="text-muted">
+              Send bulk emails to suppliers, leads, or contacts
+            </p>
+          </div>
+        </div>
+        <div className="agent-header-right">
+          <ProjectSelector agentKey="emailOutreach" />
+        </div>
+      </div>
+
+      <ProjectGate agentLabel="Email Outreach workspace">
+        <div className="email-outreach-page">
+          <WorkflowExecutionBanner />
+
+          {/* Show context from previous workflow stages */}
+          {isInWorkflow && !isHistoryView && (
+            <WorkflowContextCard context={getContext()} currentStageId={stageId} />
+          )}
+
+          <div className="email-outreach-content">
+            {/* Templates */}
+            <div className="email-section">
+              <h2>
+                <img src="/assets/icons/document.png" alt="" />
+                Email Templates
+              </h2>
+              <div className="template-list">
+                {templates.map(template => (
+                  <div
+                    key={template.id}
+                    className={`template-card ${selectedTemplate?.id === template.id ? 'selected' : ''}`}
+                    onClick={() => handleSelectTemplate(template)}
+                  >
+                    <span className="template-name">{template.name}</span>
+                    <span className="template-subject">{template.subject}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Compose */}
+            <div className="email-section">
+              <h2>
+                <img src="/assets/icons/mail.png" alt="" />
+                Compose Email
+              </h2>
+              <div className="compose-form">
+                <div className="form-field">
+                  <label>Subject</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Enter email subject..."
+                    disabled={isHistoryView}
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Body</label>
+                  <textarea
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                    placeholder="Enter email body..."
+                    rows={8}
+                    disabled={isHistoryView}
+                  />
+                </div>
+                <p className="compose-hint">
+                  Use {'{{variable}}'} syntax for personalization (e.g., {'{{supplier_name}}'})
+                </p>
+              </div>
+            </div>
+
+            {/* Recipients */}
+            <div className="email-section">
+              <h2>
+                <img src="/assets/icons/users.png" alt="" />
+                Recipients ({recipients.length})
+              </h2>
+              {!isDemoMode && !isHistoryView && (
+                <div className="form-field" style={{ marginBottom: 'var(--space-3)' }}>
+                  <label>Load a saved lead list (from Market Research)</label>
+                  <select
+                    value={selectedSavedProject?.id || ''}
+                    onChange={(e) => loadSavedProjectLeads(e.target.value)}
+                    disabled={isLoadingLeads}
+                  >
+                    <option value="">
+                      {savedProjects.length === 0 ? 'No saved lists yet - create one in Market Research' : 'Choose a saved list...'}
+                    </option>
+                    {savedProjects.map(project => (
+                      <option key={project.id} value={project.id}>{project.name} ({project.lead_count} leads)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {isHistoryView && (
+                <div style={{
+                  background: '#f0f9ff',
+                  border: '1px solid #0ea5e9',
+                  borderRadius: '6px',
+                  padding: '12px',
+                  marginBottom: '12px',
+                  fontSize: '13px',
+                  color: '#0c4a6e'
+                }}>
+                  <strong>📧 Campaign Summary:</strong> {recipients.filter(r => r.status === 'sent').length} emails marked as sent
+                  {emailSubject && <div style={{marginTop: '4px'}}><strong>Subject:</strong> {emailSubject}</div>}
+                  {!emailSubject && !emailBody && <div style={{marginTop: '4px', fontStyle: 'italic'}}>Note: Email content not recorded (demo/test mode). Scroll up to see the compose form.</div>}
+                </div>
+              )}
+              <div className="recipients-list">
+                {recipients.map(recipient => (
+                  <div key={recipient.id} className={`recipient-row ${recipient.status}`}>
+                    <div className="recipient-info">
+                      <span className="recipient-name">{recipient.name}</span>
+                      <span className="recipient-email">{recipient.email}</span>
+                    </div>
+                    <span className={`recipient-status ${recipient.status}`}>
+                      {recipient.status === 'sent' ? '✓ Sent' : '○ Pending'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="email-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleSendEmails}
+                disabled={sending || !emailSubject || !emailBody || recipients.filter(r => r.status === 'pending').length === 0 || isHistoryView}
+              >
+                {sending ? 'Sending...' : `Send to ${recipients.filter(r => r.status === 'pending').length} Recipients`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </ProjectGate>
+    </>
+  );
+}
+
+export default EmailOutreachAgent;

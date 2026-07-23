@@ -78,6 +78,12 @@ class ProcessedDocument(db.Model):
         self._metadata = json.dumps(value, default=str)
 
     def to_dict(self) -> Dict[str, Any]:
+        # Real confidence derived from the extracted entities' own confidence
+        # scores (set by the extraction pipeline) - not a placeholder.
+        confidence = None
+        if self.entities:
+            confidence = sum(e.confidence for e in self.entities) / len(self.entities)
+
         return {
             "document_id": self.document_id,
             "project_id": self.project_id,
@@ -93,6 +99,7 @@ class ProcessedDocument(db.Model):
             "word_count": self.word_count,
             "chunk_count": self.chunk_count,
             "entity_count": self.entity_count,
+            "confidence": confidence,
             "document_type": self.document_type,
             "metadata": self.metadata_dict,
             "created_at": self.created_at.isoformat() if self.created_at else None,

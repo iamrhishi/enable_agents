@@ -229,6 +229,7 @@ function Login() {
               >
                 ← Use different email
               </button>
+              {/* TODO: Implement password reset flow before enabling
               <button
                 type="button"
                 className="text-link"
@@ -237,6 +238,7 @@ function Login() {
               >
                 Forgot password?
               </button>
+              */}
             </div>
           </form>
         )}

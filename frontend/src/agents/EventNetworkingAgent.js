@@ -239,6 +239,8 @@ function EventNetworkingAgent() {
         setShowCreateEvent(false);
         setNewEvent({ name: '', description: '', date: '', location: '' });
         showToast('Event created successfully', 'success');
+      } else {
+        showToast(data.error || 'Failed to create event', 'error');
       }
     } catch (error) {
       console.error('Error creating event:', error);
@@ -321,6 +323,8 @@ function EventNetworkingAgent() {
         setShowUploadModal(false);
         setCsvText('');
         showToast(`${data.count} attendees uploaded`, 'success');
+      } else {
+        showToast(data.error || 'Failed to upload attendees', 'error');
       }
     } catch (error) {
       console.error('Error uploading attendees:', error);
@@ -363,6 +367,8 @@ function EventNetworkingAgent() {
         if (data.recommendations?.length === 0) {
           showToast('No matching recommendations found', 'info');
         }
+      } else {
+        showToast(data.error || 'Failed to get recommendations', 'error');
       }
     } catch (error) {
       console.error('Error getting recommendations:', error);
@@ -407,6 +413,8 @@ function EventNetworkingAgent() {
         showToast(data.message || 'Follow-up sent', 'success');
         setSelectedAttendees([]);
         setFollowupBody('');
+      } else {
+        showToast(data.error || 'Failed to send follow-up', 'error');
       }
     } catch (error) {
       console.error('Error sending follow-up:', error);
@@ -460,6 +468,8 @@ function EventNetworkingAgent() {
         setAttendees(attendees.map(a => a.id === selectedContact.id ? { ...a, notes: editingNotes, lastContact: new Date().toISOString().split('T')[0] } : a));
         setSelectedContact({ ...selectedContact, notes: editingNotes });
         showToast('Notes saved', 'success');
+      } else {
+        showToast(data.error || 'Failed to save notes', 'error');
       }
     } catch (error) {
       console.error('Error saving notes:', error);
@@ -493,9 +503,12 @@ function EventNetworkingAgent() {
         setAttendees(attendees.map(a => a.id === selectedContact.id ? updatedAttendee : a));
         setSelectedContact(updatedAttendee);
         showToast('Follow-up date updated', 'success');
+      } else {
+        showToast(data.error || 'Failed to update follow-up date', 'error');
       }
     } catch (error) {
       console.error('Error updating follow-up date:', error);
+      showToast('Failed to update follow-up date', 'error');
     }
   };
 

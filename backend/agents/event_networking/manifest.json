@@ -1,0 +1,19 @@
+{
+  "id": "event_networking",
+  "name": "Event Networking Agent",
+  "description": "Tracks conference/event attendees, scores networking recommendations against your interests, and sends follow-up emails.",
+  "enabled": true,
+  "routes_prefix": "/api/event-networking",
+  "required_env": [],
+  "provides": {
+    "event_contacts": {
+      "attendees": "array"
+    }
+  },
+  "consumes": [],
+  "input_schema": {
+    "event_name": "string",
+    "attendees": "array"
+  },
+  "version": "1.0.0"
+}

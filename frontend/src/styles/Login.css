@@ -119,15 +119,21 @@
   gap: var(--space-4);
 }
 
+/* Remove FormField margin when inside login form to avoid double spacing */
+.login-form .form-field {
+  margin-bottom: 0;
+}
+
 .styled-input {
-  padding: var(--space-4) var(--space-4);
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: var(--text-base);
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.8);
+  background: #ffffff;
   outline: none;
-  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: all var(--transition-fast);
   font-family: var(--font-body);
   font-weight: var(--font-normal);
 }
@@ -135,10 +141,7 @@
 .styled-input:focus {
   border-color: var(--color-accent);
   background: #ffffff;
-  box-shadow:
-    0 0 0 4px rgba(191, 87, 0, 0.1),
-    0 4px 12px rgba(0, 0, 0, 0.05);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12);
 }
 
 .styled-input:hover:not(:focus) {
@@ -157,18 +160,18 @@
 
 /* Primary button - Sign in/Continue */
 .primary-button {
-  padding: var(--space-4) var(--space-5);
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
-  color: #ffffff;
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  background: var(--gradient-accent);
+  color: var(--color-text-inverse);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   font-size: var(--text-base);
-  font-weight: var(--font-bold);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: all var(--transition-normal);
   font-family: var(--font-body);
-  letter-spacing: 0.5px;
-  box-shadow: 0 4px 15px rgba(191, 87, 0, 0.3);
+  box-shadow: var(--shadow-accent-sm);
   position: relative;
   overflow: hidden;
 }
@@ -189,10 +192,8 @@
 }
 
 .primary-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(191, 87, 0, 0.4);
-  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-accent-md);
 }
 
 .primary-button:active:not(:disabled) {
@@ -233,13 +234,14 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+  width: 100%;
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
-  color: var(--color-text-muted);
+  color: var(--color-text);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: var(--text-base);
-  font-weight: var(--font-semibold);
+  font-weight: var(--font-medium);
   cursor: pointer;
   transition: all var(--transition-fast);
   font-family: var(--font-body);
@@ -367,13 +369,13 @@
 
 /* Input error state */
 .styled-input.input-error {
-  border-color: var(--color-error, #dc2626);
-  background: rgba(220, 38, 38, 0.03);
+  border-color: var(--color-error);
+  background: var(--color-error-bg);
 }
 
 .styled-input.input-error:focus {
-  border-color: var(--color-error, #dc2626);
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
 }
 
 /* Footer text */

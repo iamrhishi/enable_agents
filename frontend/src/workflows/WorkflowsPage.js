@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../core/Header';
-import { BackButton, EmptyState, ProjectSelector, ProjectGate } from '../components';
+import { BackButton, EmptyState, ProjectSelector } from '../components';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders } from '../core/authHeaders';
 import { showToast } from '../core/toast';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useMode } from '../contexts';
 import './WorkflowsPage.css';
+
+// Maps template.icon identifiers (from backend template config) to actual icon files
+const TEMPLATE_ICON_MAP = {
+  truck: 'supply-chain-management',
+  users: 'users',
+  rocket: 'increase',
+  'clipboard-check': 'checklist',
+  workflow: 'process',
+};
 
 // Demo data for showcasing workflows without backend
 const DEMO_TEMPLATES = [
@@ -102,10 +112,8 @@ function WorkflowsPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const selectedProjectId = useSelectedProjectId();
 
-  // Demo mode detection
-  const [isDemoMode] = useState(() => {
-    return localStorage.getItem('enableAgentsMode') !== 'live';
-  });
+  // Demo mode from shared context
+  const { isDemoMode } = useMode();
 
   const fetchTemplates = useCallback(async () => {
     // Use demo data in demo mode
@@ -115,7 +123,7 @@ function WorkflowsPage() {
     }
 
     try {
-      const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/templates`, {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/api/workflows/templates`, {
         headers: authJsonHeaders(),
       });
       const data = await res.json();
@@ -136,8 +144,8 @@ function WorkflowsPage() {
 
     try {
       const url = selectedProjectId
-        ? `${API_CONFIG.BASE_URL}/workflows/instances?project_id=${selectedProjectId}`
-        : `${API_CONFIG.BASE_URL}/workflows/instances`;
+        ? `${API_CONFIG.BASE_URL}/api/workflows/instances?project_id=${selectedProjectId}`
+        : `${API_CONFIG.BASE_URL}/api/workflows/instances`;
       const res = await fetch(url, { headers: authJsonHeaders() });
       const data = await res.json();
       if (data.success) {
@@ -185,7 +193,7 @@ function WorkflowsPage() {
     }
 
     try {
-      const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/instances`, {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/api/workflows/instances`, {
         method: 'POST',
         headers: authJsonHeaders(),
         body: JSON.stringify({
@@ -215,7 +223,7 @@ function WorkflowsPage() {
     }
 
     try {
-      const res = await fetch(`${API_CONFIG.BASE_URL}/workflows/instances/${instanceId}`, {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/api/workflows/instances/${instanceId}`, {
         method: 'DELETE',
         headers: authJsonHeaders(),
       });
@@ -260,23 +268,25 @@ function WorkflowsPage() {
           <ProjectSelector />
         </div>
 
-        <ProjectGate>
-          <div className="workflows-tabs">
+        <div className="workflows-tabs">
             <button
               className={`workflow-tab ${activeTab === 'templates' ? 'active' : ''}`}
               onClick={() => setActiveTab('templates')}
+              title="Browse available workflow templates"
             >
               Templates
             </button>
             <button
               className={`workflow-tab ${activeTab === 'active' ? 'active' : ''}`}
               onClick={() => setActiveTab('active')}
+              title="View workflows currently in progress"
             >
               Active ({activeInstances.length})
             </button>
             <button
               className={`workflow-tab ${activeTab === 'completed' ? 'active' : ''}`}
               onClick={() => setActiveTab('completed')}
+              title="View completed workflows and their results"
             >
               Completed ({completedInstances.length})
             </button>
@@ -304,7 +314,7 @@ function WorkflowsPage() {
 
               {filteredTemplates.length === 0 ? (
                 <EmptyState
-                  icon="workflow"
+                  iconType="document"
                   title="No templates available"
                   description="Workflow templates will appear here."
                 />
@@ -313,7 +323,11 @@ function WorkflowsPage() {
                   {filteredTemplates.map((template) => (
                     <div key={template.id} className="template-card">
                       <div className="template-header">
-                        <span className="template-icon">{template.icon || 'workflow'}</span>
+                        <img
+                          src={`/assets/icons/${TEMPLATE_ICON_MAP[template.icon] || 'process'}.png`}
+                          alt=""
+                          className="template-icon"
+                        />
                         <span className="template-category">{template.category}</span>
                       </div>
                       <h3>{template.name}</h3>
@@ -338,7 +352,7 @@ function WorkflowsPage() {
             <div className="workflows-content">
               {activeInstances.length === 0 ? (
                 <EmptyState
-                  icon="play"
+                  iconType="data"
                   title="No active workflows"
                   description="Start a workflow from the Templates tab."
                   action={{ label: 'Browse Templates', onClick: () => setActiveTab('templates') }}
@@ -361,7 +375,7 @@ function WorkflowsPage() {
             <div className="workflows-content">
               {completedInstances.length === 0 ? (
                 <EmptyState
-                  icon="check-circle"
+                  iconType="message"
                   title="No completed workflows"
                   description="Completed workflows will appear here."
                 />
@@ -378,7 +392,6 @@ function WorkflowsPage() {
               )}
             </div>
           )}
-        </ProjectGate>
       </div>
     </>
   );
@@ -389,57 +402,72 @@ function InstanceCard({ instance, onDelete }) {
     ? Math.round((instance.currentStageIndex / instance.totalStages) * 100)
     : 0;
 
-  const statusColors = {
-    pending: 'var(--color-warning)',
-    running: 'var(--color-info)',
-    paused: 'var(--color-text-muted)',
-    completed: 'var(--color-success)',
-    failed: 'var(--color-error)',
+  const statusConfig = {
+    pending: { label: '○ Not Started', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+    running: { label: '● In Progress', bg: '#dbeafe', color: '#2563eb' },
+    paused: { label: '⏸ Paused', bg: 'var(--color-background)', color: 'var(--color-text-muted)' },
+    completed: { label: '✓ Completed', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
+    failed: { label: '✕ Failed', bg: 'var(--color-error-bg)', color: 'var(--color-error)' },
   };
+
+  const status = statusConfig[instance.status] || statusConfig.pending;
 
   return (
     <div className="instance-card">
       <div className="instance-header">
-        <h3>{instance.name}</h3>
-        <span className="instance-status" style={{ color: statusColors[instance.status] }}>
-          {instance.status}
-        </span>
+        <div className="instance-title-row">
+          <h3>{instance.name}</h3>
+          <span
+            className="instance-status"
+            style={{ backgroundColor: status.bg, color: status.color }}
+          >
+            {status.label}
+          </span>
+        </div>
+        <p className="instance-template">{instance.templateName}</p>
       </div>
-      <p className="instance-template">Template: {instance.templateName}</p>
 
       <div className="instance-progress">
+        <div className="progress-info">
+          <span className="progress-label">Progress</span>
+          <span className="progress-text">
+            {instance.currentStageIndex}/{instance.totalStages}
+          </span>
+        </div>
         <div className="progress-bar">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
-        <span className="progress-text">
-          {instance.currentStageIndex} / {instance.totalStages} stages
-        </span>
       </div>
 
       {instance.currentStage && instance.status === 'running' && (
         <div className="current-stage">
-          <strong>Current:</strong> {instance.currentStage.name}
+          <span className="current-stage-label">Current:</span> {instance.currentStage.name}
         </div>
       )}
 
       <div className="instance-actions">
         {instance.status === 'running' && (
-          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm">
-            Continue
+          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm" title="Continue working on this workflow">
+            Continue →
           </a>
         )}
         {instance.status === 'pending' && (
-          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm">
-            Start
+          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm" title="Start this workflow">
+            Start →
+          </a>
+        )}
+        {instance.status === 'paused' && (
+          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm" title="Resume this paused workflow">
+            Resume →
           </a>
         )}
         {instance.status === 'completed' && (
-          <a href={`/workflows/${instance.id}`} className="btn btn-secondary btn-sm">
+          <a href={`/workflows/${instance.id}`} className="btn btn-primary btn-sm" title="View workflow details and results">
             View
           </a>
         )}
-        <button className="btn btn-danger btn-sm" onClick={onDelete}>
-          Delete
+        <button className="btn btn-icon btn-sm" onClick={onDelete} title="Delete this workflow permanently" aria-label="Delete workflow">
+          🗑️
         </button>
       </div>
     </div>

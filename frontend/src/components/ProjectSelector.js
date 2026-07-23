@@ -38,6 +38,10 @@ function ProjectSelector({ agentKey, onProjectChange }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef(null);
+  // Tracks which project id we've already notified onProjectChange about,
+  // so effect re-runs (StrictMode double-invoke, unrelated re-renders) don't
+  // re-fire the callback - and any toast it shows - more than once per selection.
+  const notifiedProjectIdRef = useRef(null);
 
   // Get project ID from URL
   const projectIdFromUrl = searchParams.get('project');
@@ -53,7 +57,10 @@ function ProjectSelector({ agentKey, onProjectChange }) {
       const project = projects.find(p => p.id === projectIdFromUrl);
       if (project) {
         setSelectedProject(project);
-        onProjectChange?.(project);
+        if (notifiedProjectIdRef.current !== project.id) {
+          notifiedProjectIdRef.current = project.id;
+          onProjectChange?.(project);
+        }
       }
       return;
     }
@@ -61,7 +68,11 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     if (isDemoMode && !projectIdFromUrl && projects.length > 0 && !loading) {
       const first = projects[0];
       const currentPath = window.location.pathname;
-      navigate(`${currentPath}?project=${first.id}`, { replace: true });
+      // Preserve existing params (e.g. workflow/stage/view when opened from a
+      // workflow) - only add `project`, don't clobber the whole query string.
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.set('project', first.id);
+      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
     }
   }, [projectIdFromUrl, projects, isDemoMode, loading, navigate]);
 
@@ -105,10 +116,14 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     setSelectedProject(project);
     setIsOpen(false);
 
-    // Update URL with project param
+    // Update URL with project param, preserving any other existing params
+    // (workflow/stage/view context etc.)
     const currentPath = window.location.pathname;
-    navigate(`${currentPath}?project=${project.id}`, { replace: true });
+    const newParams = new URLSearchParams(window.location.search);
+    newParams.set('project', project.id);
+    navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
 
+    notifiedProjectIdRef.current = project.id;
     onProjectChange?.(project);
   };
 
@@ -116,10 +131,14 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     setSelectedProject(null);
     setIsOpen(false);
 
-    // Remove project param from URL
+    // Remove only the project param from the URL, keep everything else
     const currentPath = window.location.pathname;
-    navigate(currentPath, { replace: true });
+    const newParams = new URLSearchParams(window.location.search);
+    newParams.delete('project');
+    const qs = newParams.toString();
+    navigate(qs ? `${currentPath}?${qs}` : currentPath, { replace: true });
 
+    notifiedProjectIdRef.current = null;
     onProjectChange?.(null);
   };
 

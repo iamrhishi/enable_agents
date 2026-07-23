@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getDemoProjectsWithData } from '../data/demo';
+import { showToast } from '../core/toast';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -172,7 +173,7 @@ export function useProjectData(agentKey, options = {}) {
 
     // Live mode - save to API
     try {
-      await fetch(`${API_URL}/api/projects/${project.id}/data`, {
+      const res = await fetch(`${API_URL}/api/projects/${project.id}/data`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -183,9 +184,17 @@ export function useProjectData(agentKey, options = {}) {
           data: newData,
         }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showToast(body.error || 'Failed to save - your changes were not stored', 'error');
+        return false;
+      }
       setLastSaved(new Date());
+      return true;
     } catch (err) {
       console.error('Failed to save project data:', err);
+      showToast('Failed to save - your changes were not stored', 'error');
+      return false;
     }
   }, [project, agentKey, isDemoMode, userEmail]);
 

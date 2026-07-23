@@ -9,3 +9,4 @@ export { default as useToast } from './useToast';
 export { default as useValidation, validators } from './useValidation';
 export { useFocusTrap, useKeyboardShortcut } from './useFocusTrap';
 export { useKeyboard, useTypeahead, useRovingTabIndex } from './useKeyboard';
+export { useWorkflowContext } from './useWorkflowContext';

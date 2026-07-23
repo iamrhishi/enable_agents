@@ -1465,6 +1465,23 @@
   }
 }
 
+@media (max-width: 900px) {
+  .agents-toolbar {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .agents-toolbar .module-tabs,
+  .agents-toolbar .agent-search-wrapper,
+  .agents-toolbar .filter-chips {
+    justify-self: stretch;
+  }
+
+  .agent-search-wrapper {
+    width: 100%;
+  }
+}
+
 @media (max-width: 600px) {
   .floating-chat-widget {
     bottom: var(--space-4);

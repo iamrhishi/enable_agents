@@ -205,9 +205,10 @@ class VectorStore:
         """
         params: Dict[str, Any] = {}
 
-        # Security: always filter by user_id
+        # Security: always filter by uploaded_by (column is named uploaded_by,
+        # not user_id, on processed_documents)
         if user_id:
-            sql += " AND pd.user_id = :user_id"
+            sql += " AND pd.uploaded_by = :user_id"
             params["user_id"] = user_id
 
         if document_ids:

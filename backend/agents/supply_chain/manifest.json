@@ -1,0 +1,19 @@
+{
+  "id": "supply_chain",
+  "name": "Supply Chain Audit Agent",
+  "description": "Tracks suppliers and runs weighted capability/compliance audits to qualify vendors.",
+  "enabled": true,
+  "routes_prefix": "/api/supply-chain",
+  "required_env": [],
+  "provides": {
+    "supplier_audit": {
+      "suppliers": "array"
+    }
+  },
+  "consumes": [],
+  "input_schema": {
+    "supplier_name": "string",
+    "project_id": "string"
+  },
+  "version": "1.0.0"
+}

@@ -178,10 +178,10 @@ def process_document(document_id: str):
     Response: { document_id, status }
     """
     try:
-        user_id = get_user_id()
+        project_id = get_project_id()
 
-        # Verify ownership
-        status = service.get_document_status(document_id, user_id)
+        # Verify ownership (by project, matching get_document_status's contract)
+        status = service.get_document_status(document_id, project_id)
 
         if status["status"] == "processing":
             return jsonify({"message": "Already processing", **status}), 200
@@ -198,6 +198,31 @@ def process_document(document_id: str):
     except Exception as e:
         logger.exception("Process document failed")
         return jsonify({"error": "Process document failed"}), 500
+
+
+@bp.route("/documents/<document_id>/insight", methods=["GET"])
+def get_insight(document_id: str):
+    """
+    Get (or generate) structured analysis for a document: summary, key
+    facts, recommendations, and source citations - derived from the
+    document's real extracted text and vector search, not demo data.
+
+    Query params:
+    - project_id (optional): verify document belongs to project
+
+    Response: { status, summary, keyFacts, recommendations, sources }
+    """
+    try:
+        user_id = get_user_id()
+        project_id = get_project_id()
+        result = service.get_document_insight(document_id, project_id=project_id, user_id=user_id)
+        return jsonify(result), 200
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.exception("Insight generation failed")
+        return jsonify({"error": "Insight generation failed", "detail": str(e)}), 500
 
 
 @bp.route("/chat", methods=["POST"])
@@ -224,12 +249,14 @@ def chat():
 
         document_ids = data.get("document_ids")
         use_entity_boost = data.get("use_entity_boost", False)
+        project_id = data.get("project_id") or get_project_id()
 
         result = service.chat(
             query=query,
             user_id=user_id,
             document_ids=document_ids,
             use_entity_boost=use_entity_boost,
+            project_id=project_id,
         )
 
         return jsonify(result), 200

@@ -138,6 +138,14 @@ body, html {
   position: relative;
 }
 
+.chatbot-message p {
+  margin: 0 0 var(--space-2);
+}
+
+.chatbot-message p:last-child {
+  margin-bottom: 0;
+}
+
 @keyframes messageSlideIn {
   from {
     opacity: 0;

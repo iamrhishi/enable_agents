@@ -1,51 +1,51 @@
 {
   "id": "supplier-qualification",
   "name": "Supplier Qualification Pipeline",
-  "description": "End-to-end workflow for qualifying suppliers for OEM requirements. Covers requirement capture, supplier research, RFQ management, response tracking, audits, and final selection.",
+  "description": "End-to-end workflow for qualifying suppliers. Covers supplier discovery, document analysis, RFQ outreach, response analysis, audits, and selection tasks.",
   "category": "procurement",
   "icon": "truck",
   "isSystem": true,
   "stages": [
     {
-      "id": "requirement_capture",
-      "name": "Capture OEM Requirements",
+      "id": "supplier_discovery",
+      "name": "Supplier Discovery",
       "agent": "requirements_gathering",
-      "description": "Document OEM specifications including tolerances, volumes, certifications, and timeline",
-      "required_inputs": ["client_name", "component_type", "material", "annual_volume"]
+      "description": "Search and identify potential suppliers based on product/service criteria",
+      "required_inputs": []
     },
     {
-      "id": "market_research",
-      "name": "Identify Suppliers",
-      "agent": "market_research",
-      "description": "Research suppliers with relevant capabilities (machining, material expertise, certifications)",
-      "required_inputs": ["search_criteria", "location_preference"]
+      "id": "document_analysis",
+      "name": "Supplier Document Analysis",
+      "agent": "data_insights",
+      "description": "Analyze supplier documents, catalogs, and market reports",
+      "required_inputs": []
     },
     {
-      "id": "supplier_outreach",
-      "name": "Send RFQs",
-      "agent": "content_marketing",
-      "description": "Generate and send RFQ emails to shortlisted suppliers",
-      "required_inputs": ["supplier_list", "rfq_details"]
+      "id": "rfq_outreach",
+      "name": "RFQ Outreach",
+      "agent": "email_outreach",
+      "description": "Send Request for Quotation emails to shortlisted suppliers",
+      "required_inputs": []
     },
     {
-      "id": "response_tracking",
-      "name": "Track Responses",
+      "id": "response_analysis",
+      "name": "Response Analysis",
       "agent": "sales_helper",
-      "description": "Log supplier responses, quotes, and capabilities. Score each supplier.",
+      "description": "Track supplier responses and rank based on criteria",
       "required_inputs": []
     },
     {
       "id": "qualification_audit",
-      "name": "Schedule Audits",
-      "agent": "executive_assistant",
-      "description": "Coordinate site audits, manage stakeholder communications, track qualification tasks",
-      "required_inputs": ["audit_dates", "auditor_name"]
+      "name": "Qualification Audit",
+      "agent": "supply_chain",
+      "description": "Audit shortlisted suppliers on facility, quality, capacity, and compliance",
+      "required_inputs": []
     },
     {
-      "id": "final_selection",
-      "name": "Final Supplier Selection",
-      "agent": "campaign_dashboard",
-      "description": "Compare qualified suppliers and make final recommendation to client",
+      "id": "selection_tasks",
+      "name": "Selection Tasks",
+      "agent": "executive_assistant",
+      "description": "Manage final selection tasks and coordination",
       "required_inputs": []
     }
   ]

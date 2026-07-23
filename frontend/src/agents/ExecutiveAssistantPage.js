@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
-import { Input, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate } from '../components';
+import { Input, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
 import ReminderModal from '../components/ReminderModal';
 import { setAgentData, AGENT_KEYS } from '../utils';
 import { formatDate } from '../utils/dateFormat';
 import { useProjectData } from '../hooks/useProjectData';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useWorkflowContext } from '../hooks';
 
 // Demo data for Executive Assistant - comprehensive sample to showcase features
 const DEMO_PROJECTS = [
@@ -46,6 +47,9 @@ function ExecutiveAssistantPage() {
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return localStorage.getItem('enableAgentsMode') !== 'live';
   });
+
+  // Workflow context - for saving results back to workflow
+  const { isInWorkflow, isHistoryView, stageData, stageId, saveStageData, getContext, context: workflowContext } = useWorkflowContext();
 
   // Global project data hook - manages cross-agent project context
   const {
@@ -240,6 +244,55 @@ function ExecutiveAssistantPage() {
     setPeople(people.filter(p => p.id !== id));
   };
 
+  // Save workflow progress when tasks are completed (for Final Selection stage)
+  const saveWorkflowProgress = React.useCallback(() => {
+    if (!isInWorkflow) return;
+
+    const completedTasks = tasks.filter(t => t.status === 'Completed');
+    const pendingTasks = tasks.filter(t => t.status === 'Pending');
+    const inProgressTasks = tasks.filter(t => t.status === 'In Progress');
+
+    saveStageData({
+      total_tasks: tasks.length,
+      completed_tasks: completedTasks.length,
+      pending_tasks: pendingTasks.length,
+      in_progress_tasks: inProgressTasks.length,
+      completion_rate: tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0,
+      recent_completions: completedTasks.slice(-3).map(t => t.title),
+      team_members: people.length,
+    });
+  }, [isInWorkflow, tasks, people, saveStageData]);
+
+  // Auto-save to workflow when significant changes occur
+  useEffect(() => {
+    if (isInWorkflow && tasks.length > 0) {
+      const timer = setTimeout(saveWorkflowProgress, 2000); // Debounce
+      return () => clearTimeout(timer);
+    }
+  }, [isInWorkflow, tasks, saveWorkflowProgress]);
+
+  // Load workflow data when viewing completed stage history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    const data = stageData && Object.keys(stageData).length > 0 ? stageData : null;
+    if (!data) return;
+
+    console.log('[ExecutiveAssistant] Loading workflow history:', { isHistoryView, stageData: data });
+
+    // The data contains task statistics from the workflow
+    // We can't reconstruct full tasks, but we can show that the stage was completed
+    // If recent_completions are available, we could try to match them to existing tasks
+    if (data.recent_completions && data.recent_completions.length > 0) {
+      // Mark tasks with matching titles as completed
+      setTasks(prev => prev.map(t =>
+        data.recent_completions.includes(t.title)
+          ? { ...t, status: 'Completed' }
+          : t
+      ));
+    }
+  }, [isHistoryView, stageData]);
+
   const getInitials = (name) => {
     return name
       .split(' ')
@@ -265,7 +318,7 @@ function ExecutiveAssistantPage() {
 
       <div className="agent-page-header">
         <div className="agent-header-left">
-          <BackButton />
+          {!isInWorkflow && <BackButton />}
           <div className="agent-header-content">
             <div className="agent-title-row">
               <h1>Executive Assistant</h1>
@@ -319,6 +372,13 @@ function ExecutiveAssistantPage() {
         </div>
 
         <ProjectGate agentLabel="Executive Assistant workspace">
+        <WorkflowExecutionBanner />
+
+        {/* Show context from previous workflow stages */}
+        {isInWorkflow && !isHistoryView && (
+          <WorkflowContextCard context={getContext()} currentStageId={stageId} />
+        )}
+
         {/* Shared Context Banner - Shows when global project has data from other agents */}
         {hasGlobalProject && Object.keys(sharedData).length > 0 && (
           <div className="shared-context-banner">
@@ -355,7 +415,7 @@ function ExecutiveAssistantPage() {
             )}
             {hasSharedData('eventNetworking') && getSharedAgentData('eventNetworking')?.attendees && (
               <div className="shared-stat">
-                <span className="stat-value">{getSharedAgentData('eventNetworking').attendees}</span>
+                <span className="stat-value">{getSharedAgentData('eventNetworking').attendees.length}</span>
                 <span className="stat-label">Attendees</span>
               </div>
             )}
@@ -368,14 +428,15 @@ function ExecutiveAssistantPage() {
             {/* Quick Add Bar */}
             <div className="quick-add-bar">
               <Input
-                placeholder="Add a new task..."
+                placeholder={isHistoryView ? "Viewing completed stage - inputs disabled" : "Add a new task..."}
                 value={newTask.title}
                 onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newTask.title.trim()) {
+                  if (e.key === 'Enter' && newTask.title.trim() && !isHistoryView) {
                     handleAddTask();
                   }
                 }}
+                disabled={isHistoryView}
               />
               {people.length > 0 && (
                 <div className="assignee-pills">
@@ -407,7 +468,7 @@ function ExecutiveAssistantPage() {
               <button
                 type="button"
                 className="btn-add-task"
-                disabled={!newTask.title.trim()}
+                disabled={!newTask.title.trim() || isHistoryView}
                 onClick={handleAddTask}
               >
                 Add
@@ -641,7 +702,7 @@ function ExecutiveAssistantPage() {
             <div className="section-header">
               <h2>Team & Stakeholders</h2>
               <div className="header-actions">
-                <button type="button" className="btn-compact" onClick={() => setShowPersonForm(v => !v)}>
+                <button type="button" className="btn-compact" onClick={() => setShowPersonForm(v => !v)} disabled={isHistoryView}>
                   {showPersonForm ? 'Cancel' : '+ Person'}
                 </button>
               </div>
@@ -683,7 +744,7 @@ function ExecutiveAssistantPage() {
                 </div>
                 <div className="inline-panel-footer">
                   <button type="button" className="btn btn-ghost" onClick={() => setShowPersonForm(false)}>Cancel</button>
-                  <button type="button" className="btn btn-primary" onClick={handleAddPerson} disabled={!newPerson.name.trim() || !newPerson.email.trim()}>
+                  <button type="button" className="btn btn-primary" onClick={handleAddPerson} disabled={!newPerson.name.trim() || !newPerson.email.trim() || isHistoryView}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                       <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                       <circle cx="8.5" cy="7" r="4" />

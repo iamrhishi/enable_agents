@@ -5662,7 +5662,7 @@ Query: {query}
 
 Provide a detailed answer:"""
     
-    response = llm.predict(prompt)
+    response = llm.invoke(prompt).content
     return response
 
 def process_documents_with_kg_rag(documents, nodes, edges, query, include_context=False):
@@ -6044,7 +6044,7 @@ Documents Summary: {' '.join([doc[:200] for doc in doc_texts[:3]])}
 Generate compelling marketing {content_type} content."""
 
         llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-        response = llm.predict(prompt)
+        response = llm.invoke(prompt).content
 
         # Store in PostgreSQL
         content_id = f"content_{uuid4().hex[:12]}"
@@ -6103,7 +6103,7 @@ User Question: {message}
 Provide a helpful, concise response focused on marketing strategy and content improvement."""
 
         llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-        response = llm.predict(prompt)
+        response = llm.invoke(prompt).content
 
         # Store in PostgreSQL
         msg_id = f"msg_{uuid4().hex[:12]}"
@@ -7096,6 +7096,60 @@ def handle_email_reply():
 
     except Exception as e:
         print(f"[ZAPIER WEBHOOK ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/campaigns', methods=['GET'])
+@cross_origin()
+def list_campaigns():
+    """Lightweight campaign list for cross-agent pickers (e.g. Content
+    Marketing's 'Send to Email Campaign'). Distinct from /api/campaigns/stats,
+    which includes reply-rate analytics this picker doesn't need."""
+    try:
+        username = request.args.get('username') or request.args.get('userId') or request.args.get('email')
+        username = _normalize_username(username) if username else None
+
+        query = EmailCampaign.query
+        if username:
+            query = query.filter_by(username=username)
+        campaigns = query.order_by(EmailCampaign.created_at.desc()).all()
+
+        results = [{
+            'id': c.id,
+            'name': c.name,
+            'subject': c.subject,
+            'status': c.status,
+            'lead_count': len(c.recipients),
+            'createdAt': c.created_at.isoformat() if c.created_at else None,
+        } for c in campaigns]
+
+        return jsonify({'success': True, 'campaigns': results}), 200
+    except Exception as e:
+        print(f"[LIST CAMPAIGNS ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/<campaign_id>/content', methods=['PUT'])
+@cross_origin()
+def update_campaign_content(campaign_id):
+    """Update a campaign's email body - used by Content Marketing's
+    'Send to Email Campaign' to hand off generated content."""
+    try:
+        campaign = EmailCampaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'success': False, 'error': 'Campaign not found'}), 404
+
+        data = request.get_json() or {}
+        email_body = data.get('email_body')
+        if not email_body:
+            return jsonify({'success': False, 'error': 'email_body is required'}), 400
+
+        campaign.body_template = email_body
+        db.session.commit()
+
+        return jsonify({'success': True, 'campaign_id': campaign_id}), 200
+    except Exception as e:
+        print(f"[UPDATE CAMPAIGN CONTENT ERROR] {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -8459,6 +8513,241 @@ IMPORTANT INSTRUCTIONS:
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== SALES HELPER PRODUCT CATALOG DOCUMENTS ==========
+# Lightweight file-backed store (no DB migration needed) - mirrors the
+# json-sidecar pattern already used by /file_to_json_convert et al.
+
+_SALES_HELPER_DOCS_DIR = os.path.join(os.getcwd(), 'data', 'sales_helper_docs')
+_SALES_HELPER_UPLOADS_DIR = os.path.join(os.getcwd(), 'data', 'uploads', 'sales_helper')
+os.makedirs(_SALES_HELPER_DOCS_DIR, exist_ok=True)
+os.makedirs(_SALES_HELPER_UPLOADS_DIR, exist_ok=True)
+
+
+def _sales_helper_index_path(user_id):
+    safe_user = hashlib.sha256(user_id.encode('utf-8')).hexdigest()[:24]
+    return os.path.join(_SALES_HELPER_DOCS_DIR, f'{safe_user}.json')
+
+
+def _load_sales_helper_docs(user_id):
+    path = _sales_helper_index_path(user_id)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_sales_helper_docs(user_id, docs):
+    path = _sales_helper_index_path(user_id)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(docs, f)
+
+
+def _extract_sales_helper_text(file_path, ext):
+    """Extract text from an uploaded product catalog file (pdf/docx/doc/txt)."""
+    if ext == 'pdf':
+        text_parts = []
+        with fitz.open(file_path) as pdf:
+            for page in pdf:
+                page_text = page.get_text()
+                if page_text.strip():
+                    text_parts.append(page_text)
+        return "\n\n".join(text_parts)
+    if ext in ('docx', 'doc'):
+        from docx import Document as DocxDocument
+        doc = DocxDocument(file_path)
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    # txt and anything else falls back to plain-text read
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        return f.read()
+
+
+@app.route('/api/sales-helper/documents', methods=['GET'])
+@cross_origin()
+def list_sales_helper_documents():
+    user_id = request.args.get('user_id', 'anonymous')
+    docs = _load_sales_helper_docs(user_id)
+    response_docs = [
+        {k: v for k, v in d.items() if k not in ('file_path', 'extracted_text')}
+        for d in docs
+    ]
+    return jsonify({'success': True, 'documents': response_docs}), 200
+
+
+@app.route('/api/sales-helper/documents', methods=['POST'])
+@cross_origin()
+def upload_sales_helper_document():
+    """Upload a product catalog document for prospect matching."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+
+        file = request.files['file']
+        user_id = request.form.get('user_id', 'anonymous')
+        doc_type = request.form.get('type', 'product_catalog')
+
+        filename = secure_filename(file.filename)
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext not in ('pdf', 'doc', 'docx', 'txt'):
+            return jsonify({'success': False, 'error': 'Unsupported file type. Use PDF, Word, or TXT.'}), 400
+
+        doc_id = str(uuid4())
+        user_dir = os.path.join(_SALES_HELPER_UPLOADS_DIR, hashlib.sha256(user_id.encode('utf-8')).hexdigest()[:24])
+        os.makedirs(user_dir, exist_ok=True)
+        file_path = os.path.join(user_dir, f'{doc_id}_{filename}')
+        file.save(file_path)
+        file_size = os.path.getsize(file_path)
+
+        try:
+            extracted_text = _extract_sales_helper_text(file_path, ext)
+        except Exception as extract_err:
+            logging.getLogger(__name__).warning('Sales helper doc extraction failed: %s', extract_err)
+            extracted_text = ''
+
+        document = {
+            'id': doc_id,
+            'name': filename,
+            'type': doc_type,
+            'size': f'{(file_size / 1024 / 1024):.1f} MB',
+            'uploadedAt': datetime.utcnow().strftime('%Y-%m-%d'),
+            'status': 'processed',
+            'file_path': file_path,
+            'extracted_text': extracted_text[:20000],  # cap stored text
+        }
+
+        docs = _load_sales_helper_docs(user_id)
+        docs.append(document)
+        _save_sales_helper_docs(user_id, docs)
+
+        # Don't echo the full extracted text back to the client
+        response_doc = {k: v for k, v in document.items() if k not in ('file_path', 'extracted_text')}
+        return jsonify({'success': True, 'document': response_doc}), 201
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _find_sales_helper_doc(doc_id, user_id):
+    for d in _load_sales_helper_docs(user_id):
+        if d['id'] == doc_id:
+            return d
+    return None
+
+
+@app.route('/api/sales-helper/documents/<doc_id>/download', methods=['GET'])
+@cross_origin()
+def download_sales_helper_document(doc_id):
+    from flask import send_file
+    user_id = request.args.get('user_id', 'anonymous')
+    doc = _find_sales_helper_doc(doc_id, user_id)
+    if not doc or not os.path.exists(doc.get('file_path', '')):
+        return jsonify({'error': 'Document not found'}), 404
+    return send_file(doc['file_path'], as_attachment=True, download_name=doc['name'])
+
+
+@app.route('/api/sales-helper/documents/<doc_id>/view', methods=['GET'])
+@cross_origin()
+def view_sales_helper_document(doc_id):
+    from flask import send_file
+    user_id = request.args.get('user_id', 'anonymous')
+    doc = _find_sales_helper_doc(doc_id, user_id)
+    if not doc or not os.path.exists(doc.get('file_path', '')):
+        return jsonify({'error': 'Document not found'}), 404
+    return send_file(doc['file_path'], as_attachment=False, download_name=doc['name'])
+
+
+@app.route('/api/sales-helper/documents/<doc_id>', methods=['DELETE'])
+@cross_origin()
+def delete_sales_helper_document(doc_id):
+    try:
+        user_id = request.args.get('user_id') or (request.get_json(silent=True) or {}).get('user_id', 'anonymous')
+        docs = _load_sales_helper_docs(user_id)
+        remaining = [d for d in docs if d['id'] != doc_id]
+        removed = [d for d in docs if d['id'] == doc_id]
+        for d in removed:
+            if d.get('file_path') and os.path.exists(d['file_path']):
+                os.remove(d['file_path'])
+        _save_sales_helper_docs(user_id, remaining)
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/sales-helper/match-prospects', methods=['POST'])
+@cross_origin()
+def match_sales_helper_prospects():
+    """Use the uploaded product catalog(s) + a leads list to generate real,
+    LLM-based prospect-fit analysis (not canned demo output)."""
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id', 'anonymous')
+        leads = data.get('leads') or []
+        document_ids = data.get('document_ids') or []
+
+        if not leads:
+            return jsonify({'success': False, 'error': 'No leads provided'}), 400
+        if not document_ids:
+            return jsonify({'success': False, 'error': 'No product catalog documents selected'}), 400
+
+        docs = _load_sales_helper_docs(user_id)
+        selected_docs = [d for d in docs if d['id'] in document_ids]
+        if not selected_docs:
+            return jsonify({'success': False, 'error': 'Selected documents not found'}), 404
+
+        catalog_text = "\n\n---\n\n".join(
+            f"[{d['name']}]\n{d.get('extracted_text', '')[:6000]}" for d in selected_docs
+        )
+
+        lead_rows = []
+        for idx, lead in enumerate(leads[:20], start=1):
+            name = lead.get('name') or f'Lead {idx}'
+            summary = lead.get('summary') or lead.get('description') or ''
+            lead_rows.append(f"{idx}. {name} - {summary}".strip(' -'))
+        leads_text = "\n".join(lead_rows)
+
+        if not os.getenv('OPENAI_API_KEY'):
+            return jsonify({
+                'success': True,
+                'analysis': f"Loaded {len(selected_docs)} catalog document(s) and {len(leads)} leads. "
+                            f"Add an OpenAI API key to generate real match scoring.",
+            }), 200
+
+        prompt = f"""You are a sales analyst. Given this product/service catalog and this list of prospects,
+identify which prospects are the best fit and why. Be specific and reference concrete details from
+the catalog when explaining fit.
+
+PRODUCT CATALOG:
+{catalog_text}
+
+PROSPECTS:
+{leads_text}
+
+Return a concise ranked list (best fit first) with a one-line reason for each prospect."""
+
+        client = openai.OpenAI()
+        client.api_key = os.environ['OPENAI_API_KEY']
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a precise sales/product-fit analyst."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=900,
+            temperature=0.3,
+        )
+
+        analysis = response.choices[0].message.content.strip()
+        return jsonify({'success': True, 'analysis': analysis}), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ========== SHARED CONTEXT API ENDPOINTS ==========
 

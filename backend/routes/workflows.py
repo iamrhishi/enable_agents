@@ -11,6 +11,7 @@ from pathlib import Path
 
 from core.database import db
 from models.workflow import WorkflowTemplate, WorkflowInstance
+from core.models import WorkflowTask, Notification
 
 workflows_bp = Blueprint('workflows', __name__)
 
@@ -243,6 +244,25 @@ def complete_stage(instance_id: str):
     if instance.status != "running":
         return jsonify({"error": "Instance is not running"}), 400
 
+    # Get current stage ID from template
+    template = WorkflowTemplate.query.filter_by(template_id=instance.template_id).first()
+    if template and template.stages:
+        current_stage = template.stages[instance.current_stage_index]
+        stage_id = current_stage.get("stage_id") or current_stage.get("id", "")
+
+        # Check required tasks are complete
+        pending_required = WorkflowTask.query.filter_by(
+            instance_id=instance_id,
+            stage_id=stage_id,
+            is_required=True
+        ).filter(WorkflowTask.status != "done").all()
+
+        if pending_required:
+            return jsonify({
+                "error": "Cannot complete stage with pending required tasks",
+                "pending_tasks": [t.to_dict() for t in pending_required]
+            }), 400
+
     data = request.get_json() or {}
     stage_data = data.get("data", {})
 
@@ -250,6 +270,74 @@ def complete_stage(instance_id: str):
     db.session.commit()
 
     return jsonify({"success": True, "instance": instance.to_dict()})
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/stages/<stage_id>/data', methods=['POST', 'PATCH'])
+def save_stage_data(instance_id: str, stage_id: str):
+    """
+    Save data for a specific stage without completing it.
+    Agents call this to persist their outputs back to the workflow.
+    PATCH merges with existing data, POST replaces.
+    """
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    # Verify stage exists in template
+    template = instance.template
+    if not template:
+        return jsonify({"error": "Template not found"}), 404
+
+    stage_ids = [s.get("stage_id") or s.get("id") for s in template.stages]
+    if stage_id not in stage_ids:
+        return jsonify({"error": f"Stage '{stage_id}' not found in template"}), 404
+
+    data = request.get_json() or {}
+    stage_data = data.get("data", {})
+
+    if not stage_data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Get current stage states
+    states = instance.stage_states
+
+    # A completed stage's inputs/outputs are locked - reject writes even if the
+    # client-side UI guard was bypassed (stale tab, race condition, direct API call).
+    if states.get(stage_id, {}).get("status") == "completed":
+        return jsonify({"error": "This stage is already completed and its data cannot be changed"}), 400
+
+    # Initialize stage state if not exists
+    if stage_id not in states:
+        states[stage_id] = {"status": "in_progress", "data": {}}
+
+    # PATCH merges, POST replaces
+    if request.method == 'PATCH':
+        existing_data = states[stage_id].get("data", {})
+        existing_data.update(stage_data)
+        states[stage_id]["data"] = existing_data
+    else:
+        states[stage_id]["data"] = stage_data
+
+    states[stage_id]["updatedAt"] = datetime.utcnow().isoformat()
+    instance.stage_states = states
+
+    # Also update context with the new data for downstream stages
+    ctx = instance.context
+    ctx.update(stage_data)
+    instance.context = ctx
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "stageId": stage_id,
+        "data": states[stage_id]["data"],
+        "message": "Stage data saved successfully"
+    })
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/pause', methods=['POST'])
@@ -285,3 +373,265 @@ def delete_instance(instance_id: str):
     db.session.delete(instance)
     db.session.commit()
     return jsonify({"success": True, "message": "Instance deleted"})
+
+
+# =============================================================================
+# Tasks
+# =============================================================================
+
+def create_notification(user_id: str, notif_type: str, title: str, message: str = None,
+                        link: str = None, workflow_id: str = None, task_id: str = None):
+    """Helper to create in-app notification."""
+    notification = Notification(
+        notification_id=str(uuid.uuid4()),
+        user_id=user_id,
+        type=notif_type,
+        title=title,
+        message=message,
+        link=link,
+        workflow_id=workflow_id,
+        task_id=task_id,
+    )
+    db.session.add(notification)
+    return notification
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/tasks', methods=['GET'])
+def list_tasks(instance_id: str):
+    """List all tasks for a workflow instance."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    stage_id = request.args.get("stage_id")
+    query = WorkflowTask.query.filter_by(instance_id=instance_id)
+    if stage_id:
+        query = query.filter_by(stage_id=stage_id)
+
+    tasks = query.order_by(WorkflowTask.created_at.asc()).all()
+    return jsonify({"success": True, "tasks": [t.to_dict() for t in tasks]})
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/stages/<stage_id>/tasks', methods=['GET'])
+def list_stage_tasks(instance_id: str, stage_id: str):
+    """List tasks for a specific stage."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    tasks = WorkflowTask.query.filter_by(
+        instance_id=instance_id,
+        stage_id=stage_id
+    ).order_by(WorkflowTask.created_at.asc()).all()
+
+    # Count stats
+    total = len(tasks)
+    done = sum(1 for t in tasks if t.status == "done")
+    required_pending = sum(1 for t in tasks if t.is_required and t.status != "done")
+
+    return jsonify({
+        "success": True,
+        "tasks": [t.to_dict() for t in tasks],
+        "stats": {
+            "total": total,
+            "done": done,
+            "required_pending": required_pending,
+            "can_complete": required_pending == 0
+        }
+    })
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/tasks', methods=['POST'])
+def create_task(instance_id: str):
+    """Create a new task for a workflow stage."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    data = request.get_json()
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+
+    stage_id = data.get("stage_id")
+    if not stage_id:
+        return jsonify({"error": "stage_id is required"}), 400
+
+    task = WorkflowTask(
+        task_id=str(uuid.uuid4()),
+        instance_id=instance_id,
+        stage_id=stage_id,
+        title=title,
+        description=data.get("description"),
+        assigned_to=data.get("assigned_to"),
+        is_required=data.get("is_required", True),
+        source=data.get("source", "manual"),
+        created_by=user_id,
+    )
+    db.session.add(task)
+
+    # Notify assignee if different from creator
+    if task.assigned_to and task.assigned_to != user_id:
+        create_notification(
+            user_id=task.assigned_to,
+            notif_type="task_assigned",
+            title="New task assigned to you",
+            message=f"Task: {title}",
+            link=f"/workflows/{instance_id}",
+            workflow_id=instance_id,
+            task_id=task.task_id,
+        )
+
+    db.session.commit()
+    return jsonify({"success": True, "task": task.to_dict()})
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/tasks/<task_id>', methods=['PATCH'])
+def update_task(instance_id: str, task_id: str):
+    """Update a task (status, assignee, etc.)."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    task = WorkflowTask.query.filter_by(task_id=task_id, instance_id=instance_id).first()
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    data = request.get_json()
+    old_status = task.status
+    old_assignee = task.assigned_to
+
+    # Update fields
+    if "title" in data:
+        task.title = data["title"].strip()
+    if "description" in data:
+        task.description = data["description"]
+    if "is_required" in data:
+        task.is_required = data["is_required"]
+    if "assigned_to" in data:
+        task.assigned_to = data["assigned_to"]
+    if "status" in data:
+        task.status = data["status"]
+        if data["status"] == "done" and old_status != "done":
+            task.completed_at = datetime.utcnow()
+            task.completed_by = user_id
+
+    # Notify on assignment change
+    if task.assigned_to and task.assigned_to != old_assignee and task.assigned_to != user_id:
+        create_notification(
+            user_id=task.assigned_to,
+            notif_type="task_assigned",
+            title="Task assigned to you",
+            message=f"Task: {task.title}",
+            link=f"/workflows/{instance_id}",
+            workflow_id=instance_id,
+            task_id=task.task_id,
+        )
+
+    # Notify creator on completion (if different from completer)
+    if task.status == "done" and old_status != "done" and task.created_by != user_id:
+        create_notification(
+            user_id=task.created_by,
+            notif_type="task_completed",
+            title="Task completed",
+            message=f"Task '{task.title}' was marked complete",
+            link=f"/workflows/{instance_id}",
+            workflow_id=instance_id,
+            task_id=task.task_id,
+        )
+
+    db.session.commit()
+    return jsonify({"success": True, "task": task.to_dict()})
+
+
+@workflows_bp.route('/api/workflows/instances/<instance_id>/tasks/<task_id>', methods=['DELETE'])
+def delete_task(instance_id: str, task_id: str):
+    """Delete a task."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    instance = WorkflowInstance.query.filter_by(instance_id=instance_id, user_id=user_id).first()
+    if not instance:
+        return jsonify({"error": "Instance not found"}), 404
+
+    task = WorkflowTask.query.filter_by(task_id=task_id, instance_id=instance_id).first()
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    db.session.delete(task)
+    db.session.commit()
+    return jsonify({"success": True, "message": "Task deleted"})
+
+
+# =============================================================================
+# Notifications
+# =============================================================================
+
+@workflows_bp.route('/api/notifications', methods=['GET'])
+def list_notifications():
+    """List notifications for current user."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    unread_only = request.args.get("unread_only", "false").lower() == "true"
+    query = Notification.query.filter_by(user_id=user_id)
+    if unread_only:
+        query = query.filter_by(is_read=False)
+
+    notifications = query.order_by(Notification.created_at.desc()).limit(50).all()
+    unread_count = Notification.query.filter_by(user_id=user_id, is_read=False).count()
+
+    return jsonify({
+        "success": True,
+        "notifications": [n.to_dict() for n in notifications],
+        "unread_count": unread_count
+    })
+
+
+@workflows_bp.route('/api/notifications/<notification_id>/read', methods=['POST'])
+def mark_notification_read(notification_id: str):
+    """Mark a notification as read."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    notification = Notification.query.filter_by(
+        notification_id=notification_id,
+        user_id=user_id
+    ).first()
+    if not notification:
+        return jsonify({"error": "Notification not found"}), 404
+
+    notification.is_read = True
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@workflows_bp.route('/api/notifications/read-all', methods=['POST'])
+def mark_all_notifications_read():
+    """Mark all notifications as read."""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    Notification.query.filter_by(user_id=user_id, is_read=False).update({"is_read": True})
+    db.session.commit()
+    return jsonify({"success": True})

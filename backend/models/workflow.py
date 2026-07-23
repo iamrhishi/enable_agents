@@ -113,18 +113,26 @@ class WorkflowInstance(db.Model):
         stages = self.template.stages if self.template else []
         if self.current_stage_index < len(stages):
             current = stages[self.current_stage_index]
+            current_id = current.get("stage_id") or current.get("id")
             states = self.stage_states
-            states[current["id"]] = {
+
+            # Merge with any data the agent already persisted mid-stage via
+            # save_stage_data (e.g. saveStageData() from the agent page) -
+            # don't let an empty/partial completion payload wipe it out.
+            merged_data = dict(states.get(current_id, {}).get("data") or {})
+            merged_data.update(stage_data or {})
+
+            states[current_id] = {
                 "status": "completed",
-                "data": stage_data or {},
+                "data": merged_data,
                 "completedAt": datetime.utcnow().isoformat(),
             }
             self.stage_states = states
 
             # Merge stage outputs into context
-            if stage_data:
+            if merged_data:
                 ctx = self.context
-                ctx.update(stage_data)
+                ctx.update(merged_data)
                 self.context = ctx
 
             self.current_stage_index += 1
@@ -146,6 +154,7 @@ class WorkflowInstance(db.Model):
             "currentStageIndex": self.current_stage_index,
             "totalStages": len(stages),
             "currentStage": current,
+            "stages": stages,  # Include all stage definitions for frontend
             "stageStates": self.stage_states,
             "context": self.context,
             "startedAt": self.started_at.isoformat() if self.started_at else None,

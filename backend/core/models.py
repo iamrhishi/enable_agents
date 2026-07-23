@@ -181,6 +181,90 @@ class Project(db.Model):
         }
 
 
+# =============================================================================
+# Workflow Tasks and Notifications
+# =============================================================================
+
+class WorkflowTask(db.Model):
+    """Task/checklist item within a workflow stage."""
+    __tablename__ = "workflow_tasks"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    task_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    instance_id = db.Column(db.String(36), nullable=False, index=True)  # workflow instance
+    stage_id = db.Column(db.String(100), nullable=False, index=True)  # e.g., "requirement_capture"
+
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    assigned_to = db.Column(db.String(255), nullable=True, index=True)  # user email
+    status = db.Column(db.String(20), nullable=False, default="pending")  # pending, in_progress, done
+    is_required = db.Column(db.Boolean, nullable=False, default=True)  # blocks stage completion if True
+    source = db.Column(db.String(20), nullable=False, default="manual")  # manual, agent
+
+    created_by = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    completed_by = db.Column(db.String(255), nullable=True)
+
+    __table_args__ = (
+        db.Index("ix_workflow_tasks_instance_stage", "instance_id", "stage_id"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.task_id,
+            "instance_id": self.instance_id,
+            "stage_id": self.stage_id,
+            "title": self.title,
+            "description": self.description,
+            "assigned_to": self.assigned_to,
+            "status": self.status,
+            "is_required": self.is_required,
+            "source": self.source,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_by": self.completed_by,
+        }
+
+
+class Notification(db.Model):
+    """In-app notification for a user."""
+    __tablename__ = "notifications"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    notification_id = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.String(255), nullable=False, index=True)  # recipient email
+
+    type = db.Column(db.String(50), nullable=False)  # task_assigned, task_completed, stage_completed, etc.
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=True)
+    link = db.Column(db.String(500), nullable=True)  # e.g., /workflows/instance-123
+
+    is_read = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Related entity references (optional)
+    workflow_id = db.Column(db.String(36), nullable=True)
+    task_id = db.Column(db.String(36), nullable=True)
+
+    __table_args__ = (
+        db.Index("ix_notifications_user_unread", "user_id", "is_read"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.notification_id,
+            "type": self.type,
+            "title": self.title,
+            "message": self.message,
+            "link": self.link,
+            "is_read": self.is_read,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class PendingInvite(db.Model):
     """Pending team invitation."""
     __tablename__ = "pending_invites"

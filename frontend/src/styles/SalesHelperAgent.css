@@ -1547,7 +1547,7 @@
 }
 
 .lead-count {
-  font-size: 48px;
+  font-size: var(--text-brand);
   font-weight: var(--font-bold);
   color: var(--color-accent);
   line-height: 1;
@@ -1938,7 +1938,7 @@
 }
 
 .dropzone-icon {
-  font-size: 32px;
+  font-size: var(--text-brand);
   line-height: 1;
 }
 
@@ -2084,7 +2084,7 @@
 }
 
 .match-icon {
-  font-size: 18px;
+  font-size: var(--text-heading);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -2251,7 +2251,7 @@
   background: var(--color-accent);
   color: var(--color-text-inverse);
   border-radius: 50%;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: bold;
 }
 
@@ -2366,7 +2366,7 @@
 }
 
 .rank-icon {
-  font-size: 18px;
+  font-size: var(--text-heading);
 }
 
 .spinner-small {

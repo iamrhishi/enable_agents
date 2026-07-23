@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../core/Header';
-import { BackButton, ProjectSelector, LiveModeHint, ProjectGate, AgentOutcomesStrip } from '../components';
+import { BackButton, ProjectSelector, LiveModeHint, ProjectGate, AgentOutcomesStrip, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
 import '../styles/SalesHelperAgent.css';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { API_CONFIG } from '../config/apiConfig';
@@ -9,6 +9,7 @@ import { useAgentChat } from '../hooks/useAgentChat';
 import MessageContent from '../components/MessageContent';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useMode } from '../contexts';
+import { useWorkflowContext } from '../hooks';
 
 // Demo mock data for Sales Helper
 const DEMO_SAVED_PROJECTS = [
@@ -36,6 +37,7 @@ const DEMO_DOCUMENTS = [
 function SalesHelperAgent() {
   const selectedProjectId = useSelectedProjectId();
   const { isDemoMode } = useMode();
+  const { isInWorkflow, isHistoryView, stageData, stageId, saveStageData, getContext } = useWorkflowContext();
   const {
     messages, inputMessage, setInputMessage,
     isLoading, setIsLoading, messagesEndRef,
@@ -100,7 +102,73 @@ function SalesHelperAgent() {
     setUploadedDocuments(isDemoMode ? DEMO_DOCUMENTS : []);
     fetchSavedProjects();
     fetchCampaigns();
+    if (!isDemoMode) {
+      fetchUploadedDocuments();
+    }
   }, [isDemoMode, selectedProjectId]);
+
+  const fetchUploadedDocuments = async () => {
+    try {
+      const userId = getCurrentUserIdentifier();
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents?user_id=${encodeURIComponent(userId)}`, {
+        headers: authOptionalHeaders(),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setUploadedDocuments(result.documents || []);
+      }
+    } catch (error) {
+      console.error('Error loading uploaded documents:', error);
+    }
+  };
+
+  // Load workflow data when viewing completed stage history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    const data = stageData && Object.keys(stageData).length > 0 ? stageData : null;
+    if (!data) return;
+
+    console.log('[SalesHelper] Loading workflow history:', { isHistoryView, stageData: data });
+
+    // Load vendor ranking results from stageData
+    if (data.vendors_ranked !== undefined || data.top_vendor) {
+      // Build ranked vendors from saved data
+      const workflowVendors = [];
+      if (data.top_vendor) {
+        workflowVendors.push({
+          rank: 1,
+          vendor_name: data.top_vendor,
+          score: data.top_score || 95,
+          reason: `Campaign: ${data.campaign_name || 'N/A'} | ${data.shortlisted_count || 0} vendors passed threshold`,
+        });
+      }
+      if (workflowVendors.length > 0) {
+        setRankedVendors(workflowVendors);
+        setActiveTab('ranking');
+      }
+    }
+
+    // Load prospect matching results if available
+    if (data.leads_analyzed !== undefined || data.matched_prospects !== undefined || data.match_scores) {
+      // Switch to leads tab to show the results
+      setActiveTab('leads');
+
+      // Build message with match scores if available
+      let messageContent = `**Workflow History Loaded**\n\nPreviously analyzed ${data.leads_analyzed || 0} leads from **${data.project_name || 'Unknown Project'}**.`;
+
+      if (data.match_scores && data.match_scores.length > 0) {
+        messageContent += '\n\n**Match Results:**\n';
+        messageContent += data.match_scores.map((m, i) =>
+          `${i + 1}. **${m.name}** - ${m.score}% match`
+        ).join('\n');
+      } else if (data.top_match) {
+        messageContent += `\n\nTop match: ${data.top_match}`;
+      }
+
+      addMessage(messageContent, 'agent', null, 'markdown');
+    }
+  }, [isHistoryView, stageData, addMessage]);
 
   // Document upload handler
   const handleDocumentUpload = async (event) => {
@@ -169,7 +237,7 @@ function SalesHelperAgent() {
     }
 
     try {
-      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents/${docId}`, {
+      const response = await fetch(`${API_CONFIG.API_URL}/api/sales-helper/documents/${docId}?user_id=${encodeURIComponent(getCurrentUserIdentifier())}`, {
         method: 'DELETE',
         headers: authOptionalHeaders(),
       });
@@ -195,7 +263,26 @@ function SalesHelperAgent() {
     }
 
     if (isDemoMode) {
-      addMessage(`**Prospect Matching Results**\n\nBased on your product catalog, here are the best matches from **${selectedSavedProject?.name}**:\n\n1. **Acme Corp** - 95% match\n   - Needs: Enterprise software, automation\n   - Product fit: Enterprise Features package\n\n2. **TechStart Inc** - 88% match\n   - Needs: SaaS platform, integrations\n   - Product fit: API Suite, Starter plan\n\n3. **DataFlow Systems** - 82% match\n   - Needs: Data analytics, reporting\n   - Product fit: Analytics module\n\n(Demo Mode)`, 'agent', null, 'markdown');
+      // Generate match results from actual demo leads data
+      const demoLeads = selectedSavedProjectLeads.slice(0, 3);
+      const matchResults = demoLeads.map((lead, idx) => ({
+        name: lead.name,
+        matchScore: Math.round(95 - (idx * 7)), // Decreasing scores based on order
+        needs: lead.summary || 'General business needs',
+      }));
+
+      addMessage(`**Prospect Matching Results**\n\nBased on your product catalog, here are the best matches from **${selectedSavedProject?.name}**:\n\n${matchResults.map((m, i) => `${i + 1}. **${m.name}** - ${m.matchScore}% match\n   - Needs: ${m.needs}`).join('\n\n')}\n\n(Demo Mode)`, 'agent', null, 'markdown');
+
+      // Save to workflow if in workflow context - use actual computed data
+      if (isInWorkflow) {
+        saveStageData({
+          leads_analyzed: selectedSavedProjectLeads.length,
+          matched_prospects: matchResults.length,
+          top_match: matchResults[0] ? `${matchResults[0].name} - ${matchResults[0].matchScore}%` : 'N/A',
+          project_name: selectedSavedProject?.name,
+          match_scores: matchResults.map(m => ({ name: m.name, score: m.matchScore })),
+        });
+      }
       return;
     }
 
@@ -224,6 +311,14 @@ function SalesHelperAgent() {
       setIsLoading(false);
     }
   };
+
+  // Messages added while the chat panel is closed (e.g. background vendor
+  // ranking or prospect matching) don't scroll into view since the panel
+  // isn't mounted yet - jump to the latest message once it's opened.
+  useEffect(() => {
+    if (!isChatOpen) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [isChatOpen, messagesEndRef]);
 
   // Scroll to ranking results when they appear
   useEffect(() => {
@@ -426,6 +521,33 @@ function SalesHelperAgent() {
     try {
       setIsRankingVendors(true);
       addMessage('Ranking vendor replies by your criteria...', 'agent', null, 'markdown');
+
+      if (isDemoMode) {
+        const campaign = DEMO_CAMPAIGNS.find(c => c.id === selectedRankingCampaignId) || DEMO_CAMPAIGNS[0];
+        const demoVendors = [
+          { rank: 1, vendor_name: 'Precision Circuits Inc.', score: 94, reason: 'Best price/quality balance, fastest reply turnaround' },
+          { rank: 2, vendor_name: 'Wuxi Precision Manufacturing', score: 87, reason: 'Strong capacity, slightly higher cost' },
+          { rank: 3, vendor_name: 'Chennai Automotive Components', score: 76, reason: 'Good compliance record, longer lead time' },
+        ];
+        setRankedVendors(demoVendors);
+        addMessage(
+          `**Vendor ranking completed for ${campaign.name}:** (Demo Mode)\n\n${demoVendors.map(v => `${v.rank}. ${v.vendor_name} - ${v.score}/100\n${v.reason}`).join('\n\n')}`,
+          'agent',
+          null,
+          'markdown'
+        );
+        if (isInWorkflow) {
+          saveStageData({
+            campaign_name: campaign.name,
+            vendors_ranked: demoVendors.length,
+            top_vendor: demoVendors[0].vendor_name,
+            top_score: demoVendors[0].score,
+            shortlisted_count: demoVendors.filter(v => v.score >= 70).length,
+          });
+        }
+        return;
+      }
+
       const userId = getCurrentUserIdentifier();
       const response = await fetch(API_CONFIG.RANK_CAMPAIGN_VENDORS.replace('{campaignId}', selectedRankingCampaignId), {
         method: 'POST',
@@ -446,6 +568,17 @@ function SalesHelperAgent() {
           null,
           'markdown'
         );
+
+        // Save to workflow if in workflow context
+        if (isInWorkflow) {
+          saveStageData({
+            campaign_name: campaignName,
+            vendors_ranked: result.vendors.length,
+            top_vendor: result.vendors[0]?.vendor_name,
+            top_score: result.vendors[0]?.score,
+            shortlisted_count: result.vendors.filter(v => v.score >= 70).length,
+          });
+        }
       } else {
         setRankedVendors([]);
         addMessage(result.error || 'Unable to rank vendor replies right now.', 'agent', null, 'markdown');
@@ -509,7 +642,7 @@ function SalesHelperAgent() {
 
       <div className="agent-page-header">
         <div className="agent-header-left">
-          <BackButton />
+          {!isInWorkflow && <BackButton />}
           <div className="agent-header-content">
             <div className="agent-title-row">
               <h1>Sales Helper</h1>
@@ -546,6 +679,13 @@ function SalesHelperAgent() {
 
       <div className="main-container">
         <ProjectGate agentLabel="Sales Helper workspace">
+          <WorkflowExecutionBanner />
+
+          {/* Show context from previous workflow stages */}
+          {isInWorkflow && !isHistoryView && (
+            <WorkflowContextCard context={getContext()} currentStageId={stageId} />
+          )}
+
           <div className="sales-helper-content">
             <div className="assistant-workspace tabbed-layout">
           {/* Tab Navigation */}
@@ -717,13 +857,13 @@ function SalesHelperAgent() {
                             <div className="doc-card-actions">
                               <button
                                 className="doc-text-btn"
-                                onClick={() => window.open(doc.url || `/api/sales-helper/documents/${doc.id}/view`, '_blank')}
+                                onClick={() => window.open(doc.url || `${API_CONFIG.API_URL}/api/sales-helper/documents/${doc.id}/view?user_id=${encodeURIComponent(getCurrentUserIdentifier())}`, '_blank')}
                               >
                                 View
                               </button>
                               <a
                                 className="doc-text-btn"
-                                href={doc.url || `/api/sales-helper/documents/${doc.id}/download`}
+                                href={doc.url || `${API_CONFIG.API_URL}/api/sales-helper/documents/${doc.id}/download?user_id=${encodeURIComponent(getCurrentUserIdentifier())}`}
                                 download={doc.name}
                               >
                                 Download
@@ -971,16 +1111,18 @@ function SalesHelperAgent() {
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     placeholder={
-                      selectedSavedProject
+                      isHistoryView
+                        ? 'Viewing completed stage - inputs disabled'
+                        : selectedSavedProject
                         ? 'Ask a question about the selected saved leads list...'
                         : 'Search prospects, ask for insights, or analyze deals...'
                     }
-                    disabled={isLoading}
+                    disabled={isLoading || isHistoryView}
                     className="message-input"
                   />
                   <button
                     type="submit"
-                    disabled={isLoading || !inputMessage.trim()}
+                    disabled={isLoading || !inputMessage.trim() || isHistoryView}
                     className="send-button"
                   >
                     {isLoading ? '...' : '→'}

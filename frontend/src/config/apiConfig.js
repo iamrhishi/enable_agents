@@ -47,6 +47,7 @@ export const getAuthUrl = (provider) => {
 // ── All API endpoints ───────────────────────────────────────────────────────
 export const API_CONFIG = {
   API_URL,
+  BASE_URL: API_URL,  // Alias for workflows and other routes
 
   // Auth
   GOOGLE_AUTH_START:  `${API_URL}/auth/google/start`,
@@ -92,8 +93,8 @@ export const API_CONFIG = {
   ENRICH_BUSINESSES_WITH_EMAILS:   `${API_URL}/api/enrich-businesses-with-emails`,
   ENRICH_BUSINESSES_WITH_LINKEDIN: `${API_URL}/api/enrich-businesses-with-linkedin`,
   EMAIL_EXTRACTION_USAGE:          `${API_URL}/api/email-extraction-usage`,
-  CONNECT_GOOGLE_BUSINESS:         `${API_URL}/api/connect-google-business`,
-  GET_GOOGLE_BUSINESS_DATA:        `${API_URL}/api/get-google-business-data`,
+  CONNECT_GOOGLE_BUSINESS:         `${API_URL}/connect-google-business`,
+  GET_GOOGLE_BUSINESS_DATA:        `${API_URL}/get-google-business-data`,
   GET_GOOGLE_CREDENTIALS:          `${API_URL}/api/get-google-credentials`,
 
   // Campaigns / emails

@@ -12,6 +12,7 @@ import { CardGrid, StatusIndicator } from './Card';
 import Select from './Select';
 import LiveModeHint from './LiveModeHint';
 import { useMode } from '../contexts';
+import { STRINGS } from '../constants/strings';
 
 
 
@@ -241,6 +242,28 @@ function AgentsAssembly() {
       businessContext: ['events', 'networking', 'conferences', 'trade shows'],
       industries: ['all industries'],
       useCases: ['event networking', 'attendee engagement', 'follow-up automation']
+    },
+    {
+      name: 'Email Outreach',
+      icon: '/assets/icons/mail.png',
+      price: '$25/month',
+      status: 'ready',
+      description: 'Send personalized bulk emails to suppliers, leads, or contacts with templates and tracking.',
+      keywords: ['email outreach', 'bulk email', 'RFQ', 'supplier outreach', 'email campaigns'],
+      businessContext: ['sales', 'procurement', 'supplier management', 'lead nurturing'],
+      industries: ['manufacturing', 'retail', 'technology', 'consulting'],
+      useCases: ['sending RFQs', 'supplier outreach', 'lead nurturing', 'bulk email']
+    },
+    {
+      name: 'Supply Chain Audit',
+      icon: '/assets/icons/supply-chain-management.png',
+      price: '$40/month',
+      status: 'ready',
+      description: 'Qualify suppliers through capability and compliance audits with weighted scoring.',
+      keywords: ['supply chain', 'supplier audit', 'qualification', 'compliance', 'vendor management'],
+      businessContext: ['procurement', 'supplier management', 'quality assurance', 'vendor qualification'],
+      industries: ['manufacturing', 'retail', 'automotive', 'aerospace'],
+      useCases: ['supplier qualification', 'compliance audits', 'vendor scoring', 'supply chain management']
     }
   ];
 
@@ -330,73 +353,17 @@ function AgentsAssembly() {
 
   // Rest of your handlers remain the same...
   const handleCardClick = (moduleName) => {
-    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
-      navigate('/data-insights');
-    }
-    else if (moduleName === 'Market Research') {
-      navigate('/market-research');
-    }
-    else if (moduleName === 'AI Chatbot') {
-      navigate('/aichatbot');
-    }
-    else if (moduleName === 'Community Network') {
-      navigate('/community-network');
-    }
-    else if (moduleName === 'Event Networking Agent') {
-      navigate('/event-networking-agent');
-    }
-    else if (moduleName === 'Travel Agent') {
-      navigate('/travel-agent');
-    }
-    else if (moduleName === 'Content Marketing Agent') {
-      navigate('/content-marketing');
-    }
-    else if (moduleName === 'Sales Helper Agent') {
-      navigate('/sales-helper');
-    }
-    else if (moduleName === 'Executive Assistant Agent') {
-      navigate('/executive-assistant');
-    }
-    else if (moduleName === 'Invest Agent') {
-      navigate('/invest-agent');
-    }
-    else if (moduleName === 'Supply Chain Agent') {
-      navigate('/supply-chain-agent');
+    const route = getRouteByModuleName(moduleName);
+    if (route) {
+      navigate(route);
     }
   };
 
   const handleTryModule = (moduleName) => {
-    if (moduleName === 'Data Insights' || moduleName === 'Data Discovery') {
-      navigate('/data-insights');
+    const route = getRouteByModuleName(moduleName);
+    if (route) {
+      navigate(route);
     }
-    else if (moduleName === 'Market Research') {
-      navigate('/market-research');
-    }
-    else if (moduleName === 'AI Chatbot') {
-      navigate('/aichatbot');
-    }
-    else if (moduleName === 'Community Network') {
-      navigate('/community-network');
-    }
-    else if (moduleName === 'Travel Agent') {
-      navigate('/travel-agent');
-    }
-    else if (moduleName === 'Content Marketing Agent') {
-      navigate('/content-marketing');
-    }
-    else if (moduleName === 'Sales Helper Agent') {
-      navigate('/sales-helper');
-    }
-    else if (moduleName === 'Event Networking Agent') {
-      navigate('/event-networking-agent');
-    }
-    else if (moduleName === 'Invest Agent') {
-      navigate('/invest-agent');
-    }
-    else if (moduleName === 'Supply Chain Agent') {
-      navigate('/supply-chain-agent');
-    }
-  
   };
 
   const handleFileChange = (e) => {
@@ -407,19 +374,13 @@ function AgentsAssembly() {
   };
 
   const handleBuyModule = async (module) => {
-    console.log('Buying module:', module.name);
-    const confirmPurchase = await showConfirm({
-      title: `Purchase ${module.name}?`,
-      message: `Price: ${module.price}\nBilling: Monthly subscription`,
-      confirmLabel: 'Proceed to Checkout',
-      cancelLabel: 'Cancel',
+    console.log('Requesting demo for:', module.name);
+    await showAlert({
+      title: 'Request a Demo',
+      message: `Interested in ${module.name}? We'd love to show you how it can help your business.\n\nContact our sales team:\n📧 sales@enableagents.com\n🌐 enableagents.com/demo`,
+      confirmLabel: 'Got it',
       variant: 'primary',
     });
-
-    if (confirmPurchase) {
-      await showAlert(`Redirecting to checkout for ${module.name}...`, 'Processing');
-      // TODO: Implement actual checkout redirect
-    }
   };
 
 
@@ -437,7 +398,7 @@ const handleEnterpriseChat = async (userInput) => {
       // Show buffering message
       setChatHistory(prev => [
         ...prev,
-        { type: 'buffer', text: 'Thinking...' }
+        { type: 'buffer', text: STRINGS.COMMON.THINKING }
       ]);
 
       const res = await axios.post(`${API_CONFIG.API_URL}/enterprise_chat`, {
@@ -624,13 +585,6 @@ const handleEnterpriseChat = async (userInput) => {
                     </div>
                   </div>
                 )
-              },
-              {
-                id: 'json',
-                label: 'JSON',
-                content: (
-                  <pre className="process-map-json">{JSON.stringify(processMapData, null, 2)}</pre>
-                )
               }
             ]}
             activeTab={processMapTab}
@@ -775,7 +729,7 @@ const handleEnterpriseChat = async (userInput) => {
               <input
                 type="text"
                 className={`chat-input enhanced${inputHighlighted ? ' highlighted' : ''}`}
-                placeholder={completed ? "Conversation complete" : isBuffering ? "Thinking..." : "Message AI Assistant..."}
+                placeholder={completed ? "Conversation complete" : isBuffering ? STRINGS.COMMON.THINKING : "Message AI Assistant..."}
                 value={inputValue}
                 onChange={e => {
                   setInputValue(e.target.value);
@@ -815,7 +769,7 @@ const handleEnterpriseChat = async (userInput) => {
         {recommendedModules.length > 0 && (
           <div className="recommended-modules enhanced">
             <h3 className="recommended-header">
-              <span>Recommended Agentic Modules</span>
+              <span>Recommended AI Assistants</span>
               <button
                 className="detailed-report-tag"
                 onClick={() => setShowDetailedReport(true)}
@@ -871,7 +825,7 @@ const handleEnterpriseChat = async (userInput) => {
                   {/* Recommended Tools Section - Card Style */}
                   <div className="detailed-report-section corporate-section">
                     <div className="corporate-header">
-                      <span className="corporate-title">Top Recommended Agentic Tools</span>
+                      <span className="corporate-title">Top Recommended AI Tools</span>
                       <span className="corporate-divider" />
                     </div>
                     <div className="detailed-report-tool-list">
@@ -934,7 +888,7 @@ const handleEnterpriseChat = async (userInput) => {
                   {/* Additional Tools Section - Card Style with Companies */}
                   <div className="detailed-report-section corporate-section">
                     <div className="corporate-header">
-                      <span className="corporate-title">Other Useful Agentic Tools & Providers</span>
+                      <span className="corporate-title">Other Useful AI Tools & Providers</span>
                       <span className="corporate-divider" />
                     </div>
                     <div className="detailed-report-tool-list">
@@ -1102,10 +1056,10 @@ const handleEnterpriseChat = async (userInput) => {
           if (total === 0) {
             return (
               <div className="no-results">
-                <h3>{moduleTab === 'technical' ? 'More technical agents coming soon' : 'No modules found'}</h3>
+                <h3>{moduleTab === 'technical' ? 'Technical Tools' : 'No modules found'}</h3>
                 <p>
                   {moduleTab === 'technical'
-                    ? 'Data Insights is available today. Additional technical agents (AI Chatbot, Invest, Supply Chain) are in preview.'
+                    ? 'Data Insights is available now. Additional technical tools are currently in beta.'
                     : 'Try adjusting your search or browse all available modules.'}
                 </p>
                 {moduleTab !== 'technical' && (
@@ -1226,7 +1180,7 @@ const handleEnterpriseChat = async (userInput) => {
                               }}
                               disabled={isNotReady || !isActive}
                             >
-                              {isNotReady ? 'Coming Soon' : 'Try Free'}
+                              {isNotReady ? 'Not Available' : 'Try Free'}
                             </button>
                             <button
                               type="button"

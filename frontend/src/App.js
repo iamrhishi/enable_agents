@@ -13,6 +13,9 @@ import Settings from './settings/Settings';
 import Team from './team/Team';
 import Projects from './projects/Projects';
 
+// Pages
+import Dashboard from './pages/Dashboard';
+
 // Agent components
 import AgentsAssembly from './components/AgentsAssembly';
 import RequirementsGathering from './agents/RequirementsGathering';
@@ -26,6 +29,7 @@ import ContentMarketingAgent from './agents/ContentMarketingAgent';
 import InvestAgent from './agents/InvestAgent';
 import SupplyChainAgent from './agents/SupplyChainAgent';
 import ExecutiveAssistantPage from './agents/ExecutiveAssistantPage';
+import EmailOutreachAgent from './agents/EmailOutreachAgent';
 
 // Workflows
 import WorkflowsPage from './workflows/WorkflowsPage';
@@ -37,9 +41,9 @@ function isLoggedIn() {
   return Boolean(localStorage.getItem('sessionToken') || localStorage.getItem('userEmail'));
 }
 
-// Root redirect - go to /agents if logged in, /login otherwise
+// Root redirect - go to /dashboard if logged in, /login otherwise
 function RootRedirect() {
-  return <Navigate to={isLoggedIn() ? '/agents' : '/login'} replace />;
+  return <Navigate to={isLoggedIn() ? '/dashboard' : '/login'} replace />;
 }
 
 function App() {
@@ -54,6 +58,7 @@ function App() {
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
            <Route path="/register" element={<RegisterUser />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/market-research" element={<RequirementsGathering />} />
           <Route path="/market-research/campaigns" element={<CampaignDashboard />} />
           {/* Redirects for old paths */}
@@ -72,6 +77,7 @@ function App() {
           <Route path="/invest-agent" element={<InvestAgent />} />
           <Route path="/supply-chain-agent" element={<SupplyChainAgent />} />
           <Route path="/executive-assistant" element={<ExecutiveAssistantPage />} />
+          <Route path="/email-outreach" element={<EmailOutreachAgent />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/team" element={<Team />} />
           <Route path="/projects" element={<Projects />} />

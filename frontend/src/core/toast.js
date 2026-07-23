@@ -44,8 +44,8 @@ function getContainer() {
       max-width: 420px;
       padding: 14px 18px;
       border-radius: 10px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
+      font-family: var(--font-body);
+      font-size: var(--text-body);
       line-height: 1.4;
       color: #fff;
       box-shadow: 0 4px 16px rgba(0,0,0,0.18);
@@ -63,7 +63,7 @@ function getContainer() {
     .ea-toast--warning { background: #d97706; }
     .ea-toast--info    { background: #2563eb; }
     .ea-toast__icon {
-      font-size: 16px;
+      font-size: var(--text-heading);
       flex-shrink: 0;
       margin-top: 1px;
     }

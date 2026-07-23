@@ -57,3 +57,7 @@ export { default as ReminderModal } from './ReminderModal';
 
 // Layout
 export { PageLayout, PageSection } from './PageLayout';
+
+// Workflow
+export { default as WorkflowExecutionBanner } from './WorkflowExecutionBanner';
+export { default as WorkflowContextCard } from './WorkflowContextCard';

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
-import { BackButton, Textarea, Select, ProjectSelector, LiveModeHint, AgentOutcomesStrip, ProjectGate, EmptyState } from '../components';
+import { BackButton, Textarea, Select, ProjectSelector, LiveModeHint, AgentOutcomesStrip, ProjectGate, EmptyState, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
 import '../styles/DataInsights.css';
 import { PDFDocument } from 'pdf-lib';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from '../core/toast';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { useWorkflowContext } from '../hooks';
 
 // Document Intelligence API
 const DOC_API = `${API_CONFIG.API_URL}/api/document-intelligence`;
@@ -277,6 +279,9 @@ function DataInsights() {
     return localStorage.getItem('enableAgentsMode') !== 'live';
   });
 
+  // Workflow context - for saving results back to workflow
+  const { isInWorkflow, isHistoryView, stageData, stageId, saveStageData, getContext } = useWorkflowContext();
+
   // Main view tabs
   const [activeView, setActiveView] = useState(() => {
     return searchParams.get('view') || loadPersistedState().activeView || 'library';
@@ -297,6 +302,7 @@ function DataInsights() {
 
   // Results
   const [currentInsight, setCurrentInsight] = useState(null);
+  const [isLoadingInsight, setIsLoadingInsight] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -381,7 +387,7 @@ function DataInsights() {
           status: doc.status,
           entities: doc.entity_count || 0,
           relationships: 0, // Not tracked separately in backend
-          confidence: 0.85, // Default confidence
+          confidence: doc.confidence != null ? doc.confidence : 0.85,
           processingProgress: doc.processing_progress,
           processingStage: doc.processing_stage,
         }));
@@ -423,6 +429,7 @@ function DataInsights() {
                   ...d,
                   status: status.status,
                   entities: status.entity_count || 0,
+                  confidence: status.confidence != null ? status.confidence : d.confidence,
                   processingProgress: status.processing_progress,
                   processingStage: status.processing_stage,
                 }
@@ -501,6 +508,29 @@ function DataInsights() {
     };
   };
 
+  // Fetch (generate) structured analysis for a real, live document
+  const fetchDocumentInsight = async (documentId) => {
+    setIsLoadingInsight(true);
+    setCurrentInsight(null);
+    const userEmail = localStorage.getItem('userEmail') || '';
+    try {
+      const res = await fetch(`${DOC_API}/documents/${documentId}/insight?project_id=${selectedProjectId}`, {
+        headers: { 'X-User-Id': userEmail },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentInsight(data);
+      } else {
+        showToast('Failed to generate document analysis', 'error');
+      }
+    } catch (err) {
+      console.error('Failed to fetch document insight:', err);
+      showToast('Failed to generate document analysis', 'error');
+    } finally {
+      setIsLoadingInsight(false);
+    }
+  };
+
   // Handlers
   const handleSelectDocument = (doc) => {
     setSelectedDocument(doc);
@@ -510,6 +540,8 @@ function DataInsights() {
     // Load demo insights if available
     if (isDemoMode && DEMO_INSIGHTS[doc.id]) {
       setCurrentInsight(DEMO_INSIGHTS[doc.id]);
+    } else if (!isDemoMode && doc.status === 'completed') {
+      fetchDocumentInsight(doc.id);
     } else {
       setCurrentInsight(null);
     }
@@ -658,6 +690,17 @@ function DataInsights() {
         setConversationHistory(prev => [...prev, aiResponse]);
         setInputPrompt('');
         setIsLoading(false);
+
+        // Save to workflow if in workflow context
+        if (isInWorkflow) {
+          saveStageData({
+            document_analyzed: selectedDocument.name,
+            analysis_query: inputPrompt,
+            key_findings: baseInsight.keyFacts.map(f => f.fact),
+            recommendations: baseInsight.recommendations,
+            confidence_score: 0.92,
+          });
+        }
       }, 1500);
       return;
     }
@@ -694,17 +737,38 @@ function DataInsights() {
         relevance: s.score || 0.8,
       }));
 
+      // Calculate confidence from source relevance scores
+      const avgConfidence = formattedSources.length > 0
+        ? formattedSources.reduce((sum, s) => sum + s.relevance, 0) / formattedSources.length
+        : 0.75;
+
       const aiResponse = {
         role: 'assistant',
         content: data.answer,
         timestamp: new Date(),
         sources: formattedSources,
-        confidence: 0.85,
+        confidence: avgConfidence,
         chunkCount: data.chunk_count,
       };
 
       setConversationHistory(prev => [...prev, aiResponse]);
       setInputPrompt('');
+
+      // Save to workflow if in workflow context
+      if (isInWorkflow) {
+        // Extract key findings from answer (split by bullet points or newlines)
+        const answerLines = data.answer.split('\n').filter(line => line.trim());
+        const keyFindings = answerLines.slice(0, 5).map(line => line.replace(/^[•\-*]\s*/, '').trim());
+
+        saveStageData({
+          document_analyzed: selectedDocument.name,
+          analysis_query: inputPrompt,
+          key_findings: keyFindings.length > 0 ? keyFindings : [data.answer.substring(0, 200)],
+          recommendations: [],
+          sources: formattedSources.map(s => `Page ${s.page}: ${s.text}`),
+          confidence_score: Math.round(avgConfidence * 100) / 100,
+        });
+      }
     } catch (error) {
       console.error('Chat error:', error);
       showToast(`Failed to get response: ${error.message}`, 'error');
@@ -762,15 +826,111 @@ function DataInsights() {
     if (isDemoMode) {
       return DEMO_ENTITIES[selectedDocument.id] || [];
     }
+    // Structured entity extraction (with page/type) isn't available for a
+    // synthetic workflow document, or before the real pipeline finishes -
+    // fall back to the flat key facts we already have so the tab isn't
+    // just empty when we actually do have something to show.
+    if (liveEntities.length === 0 && currentInsight?.keyFacts?.length > 0) {
+      return currentInsight.keyFacts.map((kf, idx) => ({
+        id: `fact-${idx}`,
+        type: 'finding',
+        name: kf.source || `Finding ${idx + 1}`,
+        value: kf.fact,
+        confidence: kf.confidence,
+      }));
+    }
     return liveEntities;
   };
 
   // Fetch entities when document is selected (live mode)
   useEffect(() => {
-    if (selectedDocument && !isDemoMode) {
+    if (selectedDocument && !isDemoMode && selectedDocument.id !== 'workflow-doc') {
       fetchDocumentEntities(selectedDocument.id);
     }
   }, [selectedDocument, isDemoMode]);
+
+  // Load workflow data when viewing completed stage history
+  useEffect(() => {
+    if (!isHistoryView) return;
+
+    const data = stageData && Object.keys(stageData).length > 0 ? stageData : null;
+    console.log('[DataInsights] History view check:', {
+      isHistoryView,
+      hasStageData: Boolean(data),
+      stageDataKeys: data ? Object.keys(data) : [],
+      stageData: stageData
+    });
+
+    if (!data) {
+      console.warn('[DataInsights] No stage data available - stage may not have been executed or no data was saved');
+      // Show empty state message
+      setConversationHistory([{
+        role: 'assistant',
+        content: 'No analysis data was saved for this stage. The stage may not have been completed yet.',
+        timestamp: new Date()
+      }]);
+      setActiveView('chat');
+      return;
+    }
+
+    console.log('[DataInsights] Loading workflow history data');
+
+    // Load saved conversation/analysis from stageData
+    // Handle both document_analyzed (singular) and documents_analyzed (plural, count)
+    const docName = data.document_analyzed || (data.documents_analyzed ? `${data.documents_analyzed} documents` : null);
+
+    // Backward compatibility: handle old data structure with answer_summary
+    const keyFindings = data.key_findings || (data.answer_summary ? [data.answer_summary] : []);
+    const hasData = docName || keyFindings.length > 0 || data.analysis_query;
+
+    if (hasData) {
+      // Create a synthetic document for display purposes
+      const syntheticDoc = {
+        id: 'workflow-doc',
+        name: docName || 'Workflow Documents',
+        type: 'pdf',
+        size: 'N/A',
+        uploadedAt: stageData.completedAt || 'N/A',
+        category: 'workflow',
+        pages: null,
+        status: 'completed',
+        entities: keyFindings.length || 0,
+        relationships: 0,
+        confidence: data.confidence_score || 0.9,
+      };
+      setSelectedDocument(syntheticDoc);
+      setDocuments([syntheticDoc]); // Add to documents list so it shows in library
+
+      // Set the current insight from saved data
+      setCurrentInsight({
+        summary: `Analysis of ${docName || 'workflow documents'}`,
+        keyFacts: keyFindings.map((fact, idx) => ({
+          fact,
+          confidence: data.confidence_score || 0.9,
+          source: `Finding ${idx + 1}`,
+        })),
+        recommendations: data.recommendations || [],
+        sources: data.sources || [],
+      });
+
+      // Add to conversation history
+      const findings = keyFindings.map(f => `• ${f}`).join('\n');
+      const recs = (data.recommendations || []).map(r => `• ${r}`).join('\n');
+      const query = data.analysis_query ? `**Question:** ${data.analysis_query}\n\n` : '';
+
+      setConversationHistory([
+        {
+          role: 'assistant',
+          content: `**Stage Completed:** ${docName || 'Documents analyzed'}\n\n${query}${findings ? `**Key Findings:**\n${findings}` : ''}${recs ? `\n\n**Recommendations:**\n${recs}` : ''}`,
+          timestamp: new Date(stageData.completedAt || Date.now()),
+          confidence: data.confidence_score || 0.9,
+        },
+      ]);
+
+      // Switch to analysis view to show the data
+      setActiveView('analysis');
+    }
+  }, [isHistoryView, stageData]);
 
   // Get graph for selected document
   const getDocumentGraph = () => {
@@ -786,7 +946,7 @@ function DataInsights() {
 
       <div className="agent-page-header">
         <div className="agent-header-left">
-          <BackButton />
+          {!isInWorkflow && <BackButton />}
           <div className="agent-header-content">
             <div className="agent-title-row">
               <h1>Data Insights</h1>
@@ -794,7 +954,7 @@ function DataInsights() {
             <p className="text-muted">
               {selectedDocument
                 ? `Analyzing: ${selectedDocument.name}`
-                : 'AI-powered document analysis with knowledge extraction'}
+                : 'Upload documents and get instant answers from your data'}
             </p>
           </div>
         </div>
@@ -806,8 +966,8 @@ function DataInsights() {
       <AgentOutcomesStrip
         items={[
           { iconSrc: '/assets/icons/bar-chart.png', title: 'Smart Q&A', description: 'Ask questions, get sourced answers.' },
-          { iconSrc: '/assets/icons/data-discovery.png', title: 'Entity extraction', description: 'Auto-extract key facts and metrics.' },
-          { iconSrc: '/assets/icons/performance.png', title: 'Knowledge graph', description: 'Visualize relationships in your data.' },
+          { iconSrc: '/assets/icons/data-discovery.png', title: 'Key Facts', description: 'Auto-extract key facts and metrics.' },
+          { iconSrc: '/assets/icons/performance.png', title: 'Visual Connections', description: 'Visualize relationships in your data.' },
         ]}
       />
 
@@ -818,6 +978,24 @@ function DataInsights() {
 
       <ProjectGate agentLabel="Data Insights workspace">
         <div className="di-container">
+          <WorkflowExecutionBanner />
+
+          {/* Show context from previous workflow stages */}
+          {isInWorkflow && !isHistoryView && (
+            <WorkflowContextCard context={getContext()} currentStageId={stageId} />
+          )}
+
+          {/* Read-Only History View Warning */}
+          {isHistoryView && (
+            <div className="workflow-history-banner">
+              <span style={{fontSize: '20px'}}>🔒</span>
+              <div>
+                <strong>Read-Only Mode:</strong> Viewing completed workflow stage.
+                All modifications are disabled to preserve workflow history.
+              </div>
+            </div>
+          )}
+
           {/* Overall Stats Strip */}
           {documents.length > 0 && (
             <div className="di-overall-stats">
@@ -845,7 +1023,7 @@ function DataInsights() {
                 </div>
                 <div className="di-stat-content">
                   <span className="di-stat-value">{stats.totalEntities}</span>
-                  <span className="di-stat-label">Entities</span>
+                  <span className="di-stat-label">Key Facts</span>
                 </div>
               </div>
               <div className="di-stat-item">
@@ -874,16 +1052,18 @@ function DataInsights() {
             <button
               className={`di-main-tab ${activeView === 'library' ? 'di-main-tab--active' : ''}`}
               onClick={() => setActiveView('library')}
+              title="Document Library - Upload and manage your documents"
             >
-              <img src="/assets/icons/bar-chart.png" alt="" className="di-tab-icon" />
+              <img src="/assets/icons/bar-chart.png" alt="Library icon" className="di-tab-icon" />
               Library
             </button>
             <button
               className={`di-main-tab ${activeView === 'analysis' ? 'di-main-tab--active' : ''}`}
               onClick={() => selectedDocument && setActiveView('analysis')}
               disabled={!selectedDocument}
+              title={!selectedDocument ? 'Select a document from Library first' : 'Analysis - View extracted key facts and visual connections'}
             >
-              <img src="/assets/icons/data-discovery.png" alt="" className="di-tab-icon" />
+              <img src="/assets/icons/data-discovery.png" alt="Analysis icon" className="di-tab-icon" />
               Analysis
               {selectedDocument && <span className="di-tab-doc">{selectedDocument.name.substring(0, 15)}...</span>}
             </button>
@@ -891,8 +1071,9 @@ function DataInsights() {
               className={`di-main-tab ${activeView === 'chat' ? 'di-main-tab--active' : ''}`}
               onClick={() => selectedDocument && setActiveView('chat')}
               disabled={!selectedDocument}
+              title={!selectedDocument ? 'Select a document from Library first' : 'Smart Q&A - Ask questions about your document'}
             >
-              <img src="/assets/icons/ai-chatbots.png" alt="" className="di-tab-icon" />
+              <img src="/assets/icons/ai-chatbots.png" alt="Ask AI icon" className="di-tab-icon" />
               Ask AI
             </button>
           </div>
@@ -905,17 +1086,18 @@ function DataInsights() {
                 <div className="di-upload-panel">
                   <div className="di-panel-header">
                     <h3>Upload Documents</h3>
-                    <label className="di-bulk-toggle">
+                    <label className="di-bulk-toggle" style={isHistoryView ? {opacity: 0.5, cursor: 'not-allowed'} : {}}>
                       <input
                         type="checkbox"
                         checked={isBulkMode}
                         onChange={(e) => { setIsBulkMode(e.target.checked); setFiles([]); }}
+                        disabled={isHistoryView}
                       />
                       Bulk
                     </label>
                   </div>
 
-                  <div className="di-upload-zone">
+                  <div className="di-upload-zone" style={isHistoryView ? {opacity: 0.5, pointerEvents: 'none', cursor: 'not-allowed'} : {}}>
                     <input
                       type="file"
                       id="file-input"
@@ -923,10 +1105,11 @@ function DataInsights() {
                       multiple={isBulkMode}
                       accept=".pdf,.csv,.xlsx,.xls,.txt,.json"
                       className="di-file-input"
+                      disabled={isHistoryView}
                     />
                     <label htmlFor="file-input" className="di-upload-label">
                       <div className="di-upload-icon">+</div>
-                      <span>Drop files or click to upload</span>
+                      <span>{isHistoryView ? '🔒 Upload disabled - viewing completed stage' : 'Drop files or click to upload'}</span>
                       <span className="di-upload-formats">PDF, CSV, XLSX, TXT, JSON</span>
                     </label>
                   </div>
@@ -938,7 +1121,7 @@ function DataInsights() {
                         <button onClick={() => setFiles([])}>×</button>
                       </div>
                       <ul>{files.map((f, i) => <li key={i}>{f.name}</li>)}</ul>
-                      <button className="di-upload-btn" onClick={handleUploadFiles} disabled={isUploading}>
+                      <button className="di-upload-btn" onClick={handleUploadFiles} disabled={isUploading || isHistoryView}>
                         {isUploading ? 'Uploading...' : 'Upload & Process'}
                       </button>
                     </div>
@@ -1042,13 +1225,13 @@ function DataInsights() {
                   className={`di-analysis-tab ${analysisTab === 'entities' ? 'di-analysis-tab--active' : ''}`}
                   onClick={() => setAnalysisTab('entities')}
                 >
-                  Entities ({getDocumentEntities().length})
+                  Key Facts ({getDocumentEntities().length})
                 </button>
                 <button
                   className={`di-analysis-tab ${analysisTab === 'graph' ? 'di-analysis-tab--active' : ''}`}
                   onClick={() => setAnalysisTab('graph')}
                 >
-                  Knowledge Graph
+                  Visual Connections
                 </button>
                 <button
                   className={`di-analysis-tab ${analysisTab === 'sources' ? 'di-analysis-tab--active' : ''}`}
@@ -1060,7 +1243,22 @@ function DataInsights() {
 
               {/* Analysis Content */}
               <div className="di-analysis-content">
-                {analysisTab === 'insights' && currentInsight && (
+                {analysisTab === 'insights' && isLoadingInsight && (
+                  <div className="di-processing-status">
+                    <div className="di-processing-header">
+                      <span className="di-processing-spinner" />
+                      <span>Generating analysis from document content...</span>
+                    </div>
+                  </div>
+                )}
+                {analysisTab === 'insights' && !isLoadingInsight && !currentInsight && (
+                  <EmptyState
+                    iconType="document"
+                    title="No analysis available yet"
+                    description="Select a completed document to generate its analysis."
+                  />
+                )}
+                {analysisTab === 'insights' && !isLoadingInsight && currentInsight && (
                   <div className="di-insights-panel">
                     <div className="di-insights-summary">
                       <h4>{currentInsight.summary}</h4>
@@ -1094,22 +1292,38 @@ function DataInsights() {
                   </div>
                 )}
 
-                {analysisTab === 'entities' && (
-                  <div className="di-entities-panel">
-                    <div className="di-entity-grid">
-                      {getDocumentEntities().map(entity => (
-                        <div key={entity.id} className={`di-entity-card di-entity-card--${entity.type}`}>
-                          <div className="di-entity-header">
-                            <span className="di-entity-type">{entity.type}</span>
-                            <span className={`di-entity-confidence di-entity-confidence--${getConfidenceColor(entity.confidence)}`}>
-                              {Math.round(entity.confidence * 100)}%
-                            </span>
-                          </div>
-                          <div className="di-entity-name">{entity.name}</div>
-                          {entity.value && <div className="di-entity-value">{entity.value}</div>}
-                        </div>
-                      ))}
+                {analysisTab === 'entities' && isLoadingInsight && (
+                  <div className="di-processing-status">
+                    <div className="di-processing-header">
+                      <span className="di-processing-spinner" />
+                      <span>Generating analysis from document content...</span>
                     </div>
+                  </div>
+                )}
+                {analysisTab === 'entities' && !isLoadingInsight && (
+                  <div className="di-entities-panel">
+                    {getDocumentEntities().length > 0 ? (
+                      <div className="di-entity-grid">
+                        {getDocumentEntities().map(entity => (
+                          <div key={entity.id} className={`di-entity-card di-entity-card--${entity.type}`}>
+                            <div className="di-entity-header">
+                              <span className="di-entity-type">{entity.type}</span>
+                              <span className={`di-entity-confidence di-entity-confidence--${getConfidenceColor(entity.confidence)}`}>
+                                {Math.round(entity.confidence * 100)}%
+                              </span>
+                            </div>
+                            <div className="di-entity-name">{entity.name}</div>
+                            {entity.value && <div className="di-entity-value">{entity.value}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        iconType="document"
+                        title="No key facts extracted yet"
+                        description="Structured facts will appear here once document processing finishes."
+                      />
+                    )}
                   </div>
                 )}
 
@@ -1118,8 +1332,8 @@ function DataInsights() {
                     {getDocumentGraph() ? (
                       <div className="di-graph-container">
                         <div className="di-graph-header">
-                          <h5>Knowledge Graph</h5>
-                          <span>{getDocumentGraph().nodes.length} nodes • {getDocumentGraph().edges.length} edges</span>
+                          <h5>Visual Connections</h5>
+                          <span>{getDocumentGraph().nodes.length} items • {getDocumentGraph().edges.length} connections</span>
                         </div>
                         <div className="di-graph-canvas">
                           <svg viewBox="0 0 400 350" className="di-graph-svg">
@@ -1174,28 +1388,51 @@ function DataInsights() {
                       <EmptyState
                         iconType="document"
                         title="No graph available"
-                        description="Knowledge graph will be generated after document processing."
+                        description="Visual connections will be generated after document processing."
                       />
                     )}
                   </div>
                 )}
 
-                {analysisTab === 'sources' && currentInsight && (
+                {analysisTab === 'sources' && isLoadingInsight && (
+                  <div className="di-processing-status">
+                    <div className="di-processing-header">
+                      <span className="di-processing-spinner" />
+                      <span>Generating analysis from document content...</span>
+                    </div>
+                  </div>
+                )}
+                {analysisTab === 'sources' && !isLoadingInsight && !currentInsight && (
+                  <EmptyState
+                    iconType="document"
+                    title="No source citations available"
+                    description="Select a completed document to generate its analysis."
+                  />
+                )}
+                {analysisTab === 'sources' && !isLoadingInsight && currentInsight && (
                   <div className="di-sources-panel">
                     <h5>Source References</h5>
-                    <div className="di-sources-list">
-                      {currentInsight.sources.map((source, idx) => (
-                        <div key={idx} className="di-source-card">
-                          <div className="di-source-header">
-                            <span className="di-source-page">Page {source.page}</span>
-                            <span className={`di-source-relevance di-source-relevance--${getConfidenceColor(source.relevance)}`}>
-                              {Math.round(source.relevance * 100)}% relevant
-                            </span>
+                    {currentInsight.sources.length > 0 ? (
+                      <div className="di-sources-list">
+                        {currentInsight.sources.map((source, idx) => (
+                          <div key={idx} className="di-source-card">
+                            <div className="di-source-header">
+                              <span className="di-source-page">Page {source.page}</span>
+                              <span className={`di-source-relevance di-source-relevance--${getConfidenceColor(source.relevance)}`}>
+                                {Math.round(source.relevance * 100)}% relevant
+                              </span>
+                            </div>
+                            <p className="di-source-text">"{source.text}"</p>
                           </div>
-                          <p className="di-source-text">"{source.text}"</p>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        iconType="document"
+                        title="No source citations available"
+                        description="Page-level citations will appear here once document processing finishes."
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1234,9 +1471,7 @@ function DataInsights() {
                 {conversationHistory.map((msg, idx) => (
                   <div key={idx} className={`di-chat-message di-chat-message--${msg.role}`}>
                     <div className="di-message-content">
-                      {msg.content.split('\n').map((line, i) => (
-                        <p key={i}>{line}</p>
-                      ))}
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="di-message-sources">
@@ -1261,27 +1496,56 @@ function DataInsights() {
                 )}
               </div>
 
-              {/* Chat Input */}
-              <div className="di-chat-input">
-                <Textarea
-                  placeholder="Ask a question about this document..."
-                  value={inputPrompt}
-                  onChange={(e) => setInputPrompt(e.target.value)}
-                  rows={2}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAskQuestion();
-                    }
-                  }}
-                />
-                <button
-                  className="di-send-btn"
-                  onClick={handleAskQuestion}
-                  disabled={isLoading || !inputPrompt.trim()}
-                >
-                  {isLoading ? '...' : 'Ask'}
-                </button>
+              {/* Enhanced Chat Input */}
+              <div className="di-chat-input-container">
+                <div className="di-chat-input-wrapper">
+                  <div className="di-input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </div>
+                  <Textarea
+                    placeholder="Ask anything about this document..."
+                    value={inputPrompt}
+                    onChange={(e) => setInputPrompt(e.target.value)}
+                    rows={1}
+                    className="di-chat-input-field"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (inputPrompt.trim() && !isLoading) {
+                          handleAskQuestion();
+                        }
+                      }
+                    }}
+                    disabled={isLoading}
+                  />
+                  <button
+                    className={`di-send-btn-icon ${inputPrompt.trim() && !isLoading ? 'di-send-btn-active' : ''}`}
+                    onClick={handleAskQuestion}
+                    disabled={isLoading || !inputPrompt.trim()}
+                    title={isLoading ? 'Processing...' : 'Send message (Enter)'}
+                  >
+                    {isLoading ? (
+                      <svg className="di-send-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle cx="12" cy="12" r="10" opacity="0.25" />
+                        <path d="M12 2 A10 10 0 0 1 22 12" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <div className="di-input-hint">
+                  <span className="di-hint-text">
+                    <kbd className="di-kbd">↵ Enter</kbd> to send · <kbd className="di-kbd">Shift + ↵</kbd> for new line
+                  </span>
+                  {inputPrompt.length > 0 && (
+                    <span className="di-char-count">{inputPrompt.length} characters</span>
+                  )}
+                </div>
               </div>
             </div>
           )}

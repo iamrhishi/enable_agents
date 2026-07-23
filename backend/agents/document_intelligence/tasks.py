@@ -45,7 +45,7 @@ def process_document_task(self, document_id: str):
                 logger.error(f"Document not found: {document_id}")
                 return {"error": "Document not found"}
 
-            user_id = doc.user_id
+            user_id = doc.uploaded_by
 
             # Send start notification
             send_document_notification(
@@ -83,7 +83,7 @@ def process_document_task(self, document_id: str):
                 doc = ProcessedDocument.query.get(document_id)
                 if doc:
                     send_document_notification(
-                        user_id=doc.user_id,
+                        user_id=doc.uploaded_by,
                         document_id=document_id,
                         stage="failed",
                         progress=0.0,

@@ -245,10 +245,12 @@
 .btn-primary:hover:not(:disabled) {
   box-shadow: var(--shadow-accent-md);
   opacity: 0.9;
+  color: var(--color-text-inverse);
 }
 
 .btn-primary:active:not(:disabled) {
   opacity: 0.95;
+  color: var(--color-text-inverse);
 }
 
 .btn-primary:disabled {
@@ -266,10 +268,12 @@
 .btn-secondary:hover:not(:disabled) {
   background: var(--color-surface-alt);
   border-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .btn-secondary:active:not(:disabled) {
   transform: scale(0.98);
+  color: var(--color-text);
 }
 
 .btn-ghost {
@@ -279,10 +283,12 @@
 
 .btn-ghost:hover {
   background: var(--color-background);
+  color: var(--color-text);
 }
 
 .btn-ghost:active {
   transform: scale(0.98);
+  color: var(--color-text);
 }
 
 .btn-danger {
@@ -292,10 +298,12 @@
 
 .btn-danger:hover {
   background: var(--color-error-bg-hover);
+  color: var(--color-error);
 }
 
 .btn-danger:active {
   transform: scale(0.98);
+  color: var(--color-error);
 }
 
 .btn-sm {
