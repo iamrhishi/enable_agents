@@ -7868,6 +7868,58 @@ def enrich_businesses_with_linkedin():
 
 
 
+@app.route('/api/account', methods=['DELETE'])
+@require_auth
+def delete_own_account():
+    """
+    Self-service account deletion - removes the CALLER's own user row and
+    data they own. Never accepts a target user id; the identity is always
+    the verified session's g.user_id, so this can only ever delete the
+    caller's own account. Used by the e2e test suite to clean up throwaway
+    accounts it creates; safe to leave enabled in any environment.
+    """
+    user_id = g.user_id
+    try:
+        from core.models import Team, TeamMember, Project, UserSettingModel
+        from agents.executive_assistant.models import ExecTask, ExecReminder, ExecStakeholder
+        from agents.event_networking.models import ENEvent
+        from agents.supply_chain.models import SCSupplier
+        from agents.content_marketing.models import CMProject
+        from agents.market_research.models import ResearchProject
+
+        # Teams owned by this user cascade-delete their Projects,
+        # TeamMembers, and PendingInvites (FK ondelete=CASCADE).
+        for team in Team.query.filter_by(owner_id=user_id).all():
+            db.session.delete(team)
+        TeamMember.query.filter_by(user_id=user_id).delete()
+
+        ExecTask.query.filter_by(user_id=user_id).delete()
+        ExecReminder.query.filter_by(user_id=user_id).delete()
+        ExecStakeholder.query.filter_by(user_id=user_id).delete()
+
+        for evt in ENEvent.query.filter_by(user_id=user_id).all():
+            db.session.delete(evt)  # cascades to ENAttendee
+
+        SCSupplier.query.filter_by(user_id=user_id).delete()
+
+        for proj in CMProject.query.filter_by(user_id=user_id).all():
+            db.session.delete(proj)  # cascades to CM documents/kg/content/conversations
+
+        ResearchProject.query.filter_by(user_id=user_id).delete()
+        UserSettingModel.query.filter_by(user_id=user_id).delete()
+        EmailCampaign.query.filter_by(username=user_id).delete()
+
+        user = User.query.filter_by(email=user_id).first()
+        if user:
+            db.session.delete(user)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Account and owned data deleted'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # === HEALTH CHECK ENDPOINT ===
 @app.route('/health', methods=['GET'])
 def health_check():

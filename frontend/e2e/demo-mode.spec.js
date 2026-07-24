@@ -1,33 +1,35 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { loginAsNewUser, deleteTestUser } = require('./helpers/auth');
 
 test.describe('Demo Mode', () => {
-  test.beforeEach(async ({ page }) => {
-    // Set up auth state
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('sessionToken', 'test-token');
-      localStorage.setItem('userEmail', 'test@example.com');
-    });
+  /** @type {string} */
+  let token;
+
+  test.beforeEach(async ({ page, request }) => {
+    ({ token } = await loginAsNewUser(page, request, 'demomode'));
   });
 
-  test('should show demo/live toggle in header', async ({ page }) => {
-    await page.goto('/agents');
-    const toggle = page.locator('.mode-toggle, [data-testid="mode-toggle"], :has-text("Demo"), :has-text("Live")');
-    await expect(toggle.first()).toBeVisible();
+  test.afterEach(async ({ request }) => {
+    if (token) await deleteTestUser(request, token);
+  });
+
+  test('should show demo/live toggle in Settings > Preferences', async ({ page }) => {
+    await page.goto('/settings');
+    await page.click('.nav-item:has-text("Preferences")');
+    await expect(page.locator('.mode-toggle-large')).toBeVisible();
   });
 
   test('should toggle to demo mode', async ({ page }) => {
-    await page.goto('/agents');
+    await page.goto('/settings');
+    await page.click('.nav-item:has-text("Preferences")');
 
-    // Find and click demo toggle
-    const demoBtn = page.locator('button:has-text("Demo"), .mode-toggle:has-text("Demo")');
-    if (await demoBtn.isVisible()) {
-      await demoBtn.click();
+    const toggle = page.locator('.mode-toggle-large');
+    await expect(toggle).toBeVisible();
+    const wasLive = (await toggle.getAttribute('class'))?.includes('--live');
+    await toggle.click();
 
-      // Verify demo mode is active
-      await expect(page.locator('.demo-badge, :has-text("Demo Mode")')).toBeVisible();
-    }
+    await expect(toggle).toHaveClass(wasLive ? /--demo/ : /--live/);
   });
 
   test('should persist mode selection', async ({ page }) => {
@@ -49,9 +51,11 @@ test.describe('Demo Mode', () => {
       localStorage.setItem('enableAgentsMode', 'demo');
     });
 
-    await page.goto('/executive-assistant');
+    // ProjectGate requires a ?project= param regardless of demo mode - the
+    // id itself is never validated against the backend in demo mode.
+    await page.goto('/executive-assistant?project=demo-project-1');
 
     // Should show demo tasks
-    await expect(page.locator('.task-card, .task-item, :has-text("Q3 Product Launch")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.kanban-card').first()).toBeVisible({ timeout: 5000 });
   });
 });

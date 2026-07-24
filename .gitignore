@@ -54,6 +54,9 @@ temp_files/
 .pytest_cache/
 .coverage
 htmlcov/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 
 # ── OS & editor ───────────────────────────────────────────────────────────────
 .DS_Store

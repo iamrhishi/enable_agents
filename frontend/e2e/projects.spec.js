@@ -1,14 +1,17 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { loginAsNewUser, deleteTestUser } = require('./helpers/auth');
 
 test.describe('Projects', () => {
-  test.beforeEach(async ({ page }) => {
-    // Set up auth state
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('sessionToken', 'test-token');
-      localStorage.setItem('userEmail', 'test@example.com');
-    });
+  /** @type {string} */
+  let token;
+
+  test.beforeEach(async ({ page, request }) => {
+    ({ token } = await loginAsNewUser(page, request, 'projects'));
+  });
+
+  test.afterEach(async ({ request }) => {
+    if (token) await deleteTestUser(request, token);
   });
 
   test('should navigate to projects page', async ({ page }) => {
@@ -18,13 +21,13 @@ test.describe('Projects', () => {
 
   test('should display create project button', async ({ page }) => {
     await page.goto('/projects');
-    const createBtn = page.locator('button:has-text("Create"), button:has-text("New Project")');
+    const createBtn = page.locator('.btn-create, .empty-state-card .btn-primary').first();
     await expect(createBtn).toBeVisible();
   });
 
   test('should open project creation modal', async ({ page }) => {
     await page.goto('/projects');
-    const createBtn = page.locator('button:has-text("Create"), button:has-text("New Project")');
+    const createBtn = page.locator('.btn-create, .empty-state-card .btn-primary').first();
     await createBtn.click();
 
     // Modal should appear
@@ -34,27 +37,25 @@ test.describe('Projects', () => {
 
   test('project form should have name field', async ({ page }) => {
     await page.goto('/projects');
-    const createBtn = page.locator('button:has-text("Create"), button:has-text("New Project")');
+    const createBtn = page.locator('.btn-create, .empty-state-card .btn-primary').first();
     await createBtn.click();
 
-    const nameInput = page.locator('input[name="name"], input[placeholder*="name" i]');
+    const nameInput = page.locator('input[placeholder*="Marketing Campaign" i]');
     await expect(nameInput).toBeVisible();
   });
 
   test('should create a new project', async ({ page }) => {
     await page.goto('/projects');
-    const createBtn = page.locator('button:has-text("Create"), button:has-text("New Project")');
+    const createBtn = page.locator('.btn-create, .empty-state-card .btn-primary').first();
     await createBtn.click();
 
-    const nameInput = page.locator('input[name="name"], input[placeholder*="name" i]');
+    const nameInput = page.locator('input[placeholder*="Marketing Campaign" i]');
     await nameInput.fill('Test Project ' + Date.now());
 
     const submitBtn = page.locator('button[type="submit"], button:has-text("Save"), button:has-text("Create")');
     await submitBtn.last().click();
 
     // Should show success or new project in list
-    await expect(
-      page.locator('.project-card, .project-item, .toast-success, :has-text("Test Project")')
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.project-card:has-text("Test Project")')).toBeVisible({ timeout: 5000 });
   });
 });

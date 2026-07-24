@@ -1,14 +1,19 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { loginAsNewUser, deleteTestUser } = require('./helpers/auth');
 
 test.describe('Agents Navigation', () => {
-  test.beforeEach(async ({ page }) => {
-    // Set up auth state
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('sessionToken', 'test-token');
-      localStorage.setItem('userEmail', 'test@example.com');
-    });
+  /** @type {string} */
+  let token;
+
+  test.beforeEach(async ({ page, request }) => {
+    // Real backend auth - a fake token would 401 on every API call now
+    // that the backend verifies signed session tokens on every route.
+    ({ token } = await loginAsNewUser(page, request, 'agentsnav'));
+  });
+
+  test.afterEach(async ({ request }) => {
+    if (token) await deleteTestUser(request, token);
   });
 
   test('should display agents assembly page', async ({ page }) => {
@@ -18,18 +23,18 @@ test.describe('Agents Navigation', () => {
 
   test('should show agent cards', async ({ page }) => {
     await page.goto('/agents');
-    const cards = page.locator('.module-card, .agent-card, [data-testid="agent-card"]');
+    const cards = page.locator('.module-card, .carousel-3d-card, .agent-card, [data-testid="agent-card"]');
     await expect(cards.first()).toBeVisible();
   });
 
   test('should have Market Research agent', async ({ page }) => {
     await page.goto('/agents');
-    await expect(page.locator(':has-text("Market Research")')).toBeVisible();
+    await expect(page.locator(':has-text("Market Research")').last()).toBeVisible();
   });
 
   test('should have Content Marketing agent', async ({ page }) => {
     await page.goto('/agents');
-    await expect(page.locator(':has-text("Content Marketing")')).toBeVisible();
+    await expect(page.locator(':has-text("Content Marketing")').last()).toBeVisible();
   });
 
   test('should navigate to Market Research agent', async ({ page }) => {
@@ -50,27 +55,32 @@ test.describe('Agents Navigation', () => {
 });
 
 test.describe('Settings', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('sessionToken', 'test-token');
-      localStorage.setItem('userEmail', 'test@example.com');
-    });
+  /** @type {string} */
+  let token;
+
+  test.beforeEach(async ({ page, request }) => {
+    ({ token } = await loginAsNewUser(page, request, 'settingsnav'));
+  });
+
+  test.afterEach(async ({ request }) => {
+    if (token) await deleteTestUser(request, token);
   });
 
   test('should navigate to settings page', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.locator('h1, h2')).toContainText(/setting/i);
+    await expect(page.locator('h1').first()).toContainText(/setting/i);
   });
 
   test('should display AI settings section', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.locator(':has-text("AI"), :has-text("API")')).toBeVisible();
+    await page.click('.nav-item:has-text("AI Providers")');
+    await expect(page.locator(':has-text("OpenAI API Key")').last()).toBeVisible();
   });
 
   test('should display connectors section', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.locator(':has-text("Connector")')).toBeVisible();
+    await page.click('.nav-item:has-text("Data Connectors")');
+    await expect(page.locator(':has-text("Search API Key")').last()).toBeVisible();
   });
 
   test('should have save button', async ({ page }) => {

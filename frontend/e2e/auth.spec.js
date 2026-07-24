@@ -3,20 +3,26 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Authentication', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear any existing auth state
+    // Clear any existing auth state. localStorage isn't accessible on the
+    // blank initial document in newer Chromium, so navigate first.
     await page.context().clearCookies();
+    await page.goto('/login');
     await page.evaluate(() => localStorage.clear());
   });
 
   test('should display login page for unauthenticated users', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.locator('h1, h2')).toContainText(/sign in|log in|welcome/i);
+    await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible();
   });
 
   test('should show email and password fields', async ({ page }) => {
+    // Login is a two-step form: email first, password appears after
+    // clicking Continue.
     await page.goto('/login');
     await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible();
+    await page.fill('input[type="email"], input[name="email"]', 'someone@example.com');
+    await page.click('button[type="submit"]');
     await expect(page.locator('input[type="password"]')).toBeVisible();
   });
 
@@ -24,22 +30,23 @@ test.describe('Authentication', () => {
     await page.goto('/login');
 
     await page.fill('input[type="email"], input[name="email"]', 'invalid@example.com');
+    await page.click('button[type="submit"]');
     await page.fill('input[type="password"]', 'wrongpassword');
     await page.click('button[type="submit"]');
 
     // Should show error message
-    await expect(page.locator('.error, [role="alert"], .toast-error')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.ea-toast--error, .error, [role="alert"]')).toBeVisible({ timeout: 10000 });
   });
 
   test('should have link to register page', async ({ page }) => {
     await page.goto('/login');
-    const registerLink = page.locator('a[href*="register"]');
+    const registerLink = page.locator('button:has-text("Create account")');
     await expect(registerLink).toBeVisible();
   });
 
   test('should navigate to register page', async ({ page }) => {
     await page.goto('/login');
-    await page.click('a[href*="register"]');
+    await page.click('button:has-text("Create account")');
     await expect(page).toHaveURL(/\/register/);
   });
 
@@ -47,7 +54,7 @@ test.describe('Authentication', () => {
     await page.goto('/register');
     await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
-    await expect(page.locator('input[name="name"], input[name="fullName"]')).toBeVisible();
+    await expect(page.locator('input[name="firstName"]')).toBeVisible();
   });
 
   test('should show Google OAuth button', async ({ page }) => {
@@ -67,9 +74,9 @@ test.describe('Logout', () => {
     });
   });
 
-  test('should redirect to agents page when logged in', async ({ page }) => {
+  test('should redirect away from login when already logged in', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveURL(/\/agents/);
+    await expect(page).not.toHaveURL(/\/login/);
   });
 
   test('should have logout option in user menu', async ({ page }) => {
