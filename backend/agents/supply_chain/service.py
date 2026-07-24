@@ -2,8 +2,9 @@
 from datetime import datetime
 from uuid import uuid4
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
+from core.auth import user_can_access_project
 from core.database import db
 from .models import SCSupplier
 
@@ -12,6 +13,8 @@ def list_suppliers():
     project_id = request.args.get("project_id")
     if not project_id:
         return jsonify({"success": False, "error": "project_id is required"}), 400
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({"success": False, "error": "Project not found"}), 404
 
     suppliers = SCSupplier.query.filter_by(project_id=project_id).order_by(SCSupplier.created_at.desc()).all()
     return jsonify({"success": True, "suppliers": [s.to_dict() for s in suppliers]}), 200
@@ -26,11 +29,13 @@ def create_supplier():
         return jsonify({"success": False, "error": "Supplier name is required"}), 400
     if not project_id:
         return jsonify({"success": False, "error": "project_id is required"}), 400
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({"success": False, "error": "Project not found"}), 404
 
     supplier = SCSupplier(
         supplier_id=str(uuid4()),
         project_id=project_id,
-        user_id=data.get("user_id", "anonymous"),
+        user_id=g.user_id,
         name=name,
         location=data.get("location"),
         capacity=data.get("capacity"),
@@ -45,7 +50,7 @@ def create_supplier():
 
 def submit_audit(supplier_id):
     supplier = SCSupplier.query.get(supplier_id)
-    if not supplier:
+    if not supplier or not user_can_access_project(g.user_id, supplier.project_id):
         return jsonify({"success": False, "error": "Supplier not found"}), 404
 
     data = request.get_json(silent=True) or {}

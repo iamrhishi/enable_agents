@@ -5,6 +5,7 @@
  */
 
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders } from '../core/authHeaders';
 
 // Channel types
 export const REMINDER_CHANNELS = {
@@ -99,7 +100,7 @@ async function sendEmailReminder({ recipient, subject, message }) {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/emails/send_via_gmail`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           user_email: userEmail,
           to: recipient.email,

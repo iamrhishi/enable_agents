@@ -3,7 +3,9 @@ Workflow Templates API Routes.
 
 Handles workflow template CRUD, instance management, and stage transitions.
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
+
+from core.auth import require_auth
 from datetime import datetime
 import uuid
 import json
@@ -19,7 +21,7 @@ TEMPLATES_DIR = Path(__file__).parent.parent / "config" / "workflow-templates"
 
 
 def get_user_id() -> str:
-    return request.headers.get("X-User-Id", "")
+    return g.user_id
 
 
 def load_system_templates():
@@ -67,6 +69,7 @@ def load_system_templates():
 # =============================================================================
 
 @workflows_bp.route('/api/workflows/templates', methods=['GET'])
+@require_auth
 def list_templates():
     """List all active workflow templates."""
     category = request.args.get("category")
@@ -79,6 +82,7 @@ def list_templates():
 
 
 @workflows_bp.route('/api/workflows/templates/<template_id>', methods=['GET'])
+@require_auth
 def get_template(template_id: str):
     """Get a single template with full stage details."""
     template = WorkflowTemplate.query.filter_by(template_id=template_id).first()
@@ -88,6 +92,7 @@ def get_template(template_id: str):
 
 
 @workflows_bp.route('/api/workflows/templates', methods=['POST'])
+@require_auth
 def create_template():
     """Create a custom workflow template."""
     user_id = get_user_id()
@@ -118,6 +123,7 @@ def create_template():
 
 
 @workflows_bp.route('/api/workflows/templates/<template_id>', methods=['DELETE'])
+@require_auth
 def delete_template(template_id: str):
     """Delete a custom template (not system templates)."""
     user_id = get_user_id()
@@ -140,6 +146,7 @@ def delete_template(template_id: str):
 # =============================================================================
 
 @workflows_bp.route('/api/workflows/instances', methods=['GET'])
+@require_auth
 def list_instances():
     """List workflow instances for the current user."""
     user_id = get_user_id()
@@ -160,6 +167,7 @@ def list_instances():
 
 
 @workflows_bp.route('/api/workflows/instances', methods=['POST'])
+@require_auth
 def create_instance():
     """Start a new workflow instance from a template."""
     user_id = get_user_id()
@@ -195,6 +203,7 @@ def create_instance():
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>', methods=['GET'])
+@require_auth
 def get_instance(instance_id: str):
     """Get a workflow instance with full state."""
     user_id = get_user_id()
@@ -209,6 +218,7 @@ def get_instance(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/start', methods=['POST'])
+@require_auth
 def start_instance(instance_id: str):
     """Start a pending workflow instance."""
     user_id = get_user_id()
@@ -231,6 +241,7 @@ def start_instance(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/complete-stage', methods=['POST'])
+@require_auth
 def complete_stage(instance_id: str):
     """Complete the current stage and advance to next."""
     user_id = get_user_id()
@@ -273,6 +284,7 @@ def complete_stage(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/stages/<stage_id>/data', methods=['POST', 'PATCH'])
+@require_auth
 def save_stage_data(instance_id: str, stage_id: str):
     """
     Save data for a specific stage without completing it.
@@ -341,6 +353,7 @@ def save_stage_data(instance_id: str, stage_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/pause', methods=['POST'])
+@require_auth
 def pause_instance(instance_id: str):
     """Pause a running workflow."""
     user_id = get_user_id()
@@ -360,6 +373,7 @@ def pause_instance(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>', methods=['DELETE'])
+@require_auth
 def delete_instance(instance_id: str):
     """Delete a workflow instance."""
     user_id = get_user_id()
@@ -397,6 +411,7 @@ def create_notification(user_id: str, notif_type: str, title: str, message: str 
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/tasks', methods=['GET'])
+@require_auth
 def list_tasks(instance_id: str):
     """List all tasks for a workflow instance."""
     user_id = get_user_id()
@@ -417,6 +432,7 @@ def list_tasks(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/stages/<stage_id>/tasks', methods=['GET'])
+@require_auth
 def list_stage_tasks(instance_id: str, stage_id: str):
     """List tasks for a specific stage."""
     user_id = get_user_id()
@@ -450,6 +466,7 @@ def list_stage_tasks(instance_id: str, stage_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/tasks', methods=['POST'])
+@require_auth
 def create_task(instance_id: str):
     """Create a new task for a workflow stage."""
     user_id = get_user_id()
@@ -499,6 +516,7 @@ def create_task(instance_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/tasks/<task_id>', methods=['PATCH'])
+@require_auth
 def update_task(instance_id: str, task_id: str):
     """Update a task (status, assignee, etc.)."""
     user_id = get_user_id()
@@ -561,6 +579,7 @@ def update_task(instance_id: str, task_id: str):
 
 
 @workflows_bp.route('/api/workflows/instances/<instance_id>/tasks/<task_id>', methods=['DELETE'])
+@require_auth
 def delete_task(instance_id: str, task_id: str):
     """Delete a task."""
     user_id = get_user_id()
@@ -585,6 +604,7 @@ def delete_task(instance_id: str, task_id: str):
 # =============================================================================
 
 @workflows_bp.route('/api/notifications', methods=['GET'])
+@require_auth
 def list_notifications():
     """List notifications for current user."""
     user_id = get_user_id()
@@ -607,6 +627,7 @@ def list_notifications():
 
 
 @workflows_bp.route('/api/notifications/<notification_id>/read', methods=['POST'])
+@require_auth
 def mark_notification_read(notification_id: str):
     """Mark a notification as read."""
     user_id = get_user_id()
@@ -626,6 +647,7 @@ def mark_notification_read(notification_id: str):
 
 
 @workflows_bp.route('/api/notifications/read-all', methods=['POST'])
+@require_auth
 def mark_all_notifications_read():
     """Mark all notifications as read."""
     user_id = get_user_id()

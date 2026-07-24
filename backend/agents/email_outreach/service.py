@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from uuid import uuid4
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from core.database import db
 from .models import EmailCampaign, EmailCampaignRecipient, EmailExtractionQuota
@@ -22,7 +22,7 @@ def create_campaign():
         name=data["name"],
         subject=data["subject"],
         body_template=data["body_template"],
-        username=data.get("username", "system"),
+        username=g.user_id,
     )
     db.session.add(campaign)
 
@@ -39,15 +39,22 @@ def create_campaign():
 
 
 def list_campaigns():
-    campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
+    campaigns = EmailCampaign.query.filter_by(username=g.user_id).order_by(EmailCampaign.created_at.desc()).all()
     return jsonify({"success": True, "campaigns": [
         {"campaign_id": c.id, "name": c.name, "status": c.status, "created_at": c.created_at.isoformat()}
         for c in campaigns
     ]})
 
 
-def campaign_stats(campaign_id: str):
+def _owned_campaign_or_none(campaign_id: str):
     campaign = EmailCampaign.query.filter_by(id=campaign_id).first()
+    if not campaign or campaign.username != g.user_id:
+        return None
+    return campaign
+
+
+def campaign_stats(campaign_id: str):
+    campaign = _owned_campaign_or_none(campaign_id)
     if not campaign:
         return jsonify({"error": "Campaign not found"}), 404
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
@@ -66,6 +73,8 @@ def campaign_stats(campaign_id: str):
 
 
 def campaign_recipients(campaign_id: str):
+    if not _owned_campaign_or_none(campaign_id):
+        return jsonify({"error": "Campaign not found"}), 404
     recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
     return jsonify({"success": True, "recipients": [
         {"email": r.receiver_email, "name": r.receiver_name, "company": r.company, "status": r.status}
@@ -99,7 +108,7 @@ def send_bulk():
 
 
 def usage():
-    username = request.args.get("username", "default_user")
+    username = g.user_id
     quota = EmailExtractionQuota.query.filter_by(username=username).first()
     if not quota:
         return jsonify({"username": username, "emails_used": 0, "monthly_limit": 500})

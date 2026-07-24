@@ -6,6 +6,7 @@ import '../styles/EventNetworkingAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from '../core/toast';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { authJsonHeaders } from '../core/authHeaders';
 
 // Storage key for persisting state
 const STATE_KEY = 'eventNetworkingState';
@@ -192,7 +193,9 @@ function EventNetworkingAgent() {
 
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events?user_id=${encodeURIComponent(getCurrentUserId())}`);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events`, {
+        headers: authJsonHeaders(),
+      });
       const data = await response.json();
       if (data.success) {
         setEvents(data.events || []);
@@ -229,8 +232,8 @@ function EventNetworkingAgent() {
       setIsLoading(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newEvent, user_id: getCurrentUserId() }),
+        headers: authJsonHeaders(),
+        body: JSON.stringify(newEvent),
       });
       const data = await response.json();
       if (data.success) {
@@ -260,7 +263,9 @@ function EventNetworkingAgent() {
     }
 
     try {
-      const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events/${event.id}/attendees`);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events/${event.id}/attendees`, {
+        headers: authJsonHeaders(),
+      });
       const data = await response.json();
       if (data.success) {
         setAttendees(data.attendees || []);
@@ -314,7 +319,7 @@ function EventNetworkingAgent() {
       setIsLoading(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events/${selectedEvent.id}/attendees`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ attendees: attendeesToUpload }),
       });
       const data = await response.json();
@@ -358,7 +363,7 @@ function EventNetworkingAgent() {
       setIsLoading(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events/${selectedEvent.id}/recommendations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ interests, goals: userGoals }),
       });
       const data = await response.json();
@@ -400,7 +405,7 @@ function EventNetworkingAgent() {
       setIsLoading(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/events/${selectedEvent.id}/followup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           recipient_ids: selectedAttendees,
           subject: followupSubject,
@@ -460,7 +465,7 @@ function EventNetworkingAgent() {
       setIsLoading(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/attendees/${selectedContact.id}/notes`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ notes: editingNotes }),
       });
       const data = await response.json();
@@ -495,7 +500,7 @@ function EventNetworkingAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/api/event-networking/attendees/${selectedContact.id}/followup-date`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ followUpDate: date }),
       });
       const data = await response.json();

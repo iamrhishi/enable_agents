@@ -151,27 +151,31 @@ def _format_sse(data: Dict[str, Any]) -> str:
 
 
 def _get_user_id_from_request() -> Optional[str]:
-    """Extract user ID from request (token or header)."""
-    # Check g.user (set by auth middleware)
-    if hasattr(g, "user") and g.user:
-        return g.user.get("user_id") or g.user.get("id") or g.user.get("email")
+    """Extract and verify the real user ID from a signed session token.
 
-    # Check Authorization header for Bearer token
+    Never trust the token string as the user ID directly - it must be
+    cryptographically verified, or any caller could read another user's
+    notification stream just by passing that user's id/email as the token.
+    """
+    from flask import current_app
+    from core.session_token import verify_browser_session_token
+
+    secret = current_app.config.get("SECRET_KEY") or ""
+
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        # For SSE, we accept the token as user ID in development
-        # In production, this should validate the JWT
+        token = auth_header[7:].strip()
         if token:
-            return token
+            uid = verify_browser_session_token(secret, token)
+            if uid:
+                return uid
 
-    # Check query param (for EventSource which can't set headers)
+    # Query param (EventSource can't set custom headers)
     token = request.args.get("token")
     if token:
-        return token
+        return verify_browser_session_token(secret, token)
 
-    # Fallback header
-    return request.headers.get("X-User-Id")
+    return None
 
 
 def register_sse_routes(app):

@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getDemoProjectsWithData } from '../data/demo';
 import { showToast } from '../core/toast';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -113,7 +114,7 @@ export function useProjectData(agentKey, options = {}) {
     // Live mode - fetch from API
     try {
       const res = await fetch(`${API_URL}/api/projects/${id}`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {
@@ -175,10 +176,7 @@ export function useProjectData(agentKey, options = {}) {
     try {
       const res = await fetch(`${API_URL}/api/projects/${project.id}/data`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           agent: agentKey,
           data: newData,

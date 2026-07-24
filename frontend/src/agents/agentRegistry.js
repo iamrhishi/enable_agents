@@ -12,6 +12,7 @@
  */
 
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 
 /** Static metadata keyed by agent id — add an entry when creating a new agent. */
 const AGENT_UI_META = {
@@ -35,7 +36,9 @@ const AGENT_UI_META = {
  */
 export async function fetchAgents() {
   try {
-    const res = await fetch(`${API_CONFIG.API_URL}/api/v1/agents/`);
+    const res = await fetch(`${API_CONFIG.API_URL}/api/v1/agents/`, {
+      headers: authOptionalHeaders(),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const agents = await res.json();
     return agents
@@ -57,7 +60,7 @@ export async function fetchAgents() {
 export async function toggleAgent(agentId, enabled) {
   const res = await fetch(`${API_CONFIG.API_URL}/api/v1/agents/${agentId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authJsonHeaders(),
     body: JSON.stringify({ enabled }),
   });
   if (!res.ok) throw new Error(`Toggle failed: HTTP ${res.status}`);

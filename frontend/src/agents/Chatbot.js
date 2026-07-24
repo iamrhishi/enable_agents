@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import Header from '../core/Header';
 import { BackButton, LiveModeHint, AgentOutcomesStrip, ProjectSelector, ProjectGate } from '../components';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { authJsonHeaders } from '../core/authHeaders';
 import '../styles/agent-shell.css';
 import '../styles/Chatbot.css';
 
@@ -110,13 +111,9 @@ function Chatbot() {
     }
 
     try {
-      const userEmail = localStorage.getItem('userEmail') || '';
       const response = await fetch(`${API_CONFIG.API_URL}/api/document-intelligence/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           query: input,
           project_id: selectedProjectId,

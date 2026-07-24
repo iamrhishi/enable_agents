@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { API_CONFIG } from '../config/apiConfig';
+import { authJsonHeaders } from '../core/authHeaders';
 
 /**
  * useAgentChat — shared state and helpers for agent chat pages.
@@ -111,7 +112,7 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/check_existing_file`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ file_name: fileName, new_file_size: newFileSize }),
       });
       return await response.json();
@@ -126,7 +127,7 @@ export function useAgentChat(welcomeText, folderName, agentId = folderName) {
       const jsonFileName = originalFileName.replace(/\.(csv|xlsx|xls)$/i, '.json');
       const response = await fetch(`${API_CONFIG.API_URL}/save_json_file`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ data: jsonData, file_name: jsonFileName, folder_name: folderName }),
       });
       return await response.json();

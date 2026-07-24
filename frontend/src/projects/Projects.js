@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Projects.css';
 import { showToast } from '../core/toast';
 import Header from '../core/Header';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { BackButton, showConfirm } from '../components';
 import { AGENTS } from '../config/agentsConfig';
 import { initializeDemoProjects } from '../hooks/useProjectData';
@@ -97,7 +98,7 @@ function Projects() {
     setLoadingTeams(true);
     try {
       const res = await fetch(`${API_URL}/api/team`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -125,7 +126,7 @@ function Projects() {
 
     try {
       const res = await fetch(`${API_URL}/api/projects`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -173,10 +174,7 @@ function Projects() {
     try {
       const res = await fetch(`${API_URL}/api/projects`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify(newProject),
       });
 
@@ -218,7 +216,7 @@ function Projects() {
     try {
       const res = await fetch(`${API_URL}/api/projects/${projectId}`, {
         method: 'DELETE',
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {

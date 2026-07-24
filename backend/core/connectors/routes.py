@@ -13,6 +13,7 @@ Endpoints:
 import logging
 from flask import Blueprint, request, jsonify, g
 
+from core.auth import require_auth
 from core.connectors import get_connector, list_connectors, ConnectorError, AuthenticationError
 
 logger = logging.getLogger(__name__)
@@ -21,13 +22,12 @@ bp = Blueprint("connectors", __name__, url_prefix="/api/connectors")
 
 
 def get_user_id() -> str:
-    """Get current user ID from request context."""
-    if hasattr(g, "user") and g.user:
-        return g.user.get("user_id") or g.user.get("id") or g.user.get("email")
-    return request.headers.get("X-User-Id", "anonymous")
+    """Authenticated user ID, set by the @require_auth decorator."""
+    return g.user_id
 
 
 @bp.route("", methods=["GET"])
+@require_auth
 def list_all_connectors():
     """List all available connectors."""
     connectors = list_connectors()
@@ -35,6 +35,7 @@ def list_all_connectors():
 
 
 @bp.route("/<connector_id>/status", methods=["GET"])
+@require_auth
 def get_connector_status(connector_id: str):
     """Check if a connector is connected/authenticated."""
     try:
@@ -57,6 +58,7 @@ def get_connector_status(connector_id: str):
 
 
 @bp.route("/<connector_id>/connect", methods=["POST"])
+@require_auth
 def connect_connector(connector_id: str):
     """Initialize/connect a connector."""
     try:
@@ -79,6 +81,7 @@ def connect_connector(connector_id: str):
 
 
 @bp.route("/<connector_id>/fetch", methods=["POST"])
+@require_auth
 def fetch_from_connector(connector_id: str):
     """
     Fetch data from a connector.
@@ -129,6 +132,7 @@ def fetch_from_connector(connector_id: str):
 
 
 @bp.route("/<connector_id>/auth-url", methods=["GET"])
+@require_auth
 def get_auth_url(connector_id: str):
     """
     Get OAuth authorization URL (for OAuth connectors).
@@ -163,6 +167,7 @@ def get_auth_url(connector_id: str):
 
 
 @bp.route("/<connector_id>/callback", methods=["POST"])
+@require_auth
 def handle_oauth_callback(connector_id: str):
     """
     Handle OAuth callback with authorization code.

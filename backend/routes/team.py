@@ -5,7 +5,9 @@ Handles team CRUD, member management, and invitations.
 Uses SQLAlchemy models for persistence.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
+
+from core.auth import require_auth
 from datetime import datetime
 import uuid
 
@@ -42,11 +44,10 @@ def get_or_create_team(user_email: str) -> Team:
 
 
 @team_bp.route('/api/team', methods=['GET'])
+@require_auth
 def get_team():
     """Get current user's team."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    user_email = g.user_id
 
     team = get_or_create_team(user_email)
     pending = PendingInvite.query.filter_by(team_id=team.team_id).all()
@@ -59,11 +60,10 @@ def get_team():
 
 
 @team_bp.route('/api/team/invite', methods=['POST'])
+@require_auth
 def invite_member():
     """Invite a new member to the team."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    user_email = g.user_id
 
     data = request.get_json()
     invite_email = data.get('email', '').lower().strip()
@@ -100,11 +100,10 @@ def invite_member():
 
 
 @team_bp.route('/api/team/members/<member_id>', methods=['DELETE'])
+@require_auth
 def remove_member(member_id):
     """Remove a member from the team."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    user_email = g.user_id
 
     member = TeamMember.query.filter_by(user_id=user_email).first()
     if not member:
@@ -129,11 +128,10 @@ def remove_member(member_id):
 
 
 @team_bp.route('/api/team/members/<member_id>/role', methods=['PUT'])
+@require_auth
 def update_member_role(member_id):
     """Update a member's role (owner only)."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    user_email = g.user_id
 
     data = request.get_json()
     new_role = data.get('role')

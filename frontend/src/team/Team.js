@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Team.css';
 import { showToast } from '../core/toast';
 import Header from '../core/Header';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { Modal } from '../components';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -105,7 +106,7 @@ function Team() {
 
     try {
       const res = await fetch(`${API_URL}/api/team`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -134,10 +135,7 @@ function Team() {
     try {
       const res = await fetch(`${API_URL}/api/team/invite`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
 
@@ -166,7 +164,7 @@ function Team() {
     try {
       const res = await fetch(`${API_URL}/api/team/members/${memberId}`, {
         method: 'DELETE',
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {
@@ -182,7 +180,7 @@ function Team() {
     try {
       const res = await fetch(`${API_URL}/api/team/invites/${inviteId}`, {
         method: 'DELETE',
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {
@@ -198,10 +196,7 @@ function Team() {
     try {
       const res = await fetch(`${API_URL}/api/team/members/${memberId}/role`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ role: newRole }),
       });
 

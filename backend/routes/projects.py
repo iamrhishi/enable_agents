@@ -5,10 +5,11 @@ Projects are shared workspaces that can be accessed by multiple agents and team 
 Uses SQLAlchemy models for persistence.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 import uuid
 
+from core.auth import require_auth, user_can_access_project
 from core.database import db
 from core.models import Project, Team, TeamMember
 
@@ -49,23 +50,19 @@ def get_user_projects(user_email: str):
 
 
 @projects_bp.route('/api/projects', methods=['GET'])
+@require_auth
 def list_projects():
     """List all projects for the current user."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+    user_email = g.user_id
     projects = get_user_projects(user_email)
     return jsonify({'success': True, 'projects': [p.to_dict() for p in projects]})
 
 
 @projects_bp.route('/api/projects', methods=['POST'])
+@require_auth
 def create_project():
     """Create a new project."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+    user_email = g.user_id
     data = request.get_json()
     name = data.get('name', '').strip()
     description = data.get('description', '').strip()
@@ -95,29 +92,24 @@ def create_project():
 
 
 @projects_bp.route('/api/projects/<project_id>', methods=['GET'])
+@require_auth
 def get_project(project_id):
     """Get a specific project by ID."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
-
-    project = Project.query.filter_by(project_id=project_id).first()
-    if not project:
+    if not user_can_access_project(g.user_id, project_id):
         return jsonify({'error': 'Project not found'}), 404
 
+    project = Project.query.filter_by(project_id=project_id).first()
     return jsonify({'success': True, 'project': project.to_dict()})
 
 
 @projects_bp.route('/api/projects/<project_id>', methods=['PUT'])
+@require_auth
 def update_project(project_id):
     """Update a project."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
 
     project = Project.query.filter_by(project_id=project_id).first()
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
 
     data = request.get_json()
     if 'name' in data:
@@ -139,16 +131,13 @@ def update_project(project_id):
 
 
 @projects_bp.route('/api/projects/<project_id>', methods=['DELETE'])
+@require_auth
 def delete_project(project_id):
     """Delete a project (owner only)."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     project = Project.query.filter_by(project_id=project_id).first()
-    if not project:
+    if not project or not user_can_access_project(g.user_id, project_id):
         return jsonify({'error': 'Project not found'}), 404
-    if project.owner_id != user_email:
+    if project.owner_id != g.user_id:
         return jsonify({'error': 'Only project owner can delete'}), 403
 
     db.session.delete(project)
@@ -157,11 +146,11 @@ def delete_project(project_id):
 
 
 @projects_bp.route('/api/projects/<project_id>/data', methods=['PUT'])
+@require_auth
 def update_project_data(project_id):
     """Update agent-specific data within a project."""
-    user_email = request.headers.get('X-User-Id', '')
-    if not user_email:
-        return jsonify({'error': 'Not authenticated'}), 401
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
 
     data = request.get_json()
     agent_key = data.get('agent')
@@ -171,8 +160,6 @@ def update_project_data(project_id):
         return jsonify({'error': 'Agent key is required'}), 400
 
     project = Project.query.filter_by(project_id=project_id).first()
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
     if agent_key not in project.agents:
         return jsonify({'error': f'Agent {agent_key} not enabled for this project'}), 403
 

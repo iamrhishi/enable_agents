@@ -22,7 +22,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, Flask, jsonify, request
+from flask import Blueprint, Flask, g, jsonify, request
+
+from core.auth import require_auth
 
 AGENTS_DIR = Path(__file__).parent
 registry_bp = Blueprint("agent_registry", __name__, url_prefix="/api/v1/agents")
@@ -115,12 +117,14 @@ def agent_dir_for(agent_id: str) -> str:
 # ── Registry API endpoints ────────────────────────────────────────────────────
 
 @registry_bp.get("/")
+@require_auth
 def list_agents():
     """Return all agents with their current enabled status."""
     return jsonify(list(_registry.values()))
 
 
 @registry_bp.get("/context-graph")
+@require_auth
 def context_graph():
     """
     Return the provides/consumes dependency graph across all enabled agents.
@@ -159,6 +163,7 @@ def context_graph():
 
 
 @registry_bp.get("/<agent_id>/health")
+@require_auth
 def agent_health(agent_id: str):
     manifest = _registry.get(agent_id)
     if not manifest:
@@ -167,26 +172,28 @@ def agent_health(agent_id: str):
 
 
 @registry_bp.get("/<agent_id>/dependencies")
+@require_auth
 def agent_dependencies(agent_id: str):
     """Check dependency status for an agent."""
-    from flask import request
     from core.dependency_validator import get_dependency_status
 
     manifest = _registry.get(agent_id)
     if not manifest:
         return jsonify({"error": "agent not found"}), 404
 
-    user_id = request.headers.get("X-User-Id", "")
-    if not user_id:
-        return jsonify({"error": "Not authenticated"}), 401
-
-    status = get_dependency_status(agent_id, user_id)
+    status = get_dependency_status(agent_id, g.user_id)
     return jsonify(status)
 
 
 @registry_bp.patch("/<agent_id>")
+@require_auth
 def toggle_agent(agent_id: str):
-    """Toggle an agent's enabled flag at runtime and persist to manifest.json."""
+    """Toggle an agent's enabled flag at runtime and persist to manifest.json.
+
+    NOTE: requires a valid session but does not yet check for an admin
+    role (no such role is modeled in the User model today) - any logged-in
+    user can currently toggle agents platform-wide. Flagged for follow-up.
+    """
     manifest = _registry.get(agent_id)
     if not manifest:
         return jsonify({"error": "agent not found"}), 404

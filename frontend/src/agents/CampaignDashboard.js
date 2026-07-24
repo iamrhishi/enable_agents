@@ -7,6 +7,7 @@ import '../styles/RequirementsGathering.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { formatDate, formatDateTime } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
+import { authOptionalHeaders } from '../core/authHeaders';
 
 // Storage key for state persistence
 const STATE_KEY = 'campaignDashboardState';
@@ -123,7 +124,7 @@ function CampaignDashboard() {
     }
 
     try {
-      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
+      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}`, { headers: authOptionalHeaders() });
       const data = await res.json();
       if (data.success) {
         setCampaigns(data.campaigns);
@@ -147,13 +148,14 @@ function CampaignDashboard() {
       await Promise.all(
         campaignList.map((campaign) =>
           fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaign.id), {
-            method: 'GET'
+            method: 'GET',
+            headers: authOptionalHeaders(),
           }).catch((error) => {
             console.error('Reply refresh failed for campaign', campaign.id, error);
           })
         )
       );
-      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}?username=${encodeURIComponent(userId)}`);
+      const res = await fetch(`${API_CONFIG.GET_CAMPAIGNS_STATS}`, { headers: authOptionalHeaders() });
       const data = await res.json();
       if (data.success) {
         setCampaigns(data.campaigns);
@@ -174,7 +176,7 @@ function CampaignDashboard() {
     }
 
     try {
-      const res = await fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaignId));
+      const res = await fetch(API_CONFIG.GET_CAMPAIGN_RECIPIENTS.replace('{campaignId}', campaignId), { headers: authOptionalHeaders() });
       const data = await res.json();
       if (data.success) {
         setRecipients(data.recipients);

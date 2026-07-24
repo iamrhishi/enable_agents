@@ -12,6 +12,7 @@ Endpoints:
 import logging
 from flask import Blueprint, request, jsonify, g
 
+from core.auth import require_auth
 from core.settings import UserSettings, get_setting_definitions
 
 logger = logging.getLogger(__name__)
@@ -20,13 +21,12 @@ bp = Blueprint("settings", __name__, url_prefix="/api/settings")
 
 
 def get_user_id() -> str:
-    """Get current user ID from request context."""
-    if hasattr(g, "user") and g.user:
-        return g.user.get("user_id") or g.user.get("id") or g.user.get("email")
-    return request.headers.get("X-User-Id", "anonymous")
+    """Authenticated user ID, set by the @require_auth decorator."""
+    return g.user_id
 
 
 @bp.route("", methods=["GET"])
+@require_auth
 def list_settings():
     """
     List all settings for current user.
@@ -54,6 +54,7 @@ def list_settings():
 
 
 @bp.route("/<category>", methods=["GET"])
+@require_auth
 def list_category_settings(category: str):
     """List settings for a specific category."""
     try:
@@ -77,6 +78,7 @@ def list_category_settings(category: str):
 
 
 @bp.route("", methods=["POST"])
+@require_auth
 def save_setting():
     """
     Create or update a setting.
@@ -118,6 +120,7 @@ def save_setting():
 
 
 @bp.route("/<category>/<key>", methods=["DELETE"])
+@require_auth
 def delete_setting(category: str, key: str):
     """Delete a specific setting."""
     try:
@@ -142,6 +145,7 @@ def delete_setting(category: str, key: str):
 
 
 @bp.route("/definitions", methods=["GET"])
+@require_auth
 def get_definitions():
     """
     Get setting definitions for UI rendering.
@@ -154,6 +158,7 @@ def get_definitions():
 
 
 @bp.route("/test-connection", methods=["POST"])
+@require_auth
 def test_connection():
     """
     Test if a setting/connection works.

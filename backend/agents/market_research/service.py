@@ -3,22 +3,29 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from core.database import db
 from .models import ResearchProject, ResearchResult
 
 
+def _owned_project_or_none(project_id: str):
+    project = ResearchProject.query.filter_by(project_id=project_id).first()
+    if not project or project.user_id != g.user_id:
+        return None
+    return project
+
+
 def create_project():
     data = request.get_json(silent=True) or {}
-    required = ["user_id", "company_name", "industry"]
+    required = ["company_name", "industry"]
     missing = [k for k in required if not data.get(k)]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
 
     project = ResearchProject(
         project_id=str(uuid4()),
-        user_id=data["user_id"],
+        user_id=g.user_id,
         company_name=data["company_name"],
         industry=data["industry"],
         research_goals=json.dumps(data.get("research_goals", [])),
@@ -29,7 +36,7 @@ def create_project():
         from core.context import ContextStore
 
         ContextStore().set(
-            data["user_id"],
+            g.user_id,
             "market_research",
             f"project:{project.project_id}",
             {
@@ -46,7 +53,7 @@ def create_project():
 
 
 def get_project(project_id: str):
-    project = ResearchProject.query.filter_by(project_id=project_id).first()
+    project = _owned_project_or_none(project_id)
     if not project:
         return jsonify({"error": "Project not found"}), 404
     return jsonify({
@@ -62,12 +69,16 @@ def get_project(project_id: str):
 
 
 def run_research(project_id: str):
+    if not _owned_project_or_none(project_id):
+        return jsonify({"error": "Project not found"}), 404
     from agents.market_research.tasks import run_research_async
     result = run_research_async.delay(project_id)
     return jsonify({"success": True, "task_id": result.id})
 
 
 def get_results(project_id: str):
+    if not _owned_project_or_none(project_id):
+        return jsonify({"error": "Project not found"}), 404
     results = ResearchResult.query.filter_by(project_id=project_id).all()
     return jsonify({"success": True, "results": [
         {"result_type": r.result_type, "content": r.content, "source_url": r.source_url}

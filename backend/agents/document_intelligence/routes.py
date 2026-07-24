@@ -16,6 +16,7 @@ Endpoints:
 import logging
 from flask import Blueprint, request, jsonify, g
 
+from core.auth import require_auth, user_can_access_project
 from agents.document_intelligence.service import DocumentService
 
 logger = logging.getLogger(__name__)
@@ -25,33 +26,39 @@ service = DocumentService()
 
 
 def get_user_id() -> str:
-    """Get current user ID from request context."""
-    # Check g.user (set by auth middleware)
-    if hasattr(g, "user") and g.user:
-        return g.user.get("user_id") or g.user.get("id") or g.user.get("email")
-
-    # Fallback for development
-    return request.headers.get("X-User-Id", "anonymous")
+    """Authenticated user ID, set by the @require_auth decorator from a
+    verified session token."""
+    return g.user_id
 
 
 def get_project_id() -> str:
     """Get project ID from request (query param, form data, or JSON body)."""
-    # Check query params first
     project_id = request.args.get("project_id")
     if project_id:
         return project_id
 
-    # Check form data (for file uploads)
     project_id = request.form.get("project_id")
     if project_id:
         return project_id
 
-    # Check JSON body
     data = request.get_json(silent=True) or {}
     return data.get("project_id")
 
 
+def _require_project_access(project_id):
+    """Returns an error response if project_id is missing or the caller
+    doesn't have access to it, else None. Documents are shared within a
+    project, so ownership of the project - not who uploaded the document -
+    is the real access-control boundary here."""
+    if not project_id:
+        return jsonify({"error": "project_id is required"}), 400
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({"error": "Project not found"}), 404
+    return None
+
+
 @bp.route("/upload", methods=["POST"])
+@require_auth
 def upload_document():
     """
     Upload a document to a project for processing.
@@ -65,8 +72,9 @@ def upload_document():
         user_id = get_user_id()
         project_id = get_project_id()
 
-        if not project_id:
-            return jsonify({"error": "project_id is required"}), 400
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
 
         if "file" not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -96,17 +104,22 @@ def upload_document():
 
 
 @bp.route("/status/<document_id>", methods=["GET"])
+@require_auth
 def get_status(document_id: str):
     """
     Get document processing status.
 
     Query params:
-    - project_id (optional): verify document belongs to project
+    - project_id (required): verify document belongs to a project the caller can access
 
     Response: { document_id, status, processing_stage, processing_progress, ... }
     """
     try:
         project_id = get_project_id()
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
+
         result = service.get_document_status(document_id, project_id=project_id)
         return jsonify(result), 200
 
@@ -118,6 +131,7 @@ def get_status(document_id: str):
 
 
 @bp.route("/documents", methods=["GET"])
+@require_auth
 def list_documents():
     """
     List project's documents.
@@ -130,9 +144,9 @@ def list_documents():
     """
     try:
         project_id = get_project_id()
-
-        if not project_id:
-            return jsonify({"error": "project_id is required"}), 400
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
 
         limit = request.args.get("limit", 50, type=int)
 
@@ -145,20 +159,21 @@ def list_documents():
 
 
 @bp.route("/documents/<document_id>", methods=["DELETE"])
+@require_auth
 def delete_document(document_id: str):
     """
     Delete a document and all associated data.
 
     Query params:
-    - project_id (required): verify document belongs to project
+    - project_id (required): verify document belongs to a project the caller can access
 
     Response: { success: true }
     """
     try:
         project_id = get_project_id()
-
-        if not project_id:
-            return jsonify({"error": "project_id is required"}), 400
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
 
         service.delete_document(document_id, project_id=project_id)
         return jsonify({"success": True}), 200
@@ -171,6 +186,7 @@ def delete_document(document_id: str):
 
 
 @bp.route("/process/<document_id>", methods=["POST"])
+@require_auth
 def process_document(document_id: str):
     """
     Trigger document processing (if not already processing).
@@ -179,6 +195,9 @@ def process_document(document_id: str):
     """
     try:
         project_id = get_project_id()
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
 
         # Verify ownership (by project, matching get_document_status's contract)
         status = service.get_document_status(document_id, project_id)
@@ -201,6 +220,7 @@ def process_document(document_id: str):
 
 
 @bp.route("/documents/<document_id>/insight", methods=["GET"])
+@require_auth
 def get_insight(document_id: str):
     """
     Get (or generate) structured analysis for a document: summary, key
@@ -208,13 +228,17 @@ def get_insight(document_id: str):
     document's real extracted text and vector search, not demo data.
 
     Query params:
-    - project_id (optional): verify document belongs to project
+    - project_id (required): verify document belongs to a project the caller can access
 
     Response: { status, summary, keyFacts, recommendations, sources }
     """
     try:
         user_id = get_user_id()
         project_id = get_project_id()
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
+
         result = service.get_document_insight(document_id, project_id=project_id, user_id=user_id)
         return jsonify(result), 200
 
@@ -226,6 +250,7 @@ def get_insight(document_id: str):
 
 
 @bp.route("/chat", methods=["POST"])
+@require_auth
 def chat():
     """
     Chat with documents using RAG.
@@ -233,7 +258,8 @@ def chat():
     Request body:
     {
         "query": "What is the pricing strategy?",
-        "document_ids": ["uuid1", "uuid2"],  // optional, defaults to all
+        "project_id": "...",  // required - scopes which documents can be searched
+        "document_ids": ["uuid1", "uuid2"],  // optional, defaults to all in project
         "use_entity_boost": false  // optional
     }
 
@@ -247,9 +273,13 @@ def chat():
         if not query:
             return jsonify({"error": "Query is required"}), 400
 
+        project_id = data.get("project_id") or get_project_id()
+        access_error = _require_project_access(project_id)
+        if access_error:
+            return access_error
+
         document_ids = data.get("document_ids")
         use_entity_boost = data.get("use_entity_boost", False)
-        project_id = data.get("project_id") or get_project_id()
 
         result = service.chat(
             query=query,
@@ -267,9 +297,10 @@ def chat():
 
 
 @bp.route("/search", methods=["POST"])
+@require_auth
 def search():
     """
-    Search documents (raw vector search).
+    Search documents (raw vector search), scoped to the authenticated user.
 
     Request body:
     {

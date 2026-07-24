@@ -9,11 +9,24 @@ from uuid import uuid4
 import json
 import os
 
-from flask import jsonify, request, current_app
+from flask import g, jsonify, request, current_app
 from werkzeug.utils import secure_filename
 
+from core.auth import user_can_access_project
 from core.database import db
 from .models import CMProject, CMDocument, CMKnowledgeGraph, CMGeneratedContent, CMConversation
+
+
+def _owned_cm_project_or_none(project_id: str):
+    """A CMProject only counts as accessible if it belongs to the caller -
+    otherwise any authenticated user could pass another user's project_id
+    and read/generate/chat against their documents."""
+    if not project_id:
+        return None
+    project = CMProject.query.filter_by(project_id=project_id).first()
+    if not project or project.user_id != g.user_id:
+        return None
+    return project
 
 
 # =============================================================================
@@ -31,14 +44,19 @@ def create_project():
     """
     data = request.get_json(silent=True) or {}
 
-    user_id = data.get('user_id', 'default_user')
+    user_id = g.user_id
     project_name = data.get('project_name', 'Untitled Project')
     platform_project_id = data.get('platform_project_id')
+
+    if platform_project_id and not user_can_access_project(user_id, platform_project_id):
+        return jsonify({"success": False, "error": "Project not found"}), 404
 
     if platform_project_id:
         derived_id = f"cmp_{platform_project_id.replace('-', '')[:28]}"
         existing = CMProject.query.filter_by(project_id=derived_id).first()
         if existing:
+            if existing.user_id != user_id:
+                return jsonify({"success": False, "error": "Project not found"}), 404
             return jsonify({
                 "success": True,
                 "project_id": existing.project_id,
@@ -101,7 +119,7 @@ def create_project():
 
 def get_project(project_id: str):
     """Get project details with statistics."""
-    project = CMProject.query.filter_by(project_id=project_id).first()
+    project = _owned_cm_project_or_none(project_id)
     if not project:
         return jsonify({"success": False, "error": "Project not found"}), 404
 
@@ -139,8 +157,8 @@ def upload_documents(analyzer=None, upload_folder=None):
     if not uploaded_files:
         return jsonify({'success': False, 'error': 'No files provided'}), 400
 
-    # Verify project exists
-    project = CMProject.query.filter_by(project_id=project_id).first()
+    # Verify project exists and belongs to the caller
+    project = _owned_cm_project_or_none(project_id)
     if not project:
         return jsonify({'success': False, 'error': 'Project not found'}), 404
 
@@ -216,6 +234,8 @@ def upload_documents(analyzer=None, upload_folder=None):
 
 def list_documents(project_id: str):
     """List all documents in a project."""
+    if not _owned_cm_project_or_none(project_id):
+        return jsonify({"success": False, "error": "Project not found"}), 404
     docs = CMDocument.query.filter_by(project_id=project_id).all()
     return jsonify({
         "success": True,
@@ -244,7 +264,7 @@ def generate_content(content_generator=None):
         return jsonify({'success': False, 'error': 'project_id required'}), 400
 
     # Get project and documents
-    project = CMProject.query.filter_by(project_id=project_id).first()
+    project = _owned_cm_project_or_none(project_id)
     if not project:
         return jsonify({'success': False, 'error': 'Project not found'}), 404
 
@@ -310,7 +330,7 @@ def chat(content_generator=None):
         return jsonify({'success': False, 'error': 'project_id required'}), 400
 
     # Get project context
-    project = CMProject.query.filter_by(project_id=project_id).first()
+    project = _owned_cm_project_or_none(project_id)
     if not project:
         return jsonify({'success': False, 'error': 'Project not found'}), 404
 
@@ -357,6 +377,8 @@ def chat(content_generator=None):
 
 def get_knowledge_graph(project_id: str):
     """Retrieve knowledge graph for visualization."""
+    if not _owned_cm_project_or_none(project_id):
+        return jsonify({"success": False, "error": "Knowledge graph not found"}), 404
     kg = CMKnowledgeGraph.query.filter_by(project_id=project_id).first()
     if not kg:
         return jsonify({"success": False, "error": "Knowledge graph not found"}), 404

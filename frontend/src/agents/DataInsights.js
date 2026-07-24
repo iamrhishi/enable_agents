@@ -9,6 +9,7 @@ import { API_CONFIG } from '../config/apiConfig';
 import { showToast } from '../core/toast';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { useWorkflowContext } from '../hooks';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 
 // Document Intelligence API
 const DOC_API = `${API_CONFIG.API_URL}/api/document-intelligence`;
@@ -369,9 +370,8 @@ function DataInsights() {
     if (!selectedProjectId) return;
 
     try {
-      const userEmail = localStorage.getItem('userEmail') || '';
       const res = await fetch(`${DOC_API}/documents?project_id=${selectedProjectId}`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {
@@ -409,14 +409,13 @@ function DataInsights() {
 
   // Poll for document processing status
   const pollDocumentStatus = async (documentId) => {
-    const userEmail = localStorage.getItem('userEmail') || '';
     let attempts = 0;
     const maxAttempts = 60; // 5 minutes max
 
     const poll = async () => {
       try {
         const res = await fetch(`${DOC_API}/status/${documentId}?project_id=${selectedProjectId}`, {
-          headers: { 'X-User-Id': userEmail },
+          headers: authOptionalHeaders(),
         });
 
         if (res.ok) {
@@ -512,10 +511,9 @@ function DataInsights() {
   const fetchDocumentInsight = async (documentId) => {
     setIsLoadingInsight(true);
     setCurrentInsight(null);
-    const userEmail = localStorage.getItem('userEmail') || '';
     try {
       const res = await fetch(`${DOC_API}/documents/${documentId}/insight?project_id=${selectedProjectId}`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -610,7 +608,6 @@ function DataInsights() {
     }
 
     // Live mode - upload to backend API
-    const userEmail = localStorage.getItem('userEmail') || '';
     const uploadedDocIds = [];
 
     try {
@@ -621,7 +618,7 @@ function DataInsights() {
 
         const response = await fetch(`${DOC_API}/upload`, {
           method: 'POST',
-          headers: { 'X-User-Id': userEmail },
+          headers: authOptionalHeaders(),
           body: formData,
         });
 
@@ -706,15 +703,10 @@ function DataInsights() {
     }
 
     // Live mode - use document intelligence chat API
-    const userEmail = localStorage.getItem('userEmail') || '';
-
     try {
       const response = await fetch(`${DOC_API}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userEmail,
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           query: inputPrompt,
           document_ids: [selectedDocument.id],
@@ -794,10 +786,9 @@ function DataInsights() {
   const fetchDocumentEntities = async (documentId) => {
     if (isDemoMode) return;
 
-    const userEmail = localStorage.getItem('userEmail') || '';
     try {
       const res = await fetch(`${DOC_API}/status/${documentId}?project_id=${selectedProjectId}`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
 
       if (res.ok) {

@@ -6,10 +6,18 @@ from datetime import datetime
 from email.message import EmailMessage
 from uuid import uuid4
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from core.database import db
 from .models import ENEvent, ENAttendee
+
+
+def _owned_event_or_404(event_id):
+    """Fetch the event only if it belongs to the authenticated user - a
+    plain ENEvent.query.get() would let any logged-in user read/modify any
+    other user's events just by guessing/enumerating event_id."""
+    event = ENEvent.query.filter_by(event_id=event_id, user_id=g.user_id).first()
+    return event
 
 
 # =============================================================================
@@ -17,8 +25,7 @@ from .models import ENEvent, ENAttendee
 # =============================================================================
 
 def list_events():
-    user_id = request.args.get("user_id", "anonymous")
-    events = ENEvent.query.filter_by(user_id=user_id).order_by(ENEvent.created_at.desc()).all()
+    events = ENEvent.query.filter_by(user_id=g.user_id).order_by(ENEvent.created_at.desc()).all()
     return jsonify({"success": True, "events": [e.to_dict() for e in events]}), 200
 
 
@@ -30,7 +37,7 @@ def create_event():
 
     event = ENEvent(
         event_id=str(uuid4()),
-        user_id=data.get("user_id", "anonymous"),
+        user_id=g.user_id,
         name=name,
         description=data.get("description"),
         date=data.get("date"),
@@ -46,14 +53,14 @@ def create_event():
 # =============================================================================
 
 def list_attendees(event_id):
-    event = ENEvent.query.get(event_id)
+    event = _owned_event_or_404(event_id)
     if not event:
         return jsonify({"success": False, "error": "Event not found"}), 404
     return jsonify({"success": True, "attendees": [a.to_dict() for a in event.attendees]}), 200
 
 
 def upload_attendees(event_id):
-    event = ENEvent.query.get(event_id)
+    event = _owned_event_or_404(event_id)
     if not event:
         return jsonify({"success": False, "error": "Event not found"}), 404
 
@@ -86,8 +93,15 @@ def upload_attendees(event_id):
     }), 201
 
 
-def update_attendee_notes(attendee_id):
+def _owned_attendee_or_404(attendee_id):
     attendee = ENAttendee.query.get(attendee_id)
+    if not attendee or attendee.event.user_id != g.user_id:
+        return None
+    return attendee
+
+
+def update_attendee_notes(attendee_id):
+    attendee = _owned_attendee_or_404(attendee_id)
     if not attendee:
         return jsonify({"success": False, "error": "Attendee not found"}), 404
 
@@ -99,7 +113,7 @@ def update_attendee_notes(attendee_id):
 
 
 def update_attendee_followup_date(attendee_id):
-    attendee = ENAttendee.query.get(attendee_id)
+    attendee = _owned_attendee_or_404(attendee_id)
     if not attendee:
         return jsonify({"success": False, "error": "Attendee not found"}), 404
 
@@ -121,7 +135,7 @@ def _terms(text: str):
 
 
 def get_recommendations(event_id):
-    event = ENEvent.query.get(event_id)
+    event = _owned_event_or_404(event_id)
     if not event:
         return jsonify({"success": False, "error": "Event not found"}), 404
 
@@ -183,7 +197,7 @@ def get_recommendations(event_id):
 # =============================================================================
 
 def send_followup(event_id):
-    event = ENEvent.query.get(event_id)
+    event = _owned_event_or_404(event_id)
     if not event:
         return jsonify({"success": False, "error": "Event not found"}), 404
 

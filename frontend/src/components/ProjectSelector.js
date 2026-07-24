@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import './ProjectSelector.css';
 import { initializeDemoProjects } from '../hooks/useProjectData';
 import { useMode } from '../contexts';
+import { authOptionalHeaders } from '../core/authHeaders';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
@@ -99,7 +100,7 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     try {
       // Fetch all user projects (not filtered by agent)
       const res = await fetch(`${API_URL}/api/projects`, {
-        headers: { 'X-User-Id': userEmail },
+        headers: authOptionalHeaders(),
       });
       if (res.ok) {
         const data = await res.json();

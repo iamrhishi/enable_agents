@@ -8,6 +8,7 @@ import { showToast } from '../core/toast';
 import { formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { useWorkflowContext } from '../hooks';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { useMode } from '../contexts';
 
 // Storage key for state persistence
@@ -165,8 +166,9 @@ function ContentMarketingAgent() {
     }
 
     try {
-      const userId = localStorage.getItem('userEmail') || 'user_001';
-      const response = await fetch(`${API_CONFIG.API_URL}/api/campaigns?username=${encodeURIComponent(userId)}`);
+      const response = await fetch(`${API_CONFIG.API_URL}/api/campaigns`, {
+        headers: authOptionalHeaders(),
+      });
       const data = await response.json();
       if (data.success) {
         setAvailableCampaigns(data.campaigns || []);
@@ -206,7 +208,7 @@ function ContentMarketingAgent() {
       setIsSendingToCampaign(true);
       const response = await fetch(`${API_CONFIG.API_URL}/api/campaigns/${selectedCampaignId}/content`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           email_body: generatedContent.content,
           content_type: contentType,
@@ -279,12 +281,10 @@ function ContentMarketingAgent() {
     // platform project id directly.
     (async () => {
       try {
-        const userId = localStorage.getItem('userEmail') || 'default_user';
         const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/projects`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
-            user_id: userId,
             platform_project_id: selectedProjectId,
             project_name: `Platform project ${selectedProjectId}`,
           }),
@@ -364,6 +364,7 @@ function ContentMarketingAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/documents/upload`, {
         method: 'POST',
+        headers: authOptionalHeaders(),
         body: formData
       });
 
@@ -450,7 +451,7 @@ function ContentMarketingAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/generate-content`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           project_id: cmProjectId,
           channel: selectedChannel,
@@ -511,7 +512,7 @@ function ContentMarketingAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/api/content-marketing/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           project_id: cmProjectId,
           message: inputMessage

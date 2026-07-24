@@ -4,6 +4,7 @@ import { BackButton, Input, Textarea, ConfirmDialog, ProjectSelector, LiveModeHi
 import '../styles/CommunityNetworkAgent.css';
 import { API_CONFIG } from '../config/apiConfig';
 import { useAgentChat } from '../hooks/useAgentChat';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import MessageContent from '../components/MessageContent';
 import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../utils/dateFormat';
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
@@ -92,7 +93,7 @@ function CommunityNetworkAgent() {
 
       const response = await fetch(`${API_CONFIG.API_URL}/simple_search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           query: query,
           data: csvData
@@ -175,7 +176,7 @@ function CommunityNetworkAgent() {
         const jsonFileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '.json');
         const loadResponse = await fetch(`${API_CONFIG.API_URL}/load_json_file`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             file_name: jsonFileName,
             folder_name: 'dataset'
@@ -222,6 +223,7 @@ function CommunityNetworkAgent() {
 
       const response = await fetch(`${API_CONFIG.API_URL}/file_to_json_convert`, {
         method: 'POST',
+        headers: authOptionalHeaders(),
         body: formData
       });
 
@@ -300,7 +302,7 @@ function CommunityNetworkAgent() {
 
       const response = await fetch(`${API_CONFIG.API_URL}/search_suggestions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           prompt: prompt,
           max_tokens: 200,
@@ -345,6 +347,7 @@ function CommunityNetworkAgent() {
 
       const uploadResponse = await fetch(`${API_CONFIG.API_URL}/upload`, {
         method: 'POST',
+        headers: authOptionalHeaders(),
         body: formData
       });
 
@@ -367,7 +370,7 @@ function CommunityNetworkAgent() {
 
         const ragResponse = await fetch(`${API_CONFIG.API_URL}/rag_test`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             query: skillsPrompt,
             file_name: file.name,
@@ -554,7 +557,7 @@ function CommunityNetworkAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/save_user_favorite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           user_id: currentUserId,
           project_id: selectedProjectId,
@@ -582,7 +585,7 @@ function CommunityNetworkAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/get_user_favorites`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           user_id: currentUserId,
           project_id: selectedProjectId
@@ -637,7 +640,7 @@ function CommunityNetworkAgent() {
     try {
       const response = await fetch(`${API_CONFIG.API_URL}/remove_user_favorite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           user_id: currentUserId,
           project_id: selectedProjectId,

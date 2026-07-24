@@ -1,4 +1,4 @@
-﻿from flask import Flask, request, jsonify, redirect
+﻿from flask import Flask, request, jsonify, redirect, g
 import requests
 import sqlite3
 import shutil
@@ -46,6 +46,7 @@ import logging
 
 from core.database import db
 from core.context import ContextStore
+from core.auth import require_auth
 
 # LangChain imports with fallbacks for version compatibility
 try:
@@ -3462,6 +3463,7 @@ def scrape_static_product(url, config):
 
 @app.route('/debug_scrape', methods=['POST'])
 @cross_origin()
+@require_auth
 def debug_scrape():
     """Debug endpoint to see what's actually happening during scraping"""
     try:
@@ -3699,6 +3701,7 @@ def generate(selected_chunks, query):
     return answer
 
 @app.route('/upload', methods=['POST'])
+@require_auth
 def upload_file():
     # Accept folder_name from form data (for file uploads)
     folder_name = request.form.get('folder_name', '').strip()
@@ -3735,6 +3738,7 @@ def upload_file():
 
 @app.route('/scrape_product_info', methods=['POST'])
 @cross_origin()
+@require_auth
 def scrape_product_info():
     """
     Enhanced product scraping API focused on descriptions and size information
@@ -3785,6 +3789,7 @@ def scrape_product_info():
 
 @app.route('/scrape', methods=['POST'])
 @cross_origin()
+@require_auth
 def universal_scraper():
     """
     Universal scraping API - now includes enhanced product scraping.
@@ -3872,6 +3877,7 @@ def universal_scraper():
 
 @app.route('/search_suggestions', methods=['POST'])
 @cross_origin()
+@require_auth
 def openai_chat():
     """Simple OpenAI chat endpoint for matchmaking"""
     try:
@@ -3951,6 +3957,7 @@ def openai_chat():
 #     return jsonify({"answer": answer})  # Always return a JSON object
 
 @app.route('/rag_test', methods=['POST'])
+@require_auth
 def rag_test():
     try:
         data = request.get_json()
@@ -4026,6 +4033,7 @@ def rag_test():
 
 @app.route('/enterprise_chat', methods=['POST', 'OPTIONS'])
 @cross_origin()
+@require_auth
 def enterprise_chat():
     """
     Enterprise chat API that collects business context from the user.
@@ -4151,6 +4159,7 @@ def enterprise_chat():
 
 @app.route('/chat_api', methods=['POST', 'OPTIONS'])
 @cross_origin()  # Allow CORS for this endpoint
+@require_auth
 def chat_api():
     import glob
     data = request.get_json()
@@ -4203,6 +4212,7 @@ def chat_api():
     return jsonify({"answer": answer})
 
 @app.route('/save-prompt', methods=['POST'])
+@require_auth
 def save_prompt():
     data = request.get_json()
     prompt_id = str(uuid4())  # Generate a unique ID for the prompt
@@ -4226,6 +4236,7 @@ def save_prompt():
     return jsonify({"message": "Prompt saved successfully", "id": prompt_id})
 
 @app.route('/previous-prompts', methods=['GET'])
+@require_auth
 def previous_prompts():
     if os.path.exists(PROMPTS_FILE):
         with open(PROMPTS_FILE, 'r') as file:
@@ -4236,6 +4247,7 @@ def previous_prompts():
     return jsonify({"prompts": prompts})
 
 @app.route('/yfinance', methods=['POST'])
+@require_auth
 def yfinance_test():
     data = request.get_json()
     symbol = data.get('stock')
@@ -4299,6 +4311,7 @@ def yfinance_test():
     return jsonify(financial_KPIs)
 
 @app.route('/generate-requirements', methods=['POST'])
+@require_auth
 def generate_requirements():
     openai.api_key = get_credentials()
 
@@ -4369,6 +4382,7 @@ def generate_requirements():
 
 @app.route('/simple_search', methods=['POST'])
 @cross_origin()
+@require_auth
 def simple_search():
     """Enhanced search endpoint that handles both regular searches and special commands"""
     try:
@@ -4567,6 +4581,7 @@ def simple_search():
 
 @app.route('/save_user_favorite', methods=['POST'])
 @cross_origin()
+@require_auth
 def save_user_favorite():
     """Save a profile to user's favorites"""
     try:
@@ -4628,6 +4643,7 @@ def save_user_favorite():
 
 @app.route('/get_user_favorites', methods=['POST'])
 @cross_origin()
+@require_auth
 def get_user_favorites():
     """Get user's saved favorites"""
     try:
@@ -4655,6 +4671,7 @@ def get_user_favorites():
 
 @app.route('/remove_user_favorite', methods=['POST'])
 @cross_origin()
+@require_auth
 def remove_user_favorite():
     """Remove a profile from user's favorites"""
     try:
@@ -4696,6 +4713,7 @@ def remove_user_favorite():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/save-requirements', methods=['POST'])
+@require_auth
 def save_requirements():
     data = request.get_json()
     requirements = data.get('requirements', [])
@@ -4845,6 +4863,7 @@ def google_auth_start():
 
 
 @app.route('/emails/send_via_gmail', methods=['POST'])
+@require_auth
 def send_via_gmail():
     data = request.get_json()
     email = data.get('user_email')
@@ -4888,6 +4907,7 @@ def send_via_gmail():
 
 
 @app.route('/file_to_json_convert', methods=['POST'])
+@require_auth
 def convert_file():
     """Main endpoint to convert CSV/XLSX files to JSON"""
     
@@ -4966,6 +4986,7 @@ def convert_file():
 
 @app.route('/enrich_with_openai', methods=['POST'])
 @cross_origin()
+@require_auth
 def enrich_with_openai():
     """API endpoint to enrich JSON data with required skills using OpenAI"""
     try:
@@ -4998,6 +5019,7 @@ def enrich_with_openai():
     
 
 @app.route('/chrome_history', methods=['GET'])
+@require_auth
 def get_chrome_history():
     """API endpoint to get Chrome browser history with better error handling"""
     try:
@@ -5017,6 +5039,7 @@ def get_chrome_history():
         }), 500
 
 @app.route('/chrome_status', methods=['GET'])
+@require_auth
 def check_chrome_status():
     """Check if Chrome is running"""
     try:
@@ -5050,6 +5073,7 @@ def check_chrome_status():
         })
     
 @app.route('/check_existing_file', methods=['POST'])
+@require_auth
 def check_existing_file():
     try:
         data = request.json
@@ -5085,6 +5109,7 @@ def check_existing_file():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/save_json_file', methods=['POST'])
+@require_auth
 def save_json_file():
     try:
         data = request.json
@@ -5112,6 +5137,7 @@ def save_json_file():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/load_json_file', methods=['POST'])
+@require_auth
 def load_json_file():
     try:
         data = request.json
@@ -5270,6 +5296,7 @@ def save_tools_landscape_for_user(user_id, tools_data):
 
 @app.route('/get_tools_landscape', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_tools_landscape():
     """
     GET API to read tools landscape from tools_landscape.json and return
@@ -5302,6 +5329,7 @@ import openai
 
 @app.route('/recommend_agents', methods=['POST'])
 @cross_origin()
+@require_auth
 def recommend_agents():
     """
     Recommend agents/modules based on user's tools, industry/domain, role, department/company context, and business need.
@@ -5737,6 +5765,7 @@ def process_documents_with_kg_rag(documents, nodes, edges, query, include_contex
 
 @app.route('/extract-with-kg-rag', methods=['POST'])
 @cross_origin()
+@require_auth
 def extract_with_kg_rag():
     """API endpoint to extract information from documents using Knowledge Graph and RAG"""
     try:
@@ -5771,6 +5800,7 @@ def extract_with_kg_rag():
 
 @app.route('/clear-kg-rag-cache', methods=['POST'])
 @cross_origin()
+@require_auth
 def clear_kg_rag_cache():
     """Clear the KG+RAG cache to free up memory"""
     try:
@@ -5810,6 +5840,7 @@ def clear_kg_rag_cache():
 
 @app.route('/kg-rag-cache-status', methods=['GET'])
 @cross_origin()
+@require_auth
 def kg_rag_cache_status():
     """Get current cache status and statistics"""
     try:
@@ -5893,6 +5924,7 @@ from agents.content_marketing.models import CMProject, CMDocument, CMKnowledgeGr
 
 @app.route('/api/content-marketing/projects', methods=['POST'])
 @cross_origin()
+@require_auth
 def create_content_marketing_project():
     """Create a new content marketing project"""
     return cm_service.create_project()
@@ -5900,6 +5932,7 @@ def create_content_marketing_project():
 
 @app.route('/api/content-marketing/projects/<project_id>', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_content_marketing_project(project_id):
     """Get project details"""
     return cm_service.get_project(project_id)
@@ -5907,6 +5940,7 @@ def get_content_marketing_project(project_id):
 
 @app.route('/api/content-marketing/documents/upload', methods=['POST'])
 @cross_origin()
+@require_auth
 def upload_content_marketing_documents():
     """Upload documents to project and build knowledge graph"""
     try:
@@ -5915,7 +5949,7 @@ def upload_content_marketing_documents():
             return jsonify({'success': False, 'error': 'project_id required'}), 400
 
         project = CMProject.query.filter_by(project_id=project_id).first()
-        if not project:
+        if not project or project.user_id != g.user_id:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
 
         uploaded_files = request.files.getlist('files')
@@ -5994,6 +6028,7 @@ def upload_content_marketing_documents():
 
 @app.route('/api/content-marketing/documents/<project_id>', methods=['GET'])
 @cross_origin()
+@require_auth
 def list_content_marketing_documents(project_id):
     """List all documents in a project"""
     return cm_service.list_documents(project_id)
@@ -6001,6 +6036,7 @@ def list_content_marketing_documents(project_id):
 
 @app.route('/api/content-marketing/generate-content', methods=['POST'])
 @cross_origin()
+@require_auth
 def generate_content_marketing():
     """Generate marketing content for specified channel"""
     try:
@@ -6014,7 +6050,7 @@ def generate_content_marketing():
             return jsonify({'success': False, 'error': 'project_id required'}), 400
 
         project = CMProject.query.filter_by(project_id=project_id).first()
-        if not project:
+        if not project or project.user_id != g.user_id:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
 
         docs = CMDocument.query.filter_by(project_id=project_id).all()
@@ -6077,6 +6113,7 @@ Generate compelling marketing {content_type} content."""
 
 @app.route('/api/content-marketing/chat', methods=['POST'])
 @cross_origin()
+@require_auth
 def content_marketing_chat():
     """Conversational endpoint for iterative content refinement"""
     try:
@@ -6088,7 +6125,7 @@ def content_marketing_chat():
             return jsonify({'success': False, 'error': 'project_id and message required'}), 400
 
         project = CMProject.query.filter_by(project_id=project_id).first()
-        if not project:
+        if not project or project.user_id != g.user_id:
             return jsonify({'success': False, 'error': 'Project not found'}), 404
 
         docs = CMDocument.query.filter_by(project_id=project_id).limit(10).all()
@@ -6130,6 +6167,7 @@ Provide a helpful, concise response focused on marketing strategy and content im
 
 @app.route('/api/content-marketing/knowledge-graph/<project_id>', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_content_marketing_knowledge_graph(project_id):
     """Retrieve knowledge graph for visualization"""
     return cm_service.get_knowledge_graph(project_id)
@@ -6190,6 +6228,7 @@ def get_google_credentials():
 
 @app.route('/connect-google-business', methods=['POST'])
 @cross_origin()
+@require_auth
 def connect_google_business():
     """
     Step 1: Save OAuth credentials and generate authorization URL
@@ -6352,6 +6391,7 @@ def google_auth_callback():
 
 @app.route('/get-google-business-data', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_google_business_data():
     """
     Fetch Google Business information using saved credentials
@@ -6384,6 +6424,7 @@ def get_google_business_data():
 
 @app.route('/get-requirements-with-google-data', methods=['POST'])
 @cross_origin()
+@require_auth
 def get_requirements_with_google_data():
     """
     Combined endpoint to get user requirements along with Google Business data
@@ -6438,6 +6479,7 @@ def get_requirements_with_google_data():
 @app.route('/search-google-businesses', methods=['POST'])
 @app.route('/api/search-google-businesses', methods=['POST'])
 @cross_origin()
+@require_auth
 def search_google_businesses():
     """
     Search for Google businesses using Google Locations API
@@ -6540,6 +6582,7 @@ def _generate_google_auth_url(client_id: str, redirect_uri: str) -> str:
 
 @app.route('/export-google-sheet', methods=['POST'])
 @cross_origin()
+@require_auth
 def export_google_sheet():
     """
     Create and populate a Google Sheet using OAuth refresh token.
@@ -6740,6 +6783,7 @@ def _get_google_access_token(client_id: str, client_secret: str, redirect_uri: s
 
 @app.route('/api/email-extraction-usage', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_email_extraction_usage():
     """Return extraction usage summary for a username."""
     try:
@@ -6836,6 +6880,7 @@ Do not add any explanation, just return the JSON.
 
 @app.route('/api/generate-email', methods=['POST'])
 @cross_origin()
+@require_auth
 def generate_email():
     """Generate a personalized email using an LLM."""
     try:
@@ -6856,6 +6901,7 @@ def generate_email():
 @app.route('/send-bulk-emails', methods=['POST'])
 @app.route('/api/send-bulk-emails', methods=['POST', 'OPTIONS'])
 @cross_origin()
+@require_auth
 def send_bulk_emails():
     """
     Send emails to a list of extracted businesses.
@@ -6871,9 +6917,14 @@ def send_bulk_emails():
         subject = data.get('subject')
         body = data.get('body')
         businesses = data.get('businesses', [])
-        user_email = data.get('userEmail')
+        # The sender identity (which Google OAuth token gets used, whose
+        # name the campaign is filed under) must come from the verified
+        # session, never from the request body - otherwise any caller could
+        # supply someone else's email and send through their connected
+        # Gmail account without their consent.
+        user_email = g.user_id
         campaign_name = data.get('campaignName', 'Untitled Campaign')
-        username = _normalize_username(data.get('username') or data.get('userId') or data.get('firstName'))
+        username = _normalize_username(g.user_id)
 
         if not user_email or '@' not in str(user_email):
             return jsonify({'success': False, 'error': 'Registered user email is required to send campaign mail.'}), 400
@@ -7103,17 +7154,13 @@ def handle_email_reply():
 
 @app.route('/api/campaigns', methods=['GET'])
 @cross_origin()
+@require_auth
 def list_campaigns():
     """Lightweight campaign list for cross-agent pickers (e.g. Content
     Marketing's 'Send to Email Campaign'). Distinct from /api/campaigns/stats,
     which includes reply-rate analytics this picker doesn't need."""
     try:
-        username = request.args.get('username') or request.args.get('userId') or request.args.get('email')
-        username = _normalize_username(username) if username else None
-
-        query = EmailCampaign.query
-        if username:
-            query = query.filter_by(username=username)
+        query = EmailCampaign.query.filter_by(username=g.user_id)
         campaigns = query.order_by(EmailCampaign.created_at.desc()).all()
 
         results = [{
@@ -7133,12 +7180,13 @@ def list_campaigns():
 
 @app.route('/api/campaigns/<campaign_id>/content', methods=['PUT'])
 @cross_origin()
+@require_auth
 def update_campaign_content(campaign_id):
     """Update a campaign's email body - used by Content Marketing's
     'Send to Email Campaign' to hand off generated content."""
     try:
         campaign = EmailCampaign.query.get(campaign_id)
-        if not campaign:
+        if not campaign or campaign.username != g.user_id:
             return jsonify({'success': False, 'error': 'Campaign not found'}), 404
 
         data = request.get_json() or {}
@@ -7157,20 +7205,17 @@ def update_campaign_content(campaign_id):
 
 @app.route('/api/campaigns/stats', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_campaign_stats():
     """Returns analytics for campaigns filtered by user."""
     try:
         _ensure_email_usage_tables()
         _ensure_campaign_reply_tracking_columns()
 
-        username = request.args.get('username') or request.args.get('userId') or request.args.get('email')
-        username = _normalize_username(username) if username else None
+        username = g.user_id
         user_email = request.args.get('email')
-        
-        if username:
-            campaigns = EmailCampaign.query.filter_by(username=username).order_by(EmailCampaign.created_at.desc()).all()
-        else:
-            campaigns = EmailCampaign.query.order_by(EmailCampaign.created_at.desc()).all()
+
+        campaigns = EmailCampaign.query.filter_by(username=username).order_by(EmailCampaign.created_at.desc()).all()
 
         # Keep the stats endpoint fast. Reply sync is available through the
         # dedicated check-replies route so the dashboard does not block on inbox scans.
@@ -7204,6 +7249,7 @@ def get_campaign_stats():
 
 @app.route('/api/campaigns/<campaign_id>/recipients', methods=['GET'])
 @cross_origin()
+@require_auth
 def get_campaign_recipients(campaign_id):
     """Returns recipients for a specific campaign."""
     try:
@@ -7211,11 +7257,13 @@ def get_campaign_recipients(campaign_id):
         _ensure_campaign_reply_tracking_columns()
 
         campaign = EmailCampaign.query.get(campaign_id)
-        if campaign:
-            try:
-                _sync_replies_for_campaign(campaign)
-            except Exception as sync_err:
-                print(f"[AUTO SYNC] Recipient view sync skipped for {campaign_id}: {sync_err}")
+        if not campaign or campaign.username != g.user_id:
+            return jsonify({'success': False, 'error': 'Campaign not found'}), 404
+
+        try:
+            _sync_replies_for_campaign(campaign)
+        except Exception as sync_err:
+            print(f"[AUTO SYNC] Recipient view sync skipped for {campaign_id}: {sync_err}")
 
         recipients = EmailCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
         results = [{
@@ -7291,6 +7339,8 @@ def rank_campaign_vendors(campaign_id):
         _ensure_campaign_reply_tracking_columns()
 
         campaign = EmailCampaign.query.get_or_404(campaign_id)
+        if campaign.username != trusted_uid:
+            return jsonify({'success': False, 'error': 'Campaign not found'}), 404
         try:
             _sync_replies_for_campaign(campaign, fallback_email=user_email, fallback_username=trusted_uid)
         except Exception as sync_err:
@@ -7412,12 +7462,15 @@ def rank_campaign_vendors(campaign_id):
 
 @app.route('/api/campaigns/<campaign_id>/check-replies', methods=['POST'])
 @cross_origin()
+@require_auth
 def check_campaign_replies(campaign_id):
     """Checks Gmail API for any replies to the campaign's sent emails."""
     try:
         _ensure_email_usage_tables()
         _ensure_campaign_reply_tracking_columns()
         campaign = EmailCampaign.query.get_or_404(campaign_id)
+        if campaign.username != g.user_id:
+            return jsonify({'success': False, 'error': 'Campaign not found'}), 404
 
         payload = request.get_json(silent=True) or {}
         sender_email = payload.get('userEmail')
@@ -7433,6 +7486,7 @@ def check_campaign_replies(campaign_id):
 
 @app.route('/api/enrich-businesses-with-emails', methods=['POST'])
 @cross_origin()
+@require_auth
 def enrich_businesses_with_emails():
     """
     Enrich business data with email addresses using scrap.io API
@@ -7442,9 +7496,10 @@ def enrich_businesses_with_emails():
         print(f"\n[EMAIL_ENRICHMENT] ========== REQUEST START ==========")
         data = request.get_json()
         businesses = data.get('businesses', [])
-        username = _normalize_username(
-            data.get('username') or data.get('userId') or data.get('firstName')
-        )
+        # Quota is tracked per-username; must come from the verified session,
+        # not the request body, or a caller could rotate fake usernames to
+        # bypass their quota entirely (each "new" username starts fresh).
+        username = _normalize_username(g.user_id)
         scrap_io_api_key = os.getenv('SCRAP_IO_API_KEY')
         print(f"[EMAIL_ENRICHMENT] Processing {len(businesses)} businesses for user: {username}")
 
@@ -7772,6 +7827,7 @@ def enrich_businesses_with_emails():
 
 @app.route('/api/enrich-businesses-with-linkedin', methods=['POST'])
 @cross_origin()
+@require_auth
 def enrich_businesses_with_linkedin():
     try:
         data = request.get_json()
@@ -7824,6 +7880,7 @@ def health_check():
 
 
 @app.route('/test-connection', methods=['GET'])
+@require_auth
 def test_connection():
     """Frontend compatibility health endpoint."""
     return jsonify({
@@ -7883,6 +7940,7 @@ def save_project():
 
 @app.route('/api/score-leads', methods=['POST', 'OPTIONS'])
 @cross_origin()
+@require_auth
 def score_leads():
     """Score leads with a hybrid pipeline: embeddings rank the full list and the LLM refines only the top matches."""
     if request.method == 'OPTIONS':
@@ -8314,6 +8372,7 @@ def delete_saved_project(project_id):
 
 @app.route('/api/admin/cleanup-orphaned-data', methods=['POST'])
 @cross_origin()
+@require_auth
 def cleanup_orphaned_data():
     """
     Delete all orphaned data that doesn't belong to a platform Project.
@@ -8570,8 +8629,9 @@ def _extract_sales_helper_text(file_path, ext):
 
 @app.route('/api/sales-helper/documents', methods=['GET'])
 @cross_origin()
+@require_auth
 def list_sales_helper_documents():
-    user_id = request.args.get('user_id', 'anonymous')
+    user_id = g.user_id
     docs = _load_sales_helper_docs(user_id)
     response_docs = [
         {k: v for k, v in d.items() if k not in ('file_path', 'extracted_text')}
@@ -8582,6 +8642,7 @@ def list_sales_helper_documents():
 
 @app.route('/api/sales-helper/documents', methods=['POST'])
 @cross_origin()
+@require_auth
 def upload_sales_helper_document():
     """Upload a product catalog document for prospect matching."""
     try:
@@ -8589,7 +8650,7 @@ def upload_sales_helper_document():
             return jsonify({'success': False, 'error': 'No file provided'}), 400
 
         file = request.files['file']
-        user_id = request.form.get('user_id', 'anonymous')
+        user_id = g.user_id
         doc_type = request.form.get('type', 'product_catalog')
 
         filename = secure_filename(file.filename)
@@ -8643,9 +8704,10 @@ def _find_sales_helper_doc(doc_id, user_id):
 
 @app.route('/api/sales-helper/documents/<doc_id>/download', methods=['GET'])
 @cross_origin()
+@require_auth
 def download_sales_helper_document(doc_id):
     from flask import send_file
-    user_id = request.args.get('user_id', 'anonymous')
+    user_id = g.user_id
     doc = _find_sales_helper_doc(doc_id, user_id)
     if not doc or not os.path.exists(doc.get('file_path', '')):
         return jsonify({'error': 'Document not found'}), 404
@@ -8654,9 +8716,10 @@ def download_sales_helper_document(doc_id):
 
 @app.route('/api/sales-helper/documents/<doc_id>/view', methods=['GET'])
 @cross_origin()
+@require_auth
 def view_sales_helper_document(doc_id):
     from flask import send_file
-    user_id = request.args.get('user_id', 'anonymous')
+    user_id = g.user_id
     doc = _find_sales_helper_doc(doc_id, user_id)
     if not doc or not os.path.exists(doc.get('file_path', '')):
         return jsonify({'error': 'Document not found'}), 404
@@ -8665,9 +8728,10 @@ def view_sales_helper_document(doc_id):
 
 @app.route('/api/sales-helper/documents/<doc_id>', methods=['DELETE'])
 @cross_origin()
+@require_auth
 def delete_sales_helper_document(doc_id):
     try:
-        user_id = request.args.get('user_id') or (request.get_json(silent=True) or {}).get('user_id', 'anonymous')
+        user_id = g.user_id
         docs = _load_sales_helper_docs(user_id)
         remaining = [d for d in docs if d['id'] != doc_id]
         removed = [d for d in docs if d['id'] == doc_id]
@@ -8682,12 +8746,13 @@ def delete_sales_helper_document(doc_id):
 
 @app.route('/api/sales-helper/match-prospects', methods=['POST'])
 @cross_origin()
+@require_auth
 def match_sales_helper_prospects():
     """Use the uploaded product catalog(s) + a leads list to generate real,
     LLM-based prospect-fit analysis (not canned demo output)."""
     try:
         data = request.get_json() or {}
-        user_id = data.get('user_id', 'anonymous')
+        user_id = g.user_id
         leads = data.get('leads') or []
         document_ids = data.get('document_ids') or []
 

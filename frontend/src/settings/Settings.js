@@ -6,6 +6,7 @@ import { showConfirm } from '../components/ConfirmDialog';
 import Header from '../core/Header';
 import Skeleton from '../components/SkeletonLoader';
 import { useMode } from '../contexts';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -193,9 +194,7 @@ function Settings() {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/settings?include_values=true`, {
-        headers: {
-          'X-User-Id': getUserId(),
-        },
+        headers: authOptionalHeaders(),
       });
       const data = await response.json();
       setSettings(data.settings);
@@ -215,10 +214,7 @@ function Settings() {
     try {
       const response = await fetch(`${API_URL}/api/settings`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': getUserId(),
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ category, key, value }),
       });
 
@@ -256,9 +252,7 @@ function Settings() {
     try {
       const response = await fetch(`${API_URL}/api/settings/${category}/${key}`, {
         method: 'DELETE',
-        headers: {
-          'X-User-Id': getUserId(),
-        },
+        headers: authOptionalHeaders(),
       });
 
       if (response.ok) {
@@ -277,10 +271,7 @@ function Settings() {
     try {
       const response = await fetch(`${API_URL}/api/settings/test-connection`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': getUserId(),
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ category, key }),
       });
 
@@ -350,10 +341,7 @@ function Settings() {
     try {
       await fetch(`${API_URL}/api/context`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': getUserId(),
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           agent_id: 'user_profile',
           data_type: 'business_context',

@@ -1,5 +1,5 @@
 """Executive Assistant Agent — Service layer."""
-from flask import request, jsonify
+from flask import request, jsonify, g
 from datetime import datetime
 import uuid
 
@@ -8,8 +8,10 @@ from .models import ExecTask, ExecReminder, ExecStakeholder
 
 
 def get_user_id() -> str:
-    """Get authenticated user ID from request headers."""
-    return request.headers.get("X-User-Id", "")
+    """Authenticated user ID, set by the @require_auth decorator from a
+    verified session token - never trust a client-supplied X-User-Id header,
+    it's spoofable by any caller."""
+    return getattr(g, "user_id", "") or ""
 
 
 # =============================================================================
