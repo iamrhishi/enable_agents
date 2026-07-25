@@ -85,7 +85,9 @@ def invite_member():
     if TeamMember.query.filter_by(team_id=team.team_id, user_id=invite_email).first():
         return jsonify({'error': 'Already a team member'}), 400
 
-    # Auto-accept invite for now (real email flow later)
+    # Auto-accept for now (no invite-acceptance flow yet), but still send a
+    # real notification email - member creation and email delivery are
+    # reported separately so the caller never sees a false "sent" status.
     new_member = TeamMember(
         member_id=str(uuid.uuid4()),
         team_id=team.team_id,
@@ -96,7 +98,26 @@ def invite_member():
     db.session.add(new_member)
     db.session.commit()
 
-    return jsonify({'message': 'Member added', 'member': new_member.to_dict()})
+    from app import send_platform_email
+
+    inviter_name = user_email.split('@')[0]
+    subject = f"{inviter_name} added you to their team on Enable Agents"
+    body = (
+        f"Hi,\n\n"
+        f"{inviter_name} ({user_email}) has added you as a {role} on their "
+        f"team \"{team.name}\" on Enable Agents.\n\n"
+        f"Sign in at https://agents.enableyou.co with this email address "
+        f"({invite_email}) to get started.\n\n"
+        f"Best regards,\nEnable Agents"
+    )
+    email_sent, email_error = send_platform_email(user_email, invite_email, subject, body)
+
+    return jsonify({
+        'message': 'Member added' + ('' if email_sent else ' (invite email could not be sent)'),
+        'member': new_member.to_dict(),
+        'emailSent': email_sent,
+        'emailError': email_error,
+    })
 
 
 @team_bp.route('/api/team/members/<member_id>', methods=['DELETE'])

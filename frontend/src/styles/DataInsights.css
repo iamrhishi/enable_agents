@@ -1129,6 +1129,18 @@
   border-right: 8px solid var(--color-surface);
 }
 
+/* ReactMarkdown-rendered elements must inherit the bubble's text color -
+   without this, the global `p { color: var(--color-text) }` base style
+   (same dark navy as the user bubble's background) makes user messages
+   unreadable. */
+.di-message-content p,
+.di-message-content li,
+.di-message-content strong,
+.di-message-content em,
+.di-message-content code {
+  color: inherit;
+}
+
 .di-message-content p {
   margin: 0 0 var(--space-2);
   line-height: 1.5;
@@ -1227,8 +1239,13 @@
   color: var(--color-accent);
 }
 
-.di-chat-input-field {
+textarea.di-chat-input-field {
   flex: 1;
+  /* Overrides the sitewide .input { max-width: var(--input-max-width) }
+     rule (400px) - that's fine for short form fields but was capping this
+     full-width chat composer, leaving a large empty gap and making the
+     send button look off-center instead of flush right. */
+  max-width: none;
   border: none !important;
   background: transparent !important;
   resize: none;

@@ -189,6 +189,12 @@
   max-width: 100%;
 }
 
+.reminder-fallback-note {
+  padding: 0 var(--space-5) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
 /* Footer */
 .reminder-modal-footer {
   display: flex;

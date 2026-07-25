@@ -8,6 +8,7 @@ import {
   sendReminder,
   buildReminderMessage,
   getAvailableChannels,
+  openMailtoDraft,
   REMINDER_CHANNELS,
   CHANNEL_INFO,
 } from '../services/reminderService';
@@ -24,6 +25,7 @@ function ReminderModal({
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [customMessage, setCustomMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [failedDraft, setFailedDraft] = useState(null);
 
   // Get available channels based on recipient contact info
   const availableChannels = useMemo(() => {
@@ -46,6 +48,7 @@ function ReminderModal({
     }
 
     setSending(true);
+    setFailedDraft(null);
 
     const subject = context?.taskTitle
       ? `Reminder: ${context.taskTitle}`
@@ -77,12 +80,22 @@ function ReminderModal({
       onClose();
     } else {
       showToast(result.message, 'error');
+      if (result.offerMailto && selectedChannel === REMINDER_CHANNELS.EMAIL) {
+        setFailedDraft({ recipient, subject, message });
+      }
     }
+  };
+
+  const handleOpenMailto = () => {
+    if (!failedDraft) return;
+    openMailtoDraft(failedDraft);
+    setFailedDraft(null);
   };
 
   const handleClose = () => {
     setCustomMessage('');
     setSelectedChannel(null);
+    setFailedDraft(null);
     onClose();
   };
 
@@ -153,18 +166,30 @@ function ReminderModal({
           </div>
         </div>
 
+        {failedDraft && (
+          <div className="reminder-fallback-note">
+            Couldn't send automatically. You can open a draft in your own email client instead.
+          </div>
+        )}
+
         <div className="reminder-modal-footer">
           <button type="button" className="btn-secondary" onClick={handleClose}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleSend}
-            disabled={sending || availableChannels.length === 0}
-          >
-            {sending ? 'Sending...' : 'Send'}
-          </button>
+          {failedDraft ? (
+            <button type="button" className="btn-primary" onClick={handleOpenMailto}>
+              Open in email client
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSend}
+              disabled={sending || availableChannels.length === 0}
+            >
+              {sending ? 'Sending...' : 'Send'}
+            </button>
+          )}
         </div>
       </div>
     </div>

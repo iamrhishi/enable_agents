@@ -140,7 +140,15 @@ function Team() {
       });
 
       if (res.ok) {
-        showToast('Invitation sent', 'success');
+        const data = await res.json();
+        if (data.emailSent) {
+          showToast('Member added and invitation email sent', 'success');
+        } else {
+          showToast(
+            `Member added, but the invite email could not be sent${data.emailError ? `: ${data.emailError}` : ''}`,
+            'warning'
+          );
+        }
         setInviteEmail('');
         setShowInviteModal(false);
         fetchTeam();

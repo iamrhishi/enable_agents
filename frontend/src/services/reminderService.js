@@ -90,44 +90,55 @@ export async function sendReminder({ channel, recipient, subject, message, isDem
 }
 
 /**
- * Send email reminder - tries Gmail API first, falls back to mailto
+ * Send email reminder via the backend (Gmail API if the sender has
+ * connected their Google account, else system SMTP). Never silently opens
+ * a mailto: and claims success - a real send either happened or it didn't,
+ * and the caller needs to know which so it can show an honest toast.
  */
 async function sendEmailReminder({ recipient, subject, message }) {
-  const userEmail = localStorage.getItem('userEmail');
+  try {
+    const response = await fetch(`${API_CONFIG.API_URL}/emails/send_via_gmail`, {
+      method: 'POST',
+      headers: authJsonHeaders(),
+      body: JSON.stringify({
+        to: recipient.email,
+        subject,
+        body: message,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
 
-  // Try Gmail API first
-  if (userEmail) {
-    try {
-      const response = await fetch(`${API_CONFIG.API_URL}/emails/send_via_gmail`, {
-        method: 'POST',
-        headers: authJsonHeaders(),
-        body: JSON.stringify({
-          user_email: userEmail,
-          to: recipient.email,
-          subject,
-          body: message,
-        }),
-      });
-      if (response.ok) {
-        return {
-          success: true,
-          message: `Email sent to ${recipient.name}`,
-        };
-      }
-    } catch (error) {
-      console.error('Gmail API failed, falling back to mailto:', error);
+    if (response.ok) {
+      return {
+        success: true,
+        message: `Email sent to ${recipient.name}`,
+      };
     }
-  }
 
-  // Fallback to mailto link
+    return {
+      success: false,
+      message: data.error || `Could not send email to ${recipient.name}`,
+      offerMailto: true,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Could not reach the server: ${error.message}`,
+      offerMailto: true,
+    };
+  }
+}
+
+/**
+ * Manual fallback: open the recipient's email client with a pre-filled
+ * draft. Only ever invoked explicitly by the user (e.g. clicking "Open in
+ * email client" after a failed send) - never auto-triggered, since it
+ * requires the user to click Send themselves and shouldn't be reported as
+ * an automatic reminder having gone out.
+ */
+export function openMailtoDraft({ recipient, subject, message }) {
   const mailto = `mailto:${encodeURIComponent(recipient.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
   window.location.href = mailto;
-
-  return {
-    success: true,
-    message: `Opening email to ${recipient.name}...`,
-    fallback: true,
-  };
 }
 
 /**

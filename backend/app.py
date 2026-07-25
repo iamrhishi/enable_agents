@@ -4862,48 +4862,89 @@ def google_auth_start():
     return jsonify(out)
 
 
+def send_platform_email(sender_user_id, to_email, subject, body):
+    """
+    Send a real email on behalf of sender_user_id: tries their connected
+    Gmail account first (refreshing the token if needed), then falls back
+    to system SMTP (EMAIL_USER/EMAIL_PASS) if Gmail isn't connected or
+    fails. Returns (success: bool, error: str | None) - never raises, so
+    callers can always show the user an accurate status instead of
+    silently pretending an email went out.
+    """
+    token_record = GoogleOAuthToken.query.filter_by(username=sender_user_id).first()
+
+    if token_record and token_record.token:
+        try:
+            creds = Credentials(
+                token=token_record.token,
+                refresh_token=token_record.refresh_token,
+                token_uri=token_record.token_uri,
+                client_id=token_record.client_id,
+                client_secret=token_record.client_secret,
+                scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES,
+            )
+            if creds.refresh_token and (not creds.valid or creds.expired):
+                creds.refresh(Request())
+                token_record.token = creds.token
+                db.session.commit()
+
+            service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
+            message = EmailMessage()
+            message.set_content(body)
+            message['To'] = to_email
+            message['From'] = sender_user_id
+            message['Subject'] = subject
+            encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            service.users().messages().send(userId="me", body={'raw': encoded_message}).execute()
+            return True, None
+        except Exception as gmail_error:
+            gmail_error_summary = str(gmail_error).split('.', 1)[0][:200]
+            print(f"[send_platform_email] Gmail send failed for {sender_user_id}, trying SMTP: {gmail_error}")
+    else:
+        gmail_error_summary = None
+
+    # SMTP fallback (or primary path if Gmail was never connected)
+    email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    email_port = int(os.getenv('EMAIL_PORT', 587))
+    email_user = os.getenv('EMAIL_USER')
+    email_pass = os.getenv('EMAIL_PASS')
+    if not email_user or not email_pass:
+        if gmail_error_summary:
+            return False, f'Gmail send failed ({gmail_error_summary}) and SMTP fallback is unavailable.'
+        return False, 'No email account connected. Connect Google in Settings, or ask an admin to configure SMTP.'
+
+    try:
+        smtp_server = smtplib.SMTP(email_host, email_port, timeout=15)
+        smtp_server.starttls()
+        smtp_server.login(email_user, email_pass)
+        message = EmailMessage()
+        message.set_content(body)
+        message['To'] = to_email
+        message['From'] = email_user
+        message['Reply-To'] = sender_user_id
+        message['Subject'] = subject
+        smtp_server.send_message(message)
+        smtp_server.quit()
+        return True, None
+    except Exception as smtp_error:
+        return False, f'Email send failed: {str(smtp_error).split(".", 1)[0][:200]}'
+
+
 @app.route('/emails/send_via_gmail', methods=['POST'])
 @require_auth
 def send_via_gmail():
     data = request.get_json()
-    email = data.get('user_email')
     to_email = data.get('to')
     subject = data.get('subject')
     body = data.get('body')
-    
-    if not all([email, to_email, subject, body]):
+
+    if not all([to_email, subject, body]):
         return jsonify({'error': 'Missing required fields'}), 400
-    
-    token_record = GoogleOAuthToken.query.filter_by(username=email).first()
-    if not token_record:
-        return jsonify({'error': 'Google account not connected'}), 401
-        
-    creds = Credentials(
-        token=token_record.token,
-        refresh_token=token_record.refresh_token,
-        token_uri=token_record.token_uri,
-        client_id=token_record.client_id,
-        client_secret=token_record.client_secret,
-        scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
-    )
-    
-    try:
-        service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
-        message = EmailMessage()
-        message.set_content(body)
-        message['To'] = to_email
-        message['From'] = email
-        message['Subject'] = subject
-        
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        create_message = {
-            'raw': encoded_message
-        }
-        
-        send_message = (service.users().messages().send(userId="me", body=create_message).execute())
-        return jsonify({'message': 'Email sent successfully via Gmail API', 'id': send_message['id']})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
+    success, error = send_platform_email(g.user_id, to_email, subject, body)
+    if not success:
+        return jsonify({'error': error}), 500
+    return jsonify({'message': 'Email sent successfully'})
 
 
 @app.route('/file_to_json_convert', methods=['POST'])
