@@ -588,6 +588,7 @@ function Header({ onProcessClick, onModeChange }) {
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/workflows'); }}>Workflows</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/projects'); }}>Projects</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/team'); }}>Team</button>
+                <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/usage'); }}>Usage</button>
                 <button className="user-dropdown-item" role="menuitem" onClick={() => { setShowUserDropdown(false); navigate('/settings'); }}>Settings</button>
                 <div className="user-dropdown-divider"></div>
                 <button className="user-dropdown-item user-dropdown-item--danger" role="menuitem" onClick={handleSignOutClick}>Sign Out</button>

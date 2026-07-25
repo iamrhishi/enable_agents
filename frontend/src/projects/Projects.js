@@ -64,7 +64,27 @@ const Icons = {
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
     </svg>
   ),
+  Settings: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  ),
 };
+
+const AI_KEY_FIELDS = [
+  { key: 'openai_key', label: 'OpenAI API Key', placeholder: 'sk-...', type: 'password' },
+  { key: 'anthropic_key', label: 'Anthropic API Key', placeholder: 'sk-ant-...', type: 'password' },
+  {
+    key: 'preferred_model', label: 'Preferred Model', type: 'select',
+    options: [
+      { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast, Cheap)' },
+      { value: 'gpt-4o', label: 'GPT-4o (Powerful)' },
+      { value: 'claude-3-haiku', label: 'Claude 3 Haiku (Fast)' },
+      { value: 'claude-3-sonnet', label: 'Claude 3 Sonnet (Balanced)' },
+    ],
+  },
+];
 
 function Projects() {
   const navigate = useNavigate();
@@ -82,6 +102,14 @@ function Projects() {
   const [creating, setCreating] = useState(false);
   const [teams, setTeams] = useState([]);
   const [loadingTeams, setLoadingTeams] = useState(false);
+
+  // Project AI key settings
+  const [settingsProject, setSettingsProject] = useState(null);
+  const [projectSettings, setProjectSettings] = useState(null);
+  const [canManageSettings, setCanManageSettings] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsEditValues, setSettingsEditValues] = useState({});
+  const [settingsSavingKey, setSettingsSavingKey] = useState('');
 
   useEffect(() => {
     fetchProjects();
@@ -232,6 +260,89 @@ function Projects() {
     return AGENTS[agentId]?.name || agentId;
   };
 
+  const openProjectSettings = async (project) => {
+    setSettingsProject(project);
+    setSettingsEditValues({});
+    setSettingsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${project.id}/settings`, {
+        headers: authOptionalHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setProjectSettings(data.settings?.ai?.settings || {});
+        setCanManageSettings(Boolean(data.canManage));
+      } else {
+        showToast(data.error || 'Failed to load project settings', 'error');
+        setProjectSettings({});
+        setCanManageSettings(false);
+      }
+    } catch {
+      showToast('Failed to load project settings', 'error');
+      setProjectSettings({});
+      setCanManageSettings(false);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const closeProjectSettings = () => {
+    setSettingsProject(null);
+    setProjectSettings(null);
+    setSettingsEditValues({});
+  };
+
+  const handleSaveProjectSetting = async (key) => {
+    const value = settingsEditValues[key];
+    if (!value || !value.trim()) return;
+
+    setSettingsSavingKey(key);
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${settingsProject.id}/settings`, {
+        method: 'PUT',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ key, value: value.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Project setting saved', 'success');
+        setSettingsEditValues(prev => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        openProjectSettings(settingsProject);
+      } else {
+        showToast(data.error || 'Failed to save setting', 'error');
+      }
+    } catch {
+      showToast('Failed to save setting', 'error');
+    } finally {
+      setSettingsSavingKey('');
+    }
+  };
+
+  const handleRemoveProjectSetting = async (key) => {
+    setSettingsSavingKey(key);
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${settingsProject.id}/settings/${key}`, {
+        method: 'DELETE',
+        headers: authOptionalHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Project setting removed', 'success');
+        openProjectSettings(settingsProject);
+      } else {
+        showToast(data.error || 'Failed to remove setting', 'error');
+      }
+    } catch {
+      showToast('Failed to remove setting', 'error');
+    } finally {
+      setSettingsSavingKey('');
+    }
+  };
+
   const Icon = ({ name }) => {
     const I = Icons[name];
     return I ? <I /> : null;
@@ -280,6 +391,15 @@ function Projects() {
                       {project.status}
                     </span>
                   </div>
+                  {!isDemoMode && (
+                    <button
+                      className="btn-icon"
+                      onClick={() => openProjectSettings(project)}
+                      title="AI provider settings"
+                    >
+                      <Icon name="Settings" />
+                    </button>
+                  )}
                   <button
                     className="btn-icon danger"
                     onClick={() => handleDelete(project.id)}
@@ -397,6 +517,108 @@ function Projects() {
               >
                 {creating ? 'Creating...' : 'Create Project'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project AI Settings Modal */}
+      {settingsProject && (
+        <div className="modal-overlay" onClick={closeProjectSettings}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>AI Settings — {settingsProject.name}</h3>
+              <button className="btn-icon" onClick={closeProjectSettings}>
+                <Icon name="X" />
+              </button>
+            </div>
+            <div className="modal-body">
+              {settingsLoading ? (
+                <div className="loading">Loading...</div>
+              ) : (
+                <>
+                  <p className="field-hint" style={{ marginBottom: '12px', color: 'var(--color-text-muted)' }}>
+                    {canManageSettings
+                      ? 'Set a key here and every AI action inside this project uses it instead of a member\'s personal key or the platform default.'
+                      : 'Only the project owner or a team admin can change these keys. Shown below is what this project currently uses.'}
+                  </p>
+                  {AI_KEY_FIELDS.map(field => {
+                    const setting = projectSettings?.[field.key] || {};
+                    const isEditing = field.key in settingsEditValues;
+                    const isSaving = settingsSavingKey === field.key;
+                    return (
+                      <div className="field" key={field.key}>
+                        <label>
+                          {field.label}
+                          {setting.configured && (
+                            <span className="status-badge active" style={{ marginLeft: '8px' }}>
+                              {field.type === 'select' ? `Set to ${setting.value}` : 'Configured'}
+                            </span>
+                          )}
+                        </label>
+                        {field.type === 'select' ? (
+                          <div className="project-setting-row">
+                            <select
+                              value={isEditing ? settingsEditValues[field.key] : (setting.value || setting.default || field.options[0].value)}
+                              onChange={(e) => setSettingsEditValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                              disabled={!canManageSettings}
+                            >
+                              {field.options.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            {canManageSettings && isEditing && (
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={() => handleSaveProjectSetting(field.key)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? 'Saving...' : 'Save'}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          canManageSettings && (
+                            <div className="project-setting-row">
+                              <input
+                                type="password"
+                                placeholder={setting.configured ? setting.value : field.placeholder}
+                                value={settingsEditValues[field.key] || ''}
+                                onChange={(e) => setSettingsEditValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                              />
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={() => handleSaveProjectSetting(field.key)}
+                                disabled={isSaving || !settingsEditValues[field.key]?.trim()}
+                              >
+                                {isSaving ? 'Saving...' : 'Save'}
+                              </button>
+                              {setting.configured && (
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => handleRemoveProjectSetting(field.key)}
+                                  disabled={isSaving}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          )
+                        )}
+                        {!canManageSettings && !setting.configured && (
+                          <p className="field-hint">Not configured — falls back to each member's personal key or the platform default.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeProjectSettings}>Close</button>
             </div>
           </div>
         </div>

@@ -10,11 +10,12 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import RetrievalQA
 import os
 from dotenv import load_dotenv
+
+from core.ai_client import get_langchain_llm, log_langchain_usage
 
 load_dotenv()
 
@@ -66,9 +67,11 @@ class RAGContentGenerator:
         'announcement': 'product or company announcement'
     }
     
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None, project_id: Optional[str] = None):
+        self.user_id = user_id
+        self.project_id = project_id
         self.embeddings = OpenAIEmbeddings()
-        self.llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+        self.llm, self._key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0.7)
         self.retriever = None
         self.vector_store = None
     
@@ -195,7 +198,8 @@ class RAGContentGenerator:
             "domain": domain_context or "General",
             "user_guidance": user_context or "Create engaging marketing content"
         })
-        
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.rag_generate", "gpt-4", self._key_source)
+
         # Parse response
         content = response.content
         
@@ -306,6 +310,7 @@ Generate the variation:
             
             chain = prompt | self.llm
             response = chain.invoke({})
+            log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.rag_variation", "gpt-4", self._key_source)
             variations.append(response.content)
         
         return variations
@@ -361,7 +366,8 @@ Provide a helpful, specific response that:
             "kg_context": kg_context,
             "user_message": user_message
         })
-        
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.rag_chat", "gpt-4", self._key_source)
+
         return response.content
     
     def bulk_generate(self,

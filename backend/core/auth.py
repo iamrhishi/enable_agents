@@ -66,6 +66,24 @@ def user_can_access_project(user_id: str, project_id: str) -> bool:
     )
 
 
+def user_can_manage_project_settings(user_id: str, project_id: str) -> bool:
+    """True if user_id can change project-level settings (API keys, etc.) -
+    narrower than user_can_access_project: the project owner, or a team
+    member with role owner/admin. Plain members/viewers can use a
+    project's configured key but not change it."""
+    if not user_id or not project_id:
+        return False
+    from core.models import Project, TeamMember
+
+    project = Project.query.filter_by(project_id=project_id).first()
+    if not project:
+        return False
+    if project.owner_id == user_id:
+        return True
+    member = TeamMember.query.filter_by(team_id=project.team_id, user_id=user_id).first()
+    return member is not None and member.role in ("owner", "admin")
+
+
 def require_project_access(get_project_id):
     """Decorator factory: like require_auth, but additionally requires that
     the authenticated user owns (or is a team member of) the project

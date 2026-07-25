@@ -28,58 +28,14 @@ Usage:
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from cryptography.fernet import Fernet
+from core.crypto import encrypt as _encrypt, decrypt as _decrypt, mask_value as _mask_value
 
 logger = logging.getLogger(__name__)
-
-# Encryption key - should be set in environment
-# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-SETTINGS_ENCRYPTION_KEY = os.environ.get("SETTINGS_ENCRYPTION_KEY")
-
-
-def _get_fernet() -> Optional[Fernet]:
-    """Get Fernet cipher for encryption/decryption."""
-    if not SETTINGS_ENCRYPTION_KEY:
-        logger.warning("SETTINGS_ENCRYPTION_KEY not set - settings will be stored unencrypted")
-        return None
-    try:
-        return Fernet(SETTINGS_ENCRYPTION_KEY.encode())
-    except Exception as e:
-        logger.error(f"Invalid encryption key: {e}")
-        return None
-
-
-def _encrypt(value: str) -> str:
-    """Encrypt a string value."""
-    fernet = _get_fernet()
-    if fernet:
-        return fernet.encrypt(value.encode()).decode()
-    return value  # Fallback: store unencrypted (dev only)
-
-
-def _decrypt(encrypted: str) -> str:
-    """Decrypt a string value."""
-    fernet = _get_fernet()
-    if fernet:
-        try:
-            return fernet.decrypt(encrypted.encode()).decode()
-        except Exception:
-            return encrypted  # Return as-is if decryption fails
-    return encrypted
-
-
-def _mask_value(value: str, show_chars: int = 4) -> str:
-    """Mask a sensitive value for display."""
-    if not value or len(value) <= show_chars:
-        return "****"
-    return value[:show_chars] + "*" * (len(value) - show_chars)
 
 
 # Setting definitions with metadata for UI

@@ -388,6 +388,35 @@
   border-color: var(--color-accent);
 }
 
+.projects-page .field select {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.projects-page .project-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.projects-page .project-setting-row input,
+.projects-page .project-setting-row select {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.projects-page .project-setting-row button {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .projects-page .field textarea {
   resize: vertical;
   min-height: 60px;

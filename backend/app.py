@@ -852,9 +852,12 @@ class State(TypedDict):
 
 class DomainSpecializationAnalyzer:
     """Analyzes documents to extract domain specialization information"""
-    
-    def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+    def __init__(self, user_id=None, project_id=None):
+        from core.ai_client import get_langchain_llm
+        self.user_id = user_id
+        self.project_id = project_id
+        self.llm, self._key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
         self.industry_keywords = self._load_industry_keywords()
     
     def _load_industry_keywords(self) -> Dict[str, List[str]]:
@@ -903,7 +906,9 @@ class DomainSpecializationAnalyzer:
         try:
             chain = prompt | self.llm
             response = chain.invoke({"documents": combined_text[:2000]})
-            
+            from core.ai_client import log_langchain_usage
+            log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.analyze_documents", "gpt-4", self._key_source)
+
             import re
             json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
             if json_match:
@@ -1051,10 +1056,9 @@ Rules:
 - Only mark as "false" if it's clearly a regular informational website
 - Return valid JSON only"""
 
-        client = openai.OpenAI()
-        client.api_key = os.environ['OPENAI_API_KEY']
-        
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=None, project_id=None, agent="saas_discovery.identify_tools",
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a web application and tool identifier. You identify ALL types of web-based tools, applications, and platforms. Return only valid JSON arrays."},
@@ -1338,9 +1342,9 @@ Rules:
 - Valid JSON only, no explanations
 - Keep skills concise (1-3 words each)"""
 
-        client = openai.OpenAI()
-        client.api_key=os.environ['OPENAI_API_KEY']
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=None, project_id=None, agent="sales_helper.company_skills",
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a JSON generator. Return only valid JSON arrays. Keep responses concise."},
@@ -1907,9 +1911,8 @@ def parse_simple_query_enhanced(user_query):
             }
         }
 
-        client = openai.OpenAI()
-        client.api_key = os.environ['OPENAI_API_KEY']
-        
+        from core.ai_client import ai_chat_completion
+
         # Enhanced system prompt to detect special commands while maintaining your existing logic
         system_prompt = """You are a search query parser that extracts search criteria accurately from user queries. Extract search criteria accurately from user queries. Include information that is explicitly mentioned but also matching terms that are close to what is mentioned. They could be singular or plural forms, sub-strings or variations, etc.
 
@@ -1922,15 +1925,16 @@ SPECIAL COMMANDS TO DETECT:
 
 Extract both specific search terms AND any special commands detected. If the query contains both search terms and special commands, include both in the response."""
 
-        response = client.chat.completions.create(
+        response = ai_chat_completion(
+            user_id=None, project_id=None, agent="sales_helper.extract_search_criteria",
             model="gpt-3.5-turbo",
             messages=[
                 {
-                    "role": "system", 
+                    "role": "system",
                     "content": system_prompt
                 },
                 {
-                    "role": "user", 
+                    "role": "user",
                     "content": f"Extract search criteria and special commands from this query: '{user_query}'"
                 }
             ],
@@ -3657,43 +3661,26 @@ def clean_product_info(product_info):
     return cleaned
 
 def generate(selected_chunks, query):
-    client = openai.OpenAI()
-    context = "\n\n".join(selected_chunks) 
-    prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:" 
-    # response = client.chat.completions.create( 
-    #     model="gpt-4", 
-    #     messages=[ {"role": "system", "content": "You are a legal research and reasoning assistant trained in Indian income tax law, especially capital gains exemptions under the Income Tax Act. Your job is to analyze a user's scenario, determine applicability of specific sections (like Section 54F), and generate responses following a clear structure: Start with statutory interpretation â€” quote the relevant section (e.g., Section 54F) and clearly list the conditions in bullet points. Apply the law to the userâ€™s case â€” mention whether conditions are satisfied and explain eligibility for exemption. Cite relevant case law in support of the position taken. Choose cases that match the factual scenario and jurisdiction where possible. Include citation (e.g., ITA 4012/Mum/2023 - Abdul Nayab Shaikh). Quote only favourable rulings unless otherwise requested. Prefer recent, relevant, and jurisdictionally appropriate cases. Discuss any common exceptions or judicial deviations â€” e.g., benefit being allowed even when more than one residential unit is purchased, especially if adjacent or used as a single unit. Quote examples from case law or factual scenarios to support the interpretation or exception. Keep the examples precise and relevant. Format your response in a professional, advisory tone suitable for a tax consultantâ€™s opinion. Do not speculate â€” rely only on clear statutory provisions, circulars, and judicial precedents."}, {"role": "user", "content": prompt} ], 
-    #     max_tokens=400, 
-    #     temperature=0.1 ) 
+    from core.ai_client import ai_chat_completion
+    context = "\n\n".join(selected_chunks)
+    prompt = f"Answer the following query based on the provided text:\n\n{context}\n\nQuery: {query}\nAnswer:"
 
-    # response = client.chat.completions.create( 
-    #     model="gpt-4", 
-    #     messages=[ {"role": "system", "content": "You are a professional skills extractor"}, {"role": "user", "content": prompt} ], 
-    #     max_tokens=400, 
-    #     temperature=0.1 )
-    # 
-
-    # response = client.chat.completions.create( 
-    #     model="gpt-4", 
-    #      messages=[ {"role": "system", "content": "You are a PhD level research assistant that understands AI and its future and you also have a strong business acumen that will help you build a strong pitch for an AI startup"}, {"role": "user", "content": prompt} ], 
-    #     max_tokens=400, 
-    #     temperature=0.1 ) 
-
-    response = client.chat.completions.create( 
-    model="gpt-4", 
-    messages=[ 
-        {
-            "role": "system", 
-            "content": "You are a PhD-level research assistant with deep expertise in cryptocurrency markets, blockchain technology, and financial analysis. You provide insightful, data-driven analysis of crypto assets, including market trends, tokenomics, risk factors, and trading strategies."
-        }, 
-        {
-            "role": "user", 
-            "content": prompt
-        } 
-    ], 
-    max_tokens=400, 
-    temperature=0.1 
-)
+    response = ai_chat_completion(
+        user_id=None, project_id=None, agent="document_intelligence.generate",
+        model="gpt-4",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a PhD-level research assistant with deep expertise in cryptocurrency markets, blockchain technology, and financial analysis. You provide insightful, data-driven analysis of crypto assets, including market trends, tokenomics, risk factors, and trading strategies."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        max_tokens=400,
+        temperature=0.1
+    )
     
     
     print(response)
@@ -3887,10 +3874,9 @@ def openai_chat():
         max_tokens = data.get('max_tokens', 500)
         temperature = data.get('temperature', 0.7)
         
-        client = openai.OpenAI()
-        client.api_key = os.environ['OPENAI_API_KEY']
-        
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=g.user_id, project_id=data.get('project_id'), agent="matchmaking.openai_chat",
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
@@ -4109,8 +4095,9 @@ def enterprise_chat():
             "Return only valid JSON."
         )
 
-        client = openai.OpenAI()
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=g.user_id, project_id=None, agent="enterprise_chat.autofill",
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a business analyst assistant."},
@@ -4133,7 +4120,8 @@ def enterprise_chat():
             "Summarize the following business context in 2-3 sentences for agent recommendation:\n\n"
             f"{json.dumps(formatted_state, indent=2)}"
         )
-        summary_response = client.chat.completions.create(
+        summary_response = ai_chat_completion(
+            user_id=g.user_id, project_id=None, agent="enterprise_chat.summarize",
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a business analyst assistant."},
@@ -4362,10 +4350,10 @@ def generate_requirements():
 
     print(prompt)
 
-    client = openai.OpenAI()
-
     try:
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=g.user_id, project_id=None, agent="requirements_gathering.generate",
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a research assistant."},
@@ -5376,9 +5364,9 @@ def recommend_agents():
             "Return the output as a JSON object with a 'recommendations' key containing these three lists. "
             "Here is the user context and available modules:\n\n" + json.dumps(context, indent=2)
         )
-        client = openai.OpenAI()
-
-        response = response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=None, project_id=None, agent="module_recommendation.generate",
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a technology consultant for business software and workflow automation."},
@@ -5646,12 +5634,13 @@ def query_knowledge_graph(graph, query_type, node_id=None):
         return list(graph.edges(data=True))
     return None
 
-def generate_answer_with_rag(query, relevant_chunks, kg_context):
+def generate_answer_with_rag(query, relevant_chunks, kg_context, user_id=None, project_id=None):
     """Generate final answer using OpenAI with RAG context and KG information"""
-    llm = ChatOpenAI(model="gpt-4", temperature=0)
+    from core.ai_client import get_langchain_llm, log_langchain_usage
+    llm, key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
     context_text = "\n\n".join(relevant_chunks)
     kg_text = json.dumps(kg_context, indent=2)
-    
+
     prompt = f"""Based on the following document context and knowledge graph information, answer the query.
 
 Document Context:
@@ -5663,11 +5652,12 @@ Knowledge Graph Context:
 Query: {query}
 
 Provide a detailed answer:"""
-    
-    response = llm.invoke(prompt).content
-    return response
 
-def process_documents_with_kg_rag(documents, nodes, edges, query, include_context=False):
+    result = llm.invoke(prompt)
+    log_langchain_usage(result, user_id, project_id, "document_intelligence.kg_rag_answer", "gpt-4", key_source)
+    return result.content
+
+def process_documents_with_kg_rag(documents, nodes, edges, query, include_context=False, user_id=None, project_id=None):
     """Main processing pipeline combining document loading, KG building, and RAG with caching"""
     # Generate cache keys
     doc_cache_key = get_document_cache_key(documents)
@@ -5723,7 +5713,7 @@ def process_documents_with_kg_rag(documents, nodes, edges, query, include_contex
     }
     
     # Generate answer
-    answer = generate_answer_with_rag(query, relevant_chunks, kg_context)
+    answer = generate_answer_with_rag(query, relevant_chunks, kg_context, user_id=user_id, project_id=project_id)
     
     # Return only answer by default (lightweight response)
     if include_context:
@@ -5751,15 +5741,16 @@ def extract_with_kg_rag():
         edges = data.get('edges', [])
         query = data.get('query', '')
         include_context = data.get('include_context', False)  # Optional: return chunks and KG context
-        
+        project_id = data.get('project_id')
+
         if not documents or not query:
             return jsonify({
                 'success': False,
                 'error': 'documents and query are required'
             }), 400
-        
+
         # Process documents with KG and RAG
-        result = process_documents_with_kg_rag(documents, nodes, edges, query, include_context)
+        result = process_documents_with_kg_rag(documents, nodes, edges, query, include_context, user_id=g.user_id, project_id=project_id)
         
         return jsonify({
             'success': True,
@@ -5930,7 +5921,7 @@ def upload_content_marketing_documents():
         if not uploaded_files:
             return jsonify({'success': False, 'error': 'No files provided'}), 400
 
-        analyzer = DomainSpecializationAnalyzer()
+        analyzer = DomainSpecializationAnalyzer(user_id=g.user_id, project_id=project_id)
         extracted_documents = []
         doc_ids = []
 
@@ -6053,8 +6044,11 @@ Documents Summary: {' '.join([doc[:200] for doc in doc_texts[:3]])}
 
 Generate compelling marketing {content_type} content."""
 
-        llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-        response = llm.invoke(prompt).content
+        from core.ai_client import get_langchain_llm, log_langchain_usage
+        llm, key_source = get_langchain_llm(g.user_id, project_id, model="gpt-4", temperature=0.7)
+        result = llm.invoke(prompt)
+        log_langchain_usage(result, g.user_id, project_id, "content_marketing.generate_content", "gpt-4", key_source)
+        response = result.content
 
         # Store in PostgreSQL
         content_id = f"content_{uuid4().hex[:12]}"
@@ -6113,8 +6107,11 @@ Knowledge Graph: {json.dumps(kg.kg_data)[:500] if kg else 'No KG available'}
 User Question: {message}
 Provide a helpful, concise response focused on marketing strategy and content improvement."""
 
-        llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-        response = llm.invoke(prompt).content
+        from core.ai_client import get_langchain_llm, log_langchain_usage
+        llm, key_source = get_langchain_llm(g.user_id, project_id, model="gpt-4", temperature=0.7)
+        result = llm.invoke(prompt)
+        log_langchain_usage(result, g.user_id, project_id, "content_marketing.chat", "gpt-4", key_source)
+        response = result.content
 
         # Store in PostgreSQL
         msg_id = f"msg_{uuid4().hex[:12]}"
@@ -6840,8 +6837,9 @@ Industry: {business.get('industry', 'Unknown')}
 Do not add any explanation, just return the JSON.
 """
 
-    client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-    response = client.chat.completions.create(
+    from core.ai_client import ai_chat_completion
+    response = ai_chat_completion(
+        user_id=None, project_id=None, agent="sales_helper.generate_email_content",
         model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
         messages=[
             {"role": "user", "content": prompt}
@@ -7370,7 +7368,7 @@ def rank_campaign_vendors(campaign_id):
                 'vendors': ranked,
             }), 200
 
-        client = openai.OpenAI(api_key=openai_key)
+        from core.ai_client import ai_chat_completion
         prompt = [
             {
                 'role': 'system',
@@ -7391,7 +7389,8 @@ def rank_campaign_vendors(campaign_id):
             }
         ]
 
-        response = client.chat.completions.create(
+        response = ai_chat_completion(
+            user_id=None, project_id=None, agent="sales_helper.rank_vendors",
             model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
             messages=prompt,
             temperature=0.0,
@@ -8099,8 +8098,7 @@ def score_leads():
                 })
             return jsonify({'success': True, 'results': results})
 
-        client = openai.OpenAI()
-        client.api_key = openai_key
+        from core.ai_client import ai_chat_completion
 
         lead_objects = [_coerce_lead(lead, index) for index, lead in enumerate(businesses)]
         lead_texts = [_extract_lead_text(lead_obj) for lead_obj in lead_objects]
@@ -8158,7 +8156,8 @@ def score_leads():
             ]
 
             try:
-                llm_response = client.chat.completions.create(
+                llm_response = ai_chat_completion(
+                    user_id=g.user_id, project_id=None, agent="sales_helper.score_leads",
                     model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
                     messages=llm_prompt,
                     temperature=0.0,
@@ -8553,8 +8552,7 @@ IMPORTANT INSTRUCTIONS:
                 'lead_count_limited': len(leads) > len(lead_batch)
             }), 200
 
-        client = openai.OpenAI()
-        client.api_key = os.environ['OPENAI_API_KEY']
+        from core.ai_client import ai_chat_completion
 
         # Before calling LLM, attempt to surface additional saved context entries for this user
         extra_context_text = ""
@@ -8578,7 +8576,8 @@ IMPORTANT INSTRUCTIONS:
         if extra_context_text:
             prompt = prompt + "\n\nAdditional saved context entries for this user:\n" + extra_context_text
 
-        response = client.chat.completions.create(
+        response = ai_chat_completion(
+            user_id=trusted_uid, project_id=None, agent="sales_helper.analyze_leads",
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a precise sales analysis assistant."},
@@ -8822,9 +8821,9 @@ PROSPECTS:
 
 Return a concise ranked list (best fit first) with a one-line reason for each prospect."""
 
-        client = openai.OpenAI()
-        client.api_key = os.environ['OPENAI_API_KEY']
-        response = client.chat.completions.create(
+        from core.ai_client import ai_chat_completion
+        response = ai_chat_completion(
+            user_id=user_id, project_id=None, agent="sales_helper.catalog_fit",
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a precise sales/product-fit analyst."},
@@ -8957,6 +8956,10 @@ from routes.team import team_bp
 from routes.projects import projects_bp
 app.register_blueprint(team_bp)
 app.register_blueprint(projects_bp)
+
+# Register AI usage/cost rollup API routes
+from routes.usage import usage_bp
+app.register_blueprint(usage_bp)
 
 # Register workflow API routes
 from routes.workflows import workflows_bp, load_system_templates

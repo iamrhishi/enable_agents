@@ -9,9 +9,10 @@ from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 import uuid
 
-from core.auth import require_auth, user_can_access_project
+from core.auth import require_auth, user_can_access_project, user_can_manage_project_settings
 from core.database import db
 from core.models import Project, Team, TeamMember
+from core.project_settings import ProjectSettings, PROJECT_SETTING_KEYS
 
 projects_bp = Blueprint('projects', __name__)
 
@@ -167,3 +168,62 @@ def update_project_data(project_id):
     project.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({'success': True, 'project': project.to_dict()})
+
+
+@projects_bp.route('/api/projects/<project_id>/settings', methods=['GET'])
+@require_auth
+def get_project_settings(project_id):
+    """
+    Get this project's AI provider settings. Visible to anyone with
+    project access (so members know which key their work is billed to),
+    but see PUT below for who can change it.
+    """
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
+
+    settings = ProjectSettings().list(project_id, include_values=True)
+    return jsonify({
+        'success': True,
+        'settings': settings,
+        'canManage': user_can_manage_project_settings(g.user_id, project_id),
+    })
+
+
+@projects_bp.route('/api/projects/<project_id>/settings', methods=['PUT'])
+@require_auth
+def update_project_settings(project_id):
+    """Set a project-level AI provider key. Owner/admin only - this key
+    takes priority over every member's personal key for AI actions taken
+    inside this project (see core/ai_client.py)."""
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
+    if not user_can_manage_project_settings(g.user_id, project_id):
+        return jsonify({'error': 'Only the project owner or a team admin can change project settings'}), 403
+
+    data = request.get_json() or {}
+    key = data.get('key')
+    value = data.get('value')
+    if key not in PROJECT_SETTING_KEYS:
+        return jsonify({'error': f'Unsupported setting key: {key}'}), 400
+    if not value:
+        return jsonify({'error': 'value is required'}), 400
+
+    ProjectSettings().set(project_id, key, value)
+    return jsonify({'success': True, 'message': f'Project setting {key} saved'})
+
+
+@projects_bp.route('/api/projects/<project_id>/settings/<key>', methods=['DELETE'])
+@require_auth
+def delete_project_setting(project_id, key):
+    """Remove a project-level AI provider key. Owner/admin only - after
+    this, AI actions in the project fall back to each member's personal
+    key (or the platform default)."""
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
+    if not user_can_manage_project_settings(g.user_id, project_id):
+        return jsonify({'error': 'Only the project owner or a team admin can change project settings'}), 403
+
+    deleted = ProjectSettings().delete(project_id, key)
+    if not deleted:
+        return jsonify({'error': 'Setting not found'}), 404
+    return jsonify({'success': True, 'message': f'Project setting {key} deleted'})

@@ -12,6 +12,7 @@ import RegisterUser from './core/RegisterUser';
 import Settings from './settings/Settings';
 import Team from './team/Team';
 import Projects from './projects/Projects';
+import Usage from './usage/Usage';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -81,6 +82,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/team" element={<Team />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/usage" element={<Usage />} />
           <Route path="/workflows" element={<WorkflowsPage />} />
           <Route path="/workflows/:instanceId" element={<WorkflowRunner />} />
           </Routes>

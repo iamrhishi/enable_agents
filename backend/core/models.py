@@ -286,3 +286,68 @@ class PendingInvite(db.Model):
             "invited_by": self.invited_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# =============================================================================
+# Project-scoped AI settings and usage tracking
+# =============================================================================
+
+class ProjectSettingModel(db.Model):
+    """
+    Encrypted project-scoped settings - currently used for per-project AI
+    provider keys (see core/project_settings.py). Mirrors UserSettingModel's
+    shape/encryption so the two can share the same crypto helpers and a
+    near-identical read/write API.
+    """
+    __tablename__ = "project_settings"
+    __table_args__ = (
+        db.UniqueConstraint("project_id", "category", "key", name="uq_project_setting"),
+        db.Index("ix_project_settings_project_category", "project_id", "category"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_id = db.Column(db.String(36), db.ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=False, index=True)
+    category = db.Column(db.String(50), nullable=False)  # currently only "ai"
+    key = db.Column(db.String(100), nullable=False)
+    value_encrypted = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AIUsageLog(db.Model):
+    """
+    One row per LLM call, written by core/ai_client.py. Denormalizes
+    team_id alongside project_id/user_id so team-level rollups don't need
+    a join through projects/teams for every query.
+    """
+    __tablename__ = "ai_usage_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(255), nullable=False, index=True)
+    project_id = db.Column(db.String(36), nullable=True, index=True)
+    team_id = db.Column(db.String(36), nullable=True, index=True)
+    agent = db.Column(db.String(100), nullable=False, index=True)  # e.g. "content_marketing.generate_content"
+    provider = db.Column(db.String(20), nullable=False)  # "openai" | "anthropic"
+    model = db.Column(db.String(100), nullable=False)
+    key_source = db.Column(db.String(20), nullable=False)  # "project" | "user" | "platform"
+    prompt_tokens = db.Column(db.Integer, nullable=False, default=0)
+    completion_tokens = db.Column(db.Integer, nullable=False, default=0)
+    total_tokens = db.Column(db.Integer, nullable=False, default=0)
+    estimated_cost_usd = db.Column(db.Float, nullable=False, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "userId": self.user_id,
+            "projectId": self.project_id,
+            "teamId": self.team_id,
+            "agent": self.agent,
+            "provider": self.provider,
+            "model": self.model,
+            "keySource": self.key_source,
+            "promptTokens": self.prompt_tokens,
+            "completionTokens": self.completion_tokens,
+            "totalTokens": self.total_tokens,
+            "estimatedCostUsd": round(self.estimated_cost_usd, 6),
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+        }

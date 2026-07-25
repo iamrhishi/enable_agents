@@ -617,7 +617,7 @@ class DocumentService:
         enriched_sources = self._enrich_sources(context_result["sources"])
 
         # Generate response using OpenAI
-        client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        from core.ai_client import ai_chat_completion
 
         system_prompt = """You are a helpful assistant that answers questions based on the provided document context.
 Use only the information from the context to answer. If the context doesn't contain enough information, say so.
@@ -631,7 +631,8 @@ Question: {query}
 Answer based on the context above:"""
 
         try:
-            response = client.chat.completions.create(
+            response = ai_chat_completion(
+                user_id=user_id, project_id=project_id, agent="document_intelligence.chat",
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -732,7 +733,7 @@ Answer based on the context above:"""
         )
         full_text = "\n\n".join(c.content for c in chunks)[:12000]
 
-        client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        from core.ai_client import ai_chat_completion
         system_prompt = (
             "You analyze a business document and respond with strict JSON only, "
             'matching this shape: {"summary": "one paragraph", '
@@ -745,7 +746,8 @@ Answer based on the context above:"""
         )
 
         try:
-            response = client.chat.completions.create(
+            response = ai_chat_completion(
+                user_id=user_id, project_id=project_id, agent="document_intelligence.document_insight",
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},

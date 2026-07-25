@@ -4,12 +4,13 @@ Constructs semantic knowledge graphs from documents
 Enables traversal for intelligent content generation
 """
 
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Optional
 import json
 import re
 import networkx as nx
-from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
+
+from core.ai_client import get_langchain_llm, log_langchain_usage
 import nltk
 from nltk.tokenize import sent_tokenize
 from nltk.corpus import stopwords
@@ -28,8 +29,10 @@ class KnowledgeGraphBuilder:
     Extracts entities, relationships, and concepts
     """
     
-    def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4", temperature=0)
+    def __init__(self, user_id: Optional[str] = None, project_id: Optional[str] = None):
+        self.user_id = user_id
+        self.project_id = project_id
+        self.llm, self._key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
         self.graph = nx.DiGraph()
         self.entity_types = {}
         self.relationships = []
@@ -120,7 +123,8 @@ class KnowledgeGraphBuilder:
             "text": truncated_text,
             "domain_context": json.dumps(domain_context) if domain_context else "General business"
         })
-        
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_entities", "gpt-4", self._key_source)
+
         try:
             # Extract JSON from response
             import re
@@ -188,7 +192,8 @@ class KnowledgeGraphBuilder:
             "entities": entity_list_str,
             "text": truncated_text
         })
-        
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_relationships", "gpt-4", self._key_source)
+
         try:
             json_match = re.search(r'\[.*\]', response.content, re.DOTALL)
             if json_match:
@@ -244,7 +249,8 @@ class KnowledgeGraphBuilder:
             "text": truncated_text,
             "domain_context": json.dumps(domain_context) if domain_context else "General"
         })
-        
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_concepts", "gpt-4", self._key_source)
+
         try:
             json_match = re.search(r'\[.*\]', response.content, re.DOTALL)
             if json_match:
