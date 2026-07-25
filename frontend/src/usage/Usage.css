@@ -240,6 +240,33 @@
   color: var(--color-text-muted);
 }
 
+/* Budget */
+.usage-budget-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.usage-budget-amounts {
+  font-size: var(--text-body);
+  color: var(--color-text);
+}
+
+.usage-budget-amounts.over {
+  color: var(--color-error, #dc2626);
+  font-weight: 600;
+}
+
+.usage-budget-track {
+  height: 8px;
+}
+
+.usage-breakdown-bar-fill.over {
+  background: var(--color-error, #dc2626);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .usage-container {

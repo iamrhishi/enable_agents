@@ -18,6 +18,12 @@ class CMProject(db.Model):
 
     project_id = db.Column(db.String(36), primary_key=True)
     user_id = db.Column(db.String(255), nullable=False, index=True)
+    # The platform-wide Project (core/models.py Project.project_id) this CM
+    # project was created for, if any - lets AI calls resolve that project's
+    # API key/preferred-model settings and tag usage against it, instead of
+    # this CMProject's own (unrelated) id. Nullable: CM projects created
+    # without a platform project selected have no such link.
+    platform_project_id = db.Column(db.String(36), nullable=True, index=True)
     project_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     industry = db.Column(db.String(255))

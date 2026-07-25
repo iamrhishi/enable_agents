@@ -5,8 +5,10 @@ Flask-Migrate
 requests
 python-dotenv
 openai
+anthropic
 langchain
 langchain-openai
+langchain-anthropic
 langchain-community
 langchain-core
 beautifulsoup4

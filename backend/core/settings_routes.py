@@ -14,6 +14,7 @@ from flask import Blueprint, request, jsonify, g
 
 from core.auth import require_auth
 from core.settings import UserSettings, get_setting_definitions
+from core.key_testing import test_openai_key as _test_openai_key, test_anthropic_key as _test_anthropic_key
 
 logger = logging.getLogger(__name__)
 
@@ -212,34 +213,6 @@ def test_connection():
     except Exception as e:
         logger.exception("Failed to test connection")
         return jsonify({"error": str(e)}), 500
-
-
-def _test_openai_key(api_key: str) -> tuple:
-    """Test OpenAI API key."""
-    try:
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        # Simple test - list models
-        models = client.models.list()
-        return True, f"Connected! Found {len(list(models))} models"
-    except Exception as e:
-        return False, f"Failed: {str(e)}"
-
-
-def _test_anthropic_key(api_key: str) -> tuple:
-    """Test Anthropic API key."""
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        # Test with a simple message
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Hi"}],
-        )
-        return True, "Connected successfully!"
-    except Exception as e:
-        return False, f"Failed: {str(e)}"
 
 
 def _test_google_search(api_key: str, cx: str) -> tuple:

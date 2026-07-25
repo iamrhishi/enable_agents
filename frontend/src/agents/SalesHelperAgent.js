@@ -555,6 +555,7 @@ function SalesHelperAgent() {
         body: JSON.stringify({
           criteria: rankingCriteria,
           user_id: userId,
+          project_id: selectedProjectId,
         }),
       });
 

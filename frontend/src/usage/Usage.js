@@ -78,10 +78,34 @@ function BreakdownTable({ title, rows, keyField }) {
   );
 }
 
-function UsageDetail({ usage, showByUser }) {
+function BudgetCard({ budgetUsd, spendUsd }) {
+  if (budgetUsd == null) return null;
+  const pct = budgetUsd > 0 ? Math.min(100, (spendUsd / budgetUsd) * 100) : 0;
+  const over = spendUsd >= budgetUsd;
+  return (
+    <section className="usage-card-section">
+      <h3>Monthly budget</h3>
+      <div className="usage-budget-row">
+        <span className={`usage-budget-amounts ${over ? 'over' : ''}`}>
+          {formatCost(spendUsd)} of {formatCost(budgetUsd)} spent this month
+        </span>
+        {over && <span className="status-badge error">Over budget</span>}
+      </div>
+      <div className="usage-breakdown-bar-track usage-budget-track">
+        <div
+          className={`usage-breakdown-bar-fill ${over ? 'over' : ''}`}
+          style={{ width: `${Math.max(2, pct)}%` }}
+        />
+      </div>
+    </section>
+  );
+}
+
+function UsageDetail({ usage, showByUser, budgetUsd, spendUsd }) {
   return (
     <>
       <SummaryCards usage={usage} />
+      {budgetUsd != null && <BudgetCard budgetUsd={budgetUsd} spendUsd={spendUsd} />}
       <div className="usage-breakdown-grid">
         <BreakdownTable title="By agent" rows={usage.byAgent} keyField="agent" />
         <BreakdownTable title="By model" rows={usage.byModel} keyField="model" />
@@ -100,6 +124,8 @@ function Usage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [usage, setUsage] = useState(EMPTY_USAGE);
+  const [budgetUsd, setBudgetUsd] = useState(null);
+  const [spendUsd, setSpendUsd] = useState(0);
 
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -136,12 +162,16 @@ function Usage() {
       const data = await res.json();
       if (res.ok && data.success) {
         setUsage(data.usage);
+        setBudgetUsd(tab === 'project' ? (data.monthlyBudgetUsd ?? null) : null);
+        setSpendUsd(data.currentMonthSpendUsd || 0);
       } else {
         setUsage(EMPTY_USAGE);
+        setBudgetUsd(null);
         setError(data.error || 'Could not load usage data.');
       }
     } catch (err) {
       setUsage(EMPTY_USAGE);
+      setBudgetUsd(null);
       setError('Could not load usage data.');
     } finally {
       setLoading(false);
@@ -200,7 +230,7 @@ function Usage() {
             <p>{error}</p>
           </div>
         ) : (
-          <UsageDetail usage={usage} showByUser={tab !== 'me'} />
+          <UsageDetail usage={usage} showByUser={tab !== 'me'} budgetUsd={budgetUsd} spendUsd={spendUsd} />
         )}
       </div>
     </div>

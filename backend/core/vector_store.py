@@ -22,24 +22,13 @@ Usage:
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
-
-import openai
 
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "text-embedding-ada-002"
 EMBEDDING_DIMENSION = 1536
-
-
-def get_openai_client():
-    """Return configured OpenAI client."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not set")
-    return openai.OpenAI(api_key=api_key)
 
 
 class VectorStore:
@@ -50,26 +39,28 @@ class VectorStore:
     """
 
     def __init__(self):
-        self._client = None
+        pass
 
-    @property
-    def client(self):
-        if self._client is None:
-            self._client = get_openai_client()
-        return self._client
-
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: List[str], user_id: Optional[str] = None, project_id: Optional[str] = None) -> List[List[float]]:
         """
-        Generate embeddings for a list of texts using OpenAI ada-002.
+        Generate embeddings for a list of texts using OpenAI ada-002, via
+        core.ai_client so this resolves the caller's project/personal key
+        (falling back to the platform default) and logs usage/cost - same
+        as every other LLM call in the app. user_id falls back to the
+        current request's g.user_id if not given explicitly.
 
         Args:
             texts: List of text strings to embed
+            user_id: Whose key to bill this to (optional, see above)
+            project_id: Which project's key takes priority (optional)
 
         Returns:
             List of embedding vectors (1536 dimensions each)
         """
         if not texts:
             return []
+
+        from core.ai_client import ai_embeddings
 
         # OpenAI batch limit is 2048 texts
         batch_size = 100
@@ -78,9 +69,9 @@ class VectorStore:
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             try:
-                response = self.client.embeddings.create(
-                    model=EMBEDDING_MODEL,
-                    input=batch,
+                response = ai_embeddings(
+                    user_id=user_id, project_id=project_id, agent="document_intelligence.vector_store",
+                    model=EMBEDDING_MODEL, input=batch,
                 )
                 batch_embeddings = [item.embedding for item in response.data]
                 all_embeddings.extend(batch_embeddings)
@@ -90,9 +81,9 @@ class VectorStore:
 
         return all_embeddings
 
-    def embed_single(self, text: str) -> List[float]:
+    def embed_single(self, text: str, user_id: Optional[str] = None, project_id: Optional[str] = None) -> List[float]:
         """Embed a single text string."""
-        embeddings = self.embed([text])
+        embeddings = self.embed([text], user_id=user_id, project_id=project_id)
         return embeddings[0] if embeddings else []
 
     def store_chunks(
@@ -100,6 +91,8 @@ class VectorStore:
         document_id: str,
         chunks: List[Dict[str, Any]],
         user_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        billed_user_id: Optional[str] = None,
     ) -> List[str]:
         """
         Store document chunks with embeddings in pgvector.
@@ -107,7 +100,17 @@ class VectorStore:
         Args:
             document_id: UUID of parent document
             chunks: List of dicts with 'content' and optional 'metadata'
-            user_id: Optional user ID for access control
+            user_id: Optional access-control/filtering key stored on each
+                chunk's metadata (existing callers pass a project id here,
+                not necessarily a real platform user - kept as-is; NOT used
+                for AI key billing, see project_id/billed_user_id below).
+            project_id: The platform project this document belongs to, used
+                to resolve that project's AI key for the embedding calls and
+                to tag their usage/cost.
+            billed_user_id: Who to attribute this embedding usage to. This
+                often runs from a Celery task with no request context (so
+                the usual g.user_id fallback doesn't apply) - pass the
+                document's uploader explicitly when known.
 
         Returns:
             List of chunk IDs
@@ -121,8 +124,7 @@ class VectorStore:
         # Extract text content
         texts = [c.get("content", "") for c in chunks]
 
-        # Generate embeddings
-        embeddings = self.embed(texts)
+        embeddings = self.embed(texts, user_id=billed_user_id, project_id=project_id)
 
         chunk_ids = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
@@ -179,7 +181,7 @@ class VectorStore:
         from core.database import db
 
         # Generate query embedding
-        query_embedding = self.embed_single(query)
+        query_embedding = self.embed_single(query, user_id=user_id)
         if not query_embedding:
             return []
 

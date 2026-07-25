@@ -116,7 +116,18 @@ def get_project_usage(project_id):
         AIUsageLog.project_id == project_id,
         AIUsageLog.created_at >= _since(days),
     )
-    return jsonify({'success': True, 'days': days, 'usage': _summarize(query, group_by_user=True)})
+
+    from core.budget import _current_month_spend_usd
+    from core.models import Project
+    project = Project.query.filter_by(project_id=project_id).first()
+
+    return jsonify({
+        'success': True,
+        'days': days,
+        'usage': _summarize(query, group_by_user=True),
+        'monthlyBudgetUsd': project.monthly_budget_usd if project else None,
+        'currentMonthSpendUsd': round(_current_month_spend_usd(project_id), 6) if project else None,
+    })
 
 
 @usage_bp.route('/api/team/usage', methods=['GET'])

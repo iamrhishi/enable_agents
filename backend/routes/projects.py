@@ -125,6 +125,12 @@ def update_project(project_id):
         current = project.data
         current.update(data['data'])
         project.data = current
+    if 'monthlyBudgetUsd' in data:
+        if not user_can_manage_project_settings(g.user_id, project_id):
+            return jsonify({'error': 'Only the project owner or a team admin can change the budget'}), 403
+        value = data['monthlyBudgetUsd']
+        project.monthly_budget_usd = float(value) if value not in (None, '') else None
+        project.budget_alert_month = None  # reset so a new/raised budget can alert again if crossed
 
     project.updated_at = datetime.utcnow()
     db.session.commit()
@@ -227,3 +233,31 @@ def delete_project_setting(project_id, key):
     if not deleted:
         return jsonify({'error': 'Setting not found'}), 404
     return jsonify({'success': True, 'message': f'Project setting {key} deleted'})
+
+
+@projects_bp.route('/api/projects/<project_id>/settings/test', methods=['POST'])
+@require_auth
+def test_project_setting(project_id):
+    """Test a key before saving it - owner/admin only, same as changing
+    it. Tests the value passed in the request, not whatever (if anything)
+    is already saved, so this works before the first Save too."""
+    if not user_can_access_project(g.user_id, project_id):
+        return jsonify({'error': 'Project not found'}), 404
+    if not user_can_manage_project_settings(g.user_id, project_id):
+        return jsonify({'error': 'Only the project owner or a team admin can test project settings'}), 403
+
+    data = request.get_json() or {}
+    key = data.get('key')
+    value = data.get('value')
+    if not value:
+        return jsonify({'error': 'value is required'}), 400
+
+    from core.key_testing import test_openai_key, test_anthropic_key
+    if key == 'openai_key':
+        success, message = test_openai_key(value)
+    elif key == 'anthropic_key':
+        success, message = test_anthropic_key(value)
+    else:
+        return jsonify({'error': f'Testing not supported for key: {key}'}), 400
+
+    return jsonify({'success': success, 'message': message}), 200 if success else 400

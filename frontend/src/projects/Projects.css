@@ -417,6 +417,14 @@
   white-space: nowrap;
 }
 
+.projects-page .field-hint.test-success {
+  color: var(--color-success, #16a34a);
+}
+
+.projects-page .field-hint.test-error {
+  color: var(--color-error, #dc2626);
+}
+
 .projects-page .field textarea {
   resize: vertical;
   min-height: 60px;

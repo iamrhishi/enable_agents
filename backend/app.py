@@ -857,7 +857,7 @@ class DomainSpecializationAnalyzer:
         from core.ai_client import get_langchain_llm
         self.user_id = user_id
         self.project_id = project_id
-        self.llm, self._key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
+        self.llm, self._key_source, self._model = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
         self.industry_keywords = self._load_industry_keywords()
     
     def _load_industry_keywords(self) -> Dict[str, List[str]]:
@@ -907,7 +907,7 @@ class DomainSpecializationAnalyzer:
             chain = prompt | self.llm
             response = chain.invoke({"documents": combined_text[:2000]})
             from core.ai_client import log_langchain_usage
-            log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.analyze_documents", "gpt-4", self._key_source)
+            log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.analyze_documents", self._model, self._key_source)
 
             import re
             json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
@@ -1660,15 +1660,13 @@ def extract_keywords_from_chunks(page_chunks):
     return chunk_phrases
 
 def get_embeddings(phrase):
-    client = openai.OpenAI()
-    client.api_key = get_credentials()
-    response = client.embeddings.create(model="text-embedding-ada-002", input=phrase)
+    from core.ai_client import ai_embeddings
+    response = ai_embeddings(user_id=None, project_id=None, agent="document_intelligence.embed", model="text-embedding-ada-002", input=phrase)
     return response.data[0].embedding
 
 def get_embeddings_batch(phrases):
-    client = openai.OpenAI()
-    client.api_key = get_credentials()
-    response = client.embeddings.create(model="text-embedding-ada-002", input=phrases)
+    from core.ai_client import ai_embeddings
+    response = ai_embeddings(user_id=None, project_id=None, agent="document_intelligence.embed_batch", model="text-embedding-ada-002", input=phrases)
     return [data.embedding for data in response.data]
 
 def store_embeddings(page_phrases, chunk_phrases):
@@ -1722,9 +1720,11 @@ def extract_phrases_from_query(query):
     return rake.get_ranked_phrases()
 
 def get_embeddings_for_query(phrases):
-    client = openai.OpenAI()
-    client.api_key = get_credentials()
-    return [client.embeddings.create(model="text-embedding-ada-002", input=phrase).data[0].embedding for phrase in phrases]
+    from core.ai_client import ai_embeddings
+    return [
+        ai_embeddings(user_id=None, project_id=None, agent="document_intelligence.embed_query", model="text-embedding-ada-002", input=phrase).data[0].embedding
+        for phrase in phrases
+    ]
 
 def get_cosine_similarity(embedding1, embedding2):
     return 1 - cosine(embedding1, embedding2)
@@ -5637,7 +5637,7 @@ def query_knowledge_graph(graph, query_type, node_id=None):
 def generate_answer_with_rag(query, relevant_chunks, kg_context, user_id=None, project_id=None):
     """Generate final answer using OpenAI with RAG context and KG information"""
     from core.ai_client import get_langchain_llm, log_langchain_usage
-    llm, key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
+    llm, key_source, resolved_model = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
     context_text = "\n\n".join(relevant_chunks)
     kg_text = json.dumps(kg_context, indent=2)
 
@@ -5654,7 +5654,7 @@ Query: {query}
 Provide a detailed answer:"""
 
     result = llm.invoke(prompt)
-    log_langchain_usage(result, user_id, project_id, "document_intelligence.kg_rag_answer", "gpt-4", key_source)
+    log_langchain_usage(result, user_id, project_id, "document_intelligence.kg_rag_answer", resolved_model, key_source)
     return result.content
 
 def process_documents_with_kg_rag(documents, nodes, edges, query, include_context=False, user_id=None, project_id=None):
@@ -5921,7 +5921,7 @@ def upload_content_marketing_documents():
         if not uploaded_files:
             return jsonify({'success': False, 'error': 'No files provided'}), 400
 
-        analyzer = DomainSpecializationAnalyzer(user_id=g.user_id, project_id=project_id)
+        analyzer = DomainSpecializationAnalyzer(user_id=g.user_id, project_id=project.platform_project_id)
         extracted_documents = []
         doc_ids = []
 
@@ -6045,9 +6045,10 @@ Documents Summary: {' '.join([doc[:200] for doc in doc_texts[:3]])}
 Generate compelling marketing {content_type} content."""
 
         from core.ai_client import get_langchain_llm, log_langchain_usage
-        llm, key_source = get_langchain_llm(g.user_id, project_id, model="gpt-4", temperature=0.7)
+        ai_project_id = project.platform_project_id
+        llm, key_source, resolved_model = get_langchain_llm(g.user_id, ai_project_id, model="gpt-4", temperature=0.7)
         result = llm.invoke(prompt)
-        log_langchain_usage(result, g.user_id, project_id, "content_marketing.generate_content", "gpt-4", key_source)
+        log_langchain_usage(result, g.user_id, ai_project_id, "content_marketing.generate_content", resolved_model, key_source)
         response = result.content
 
         # Store in PostgreSQL
@@ -6108,9 +6109,10 @@ User Question: {message}
 Provide a helpful, concise response focused on marketing strategy and content improvement."""
 
         from core.ai_client import get_langchain_llm, log_langchain_usage
-        llm, key_source = get_langchain_llm(g.user_id, project_id, model="gpt-4", temperature=0.7)
+        ai_project_id = project.platform_project_id
+        llm, key_source, resolved_model = get_langchain_llm(g.user_id, ai_project_id, model="gpt-4", temperature=0.7)
         result = llm.invoke(prompt)
-        log_langchain_usage(result, g.user_id, project_id, "content_marketing.chat", "gpt-4", key_source)
+        log_langchain_usage(result, g.user_id, ai_project_id, "content_marketing.chat", resolved_model, key_source)
         response = result.content
 
         # Store in PostgreSQL
@@ -7302,6 +7304,7 @@ def rank_campaign_vendors(campaign_id):
         payload = request.get_json(silent=True) or {}
         criteria = _compact_text(payload.get('criteria') or payload.get('question') or payload.get('rankingCriteria') or '')
         user_email = payload.get('userEmail') or payload.get('senderEmail')
+        project_id = payload.get('project_id')
 
         trusted_uid, uid_err = _resolve_session_user_id(payload.get('user_id') or payload.get('username'))
         if uid_err is not None:
@@ -7390,7 +7393,7 @@ def rank_campaign_vendors(campaign_id):
         ]
 
         response = ai_chat_completion(
-            user_id=None, project_id=None, agent="sales_helper.rank_vendors",
+            user_id=trusted_uid, project_id=project_id, agent="sales_helper.rank_vendors",
             model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
             messages=prompt,
             temperature=0.0,

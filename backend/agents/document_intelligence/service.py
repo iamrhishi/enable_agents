@@ -311,7 +311,7 @@ class DocumentService:
             # Stage 3: Generate and store embeddings
             vector_store = VectorStore()
             chunk_dicts = [{"content": c["content"], "metadata": c} for c in chunks]
-            chunk_ids = vector_store.store_chunks(document_id, chunk_dicts, user_id=doc.project_id)
+            chunk_ids = vector_store.store_chunks(document_id, chunk_dicts, user_id=doc.project_id, project_id=doc.project_id, billed_user_id=doc.uploaded_by)
 
             doc.processing_stage = "entities"
             doc.processing_progress = 0.8

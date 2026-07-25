@@ -32,7 +32,7 @@ class KnowledgeGraphBuilder:
     def __init__(self, user_id: Optional[str] = None, project_id: Optional[str] = None):
         self.user_id = user_id
         self.project_id = project_id
-        self.llm, self._key_source = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
+        self.llm, self._key_source, self._model = get_langchain_llm(user_id, project_id, model="gpt-4", temperature=0)
         self.graph = nx.DiGraph()
         self.entity_types = {}
         self.relationships = []
@@ -123,7 +123,7 @@ class KnowledgeGraphBuilder:
             "text": truncated_text,
             "domain_context": json.dumps(domain_context) if domain_context else "General business"
         })
-        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_entities", "gpt-4", self._key_source)
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_entities", self._model, self._key_source)
 
         try:
             # Extract JSON from response
@@ -192,7 +192,7 @@ class KnowledgeGraphBuilder:
             "entities": entity_list_str,
             "text": truncated_text
         })
-        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_relationships", "gpt-4", self._key_source)
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_relationships", self._model, self._key_source)
 
         try:
             json_match = re.search(r'\[.*\]', response.content, re.DOTALL)
@@ -249,7 +249,7 @@ class KnowledgeGraphBuilder:
             "text": truncated_text,
             "domain_context": json.dumps(domain_context) if domain_context else "General"
         })
-        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_concepts", "gpt-4", self._key_source)
+        log_langchain_usage(response, self.user_id, self.project_id, "content_marketing.kg_extract_concepts", self._model, self._key_source)
 
         try:
             json_match = re.search(r'\[.*\]', response.content, re.DOTALL)

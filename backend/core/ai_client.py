@@ -5,19 +5,33 @@ Before this module, ~30 call sites across app.py and agents/*/service.py
 each instantiated their own openai.OpenAI()/ChatOpenAI() client, almost
 always reading OPENAI_API_KEY straight from the environment - meaning the
 whole app ran on one shared platform key with no per-user or per-project
-attribution, and no usage/cost tracking at all.
+attribution, and no usage/cost tracking at all. It also only ever talked
+to OpenAI - an "Anthropic API Key" field existed in the settings UI but
+nothing actually used it.
 
 This module:
-  - resolves which API key a call should use, in priority order:
-      1. the project's own key (core/project_settings.py), if project_id
-         is given and the project has one set for this provider
-      2. the calling user's personal key (core/settings.py)
-      3. the platform default from environment (OPENAI_API_KEY / ANTHROPIC_API_KEY)
-  - makes the call
+  - resolves which API key AND which provider a call should use:
+      - if the project's or user's "Preferred Model" setting names a
+        model from the other provider (e.g. a Claude model) and a key
+        is configured for it, that provider/model is used instead of
+        the call site's own default - see resolve_model_and_provider()
+      - otherwise resolves the key in priority order:
+          1. the project's own key (core/project_settings.py), if
+             project_id is given and the project has one set
+          2. the calling user's personal key (core/settings.py)
+          3. the platform default from environment
+             (OPENAI_API_KEY / ANTHROPIC_API_KEY)
+  - makes the call (OpenAI or Anthropic; Anthropic responses are wrapped
+    in an OpenAI-shaped object so callers never need to branch on provider)
   - logs token usage + an estimated cost to AIUsageLog, tagged with
     user/project/team/agent so usage can be rolled up at any of those levels
 
-Usage (raw OpenAI client style, the majority pattern in this codebase):
+Call sites that depend on an OpenAI-only feature (function calling via
+`functions`/`function_call`, or `response_format={"type": "json_object"}`)
+are automatically kept on OpenAI regardless of any Preferred Model
+setting, since Anthropic's API doesn't support the same shapes.
+
+Usage (raw OpenAI-client style, the majority pattern in this codebase):
 
     from core.ai_client import ai_chat_completion
 
@@ -27,14 +41,14 @@ Usage (raw OpenAI client style, the majority pattern in this codebase):
     )
     text = response.choices[0].message.content
 
-Usage (LangChain ChatOpenAI style):
+Usage (LangChain style):
 
     from core.ai_client import get_langchain_llm, log_langchain_usage
 
-    llm, key_source = get_langchain_llm(user_id=g.user_id, project_id=project_id, model="gpt-4")
+    llm, key_source, resolved_model = get_langchain_llm(user_id=g.user_id, project_id=project_id, model="gpt-4")
     result = llm.invoke(prompt)
     log_langchain_usage(result, user_id=g.user_id, project_id=project_id,
-                         agent="content_marketing.kg_builder", model="gpt-4", key_source=key_source)
+                         agent="content_marketing.kg_builder", model=resolved_model, key_source=key_source)
     text = result.content
 """
 from __future__ import annotations
@@ -58,6 +72,14 @@ def _current_user_id(explicit: Optional[str]) -> Optional[str]:
         pass
     return None
 
+
+def infer_provider(model: str) -> str:
+    """Best-effort guess of which provider a model string belongs to.
+    Anthropic model names all start with "claude"; everything else in
+    this codebase is OpenAI (gpt-*, o1/o3*, text-embedding-*)."""
+    return "anthropic" if (model or "").lower().startswith("claude") else "openai"
+
+
 # Rough, approximate USD-per-1K-token rates for cost estimation and display
 # only - not wired to any provider's real billing API, so treat this as an
 # order-of-magnitude estimate, not an invoice. Update as pricing changes.
@@ -70,6 +92,10 @@ _COST_PER_1K_TOKENS: Dict[str, Dict[str, float]] = {
     "claude-3-opus": {"prompt": 0.015, "completion": 0.075},
     "claude-3-sonnet": {"prompt": 0.003, "completion": 0.015},
     "claude-3-haiku": {"prompt": 0.00025, "completion": 0.00125},
+    # Embedding models: input-only, no completion tokens.
+    "text-embedding-ada-002": {"prompt": 0.0001, "completion": 0.0},
+    "text-embedding-3-small": {"prompt": 0.00002, "completion": 0.0},
+    "text-embedding-3-large": {"prompt": 0.00013, "completion": 0.0},
 }
 _DEFAULT_COST_PER_1K = {"prompt": 0.005, "completion": 0.015}  # unknown-model fallback
 
@@ -101,6 +127,46 @@ def resolve_api_key(user_id: Optional[str], project_id: Optional[str], provider:
         return platform_key, "platform"
 
     return None, "none"
+
+
+def _preferred_model_setting(user_id: Optional[str], project_id: Optional[str]) -> Optional[str]:
+    """Project's Preferred Model setting wins over the user's personal one,
+    matching the same project-key-always-wins priority used for API keys."""
+    if project_id:
+        from core.project_settings import ProjectSettings
+        value = ProjectSettings().get(project_id, "preferred_model")
+        if value:
+            return value
+    if user_id:
+        from core.settings import UserSettings
+        value = UserSettings().get(user_id, "ai", "preferred_model")
+        if value:
+            return value
+    return None
+
+
+def resolve_model_and_provider(
+    user_id: Optional[str],
+    project_id: Optional[str],
+    default_model: str,
+    allow_preferred: bool = True,
+) -> Tuple[str, str]:
+    """Picks the model+provider a call should actually use: the project's
+    or user's Preferred Model setting if one is configured AND a key
+    exists for that provider, otherwise the call site's own default_model.
+
+    allow_preferred=False is for call sites that depend on an OpenAI-only
+    feature (function calling, response_format) and must stay on OpenAI
+    no matter what Preferred Model is configured.
+    """
+    if allow_preferred:
+        preferred = _preferred_model_setting(user_id, project_id)
+        if preferred:
+            provider = infer_provider(preferred)
+            api_key, _ = resolve_api_key(user_id, project_id, provider)
+            if api_key:
+                return preferred, provider
+    return default_model, infer_provider(default_model)
 
 
 def _team_id_for_project(project_id: Optional[str]) -> Optional[str]:
@@ -140,9 +206,75 @@ def log_ai_usage(
     db.session.add(entry)
     db.session.commit()
 
+    if project_id:
+        from core.budget import check_and_maybe_alert_budget
+        check_and_maybe_alert_budget(project_id)
+
 
 class NoApiKeyConfigured(RuntimeError):
     """Raised when no project/user/platform key is available for a provider."""
+
+
+# --- Anthropic response normalization -------------------------------------
+# Callers of ai_chat_completion expect an OpenAI-shaped response
+# (response.choices[0].message.content, response.usage.prompt_tokens /
+# .completion_tokens) since that's the majority pattern in this codebase.
+# Rather than have every one of ~15 call sites branch on provider, Anthropic
+# responses get wrapped in these tiny shims so the shape is identical either way.
+
+class _CompatMessage:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _CompatChoice:
+    def __init__(self, content: str):
+        self.message = _CompatMessage(content)
+
+
+class _CompatUsage:
+    def __init__(self, prompt_tokens: int, completion_tokens: int):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+
+class _CompatResponse:
+    def __init__(self, content: str, prompt_tokens: int, completion_tokens: int):
+        self.choices = [_CompatChoice(content)]
+        self.usage = _CompatUsage(prompt_tokens, completion_tokens)
+
+
+# OpenAI-only request shapes that Anthropic's Messages API can't serve -
+# call sites using these are forced to stay on OpenAI, see ai_chat_completion.
+_OPENAI_ONLY_KWARGS = ("functions", "function_call", "response_format")
+
+
+def _anthropic_chat_completion(api_key: str, model: str, messages: List[Dict[str, str]], **kwargs: Any) -> _CompatResponse:
+    """Calls Anthropic's Messages API and returns an OpenAI-shaped response."""
+    import anthropic
+
+    system_parts = [m["content"] for m in messages if m.get("role") == "system"]
+    system = "\n\n".join(system_parts) if system_parts else None
+    convo = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") in ("user", "assistant")]
+    if not convo:
+        convo = [{"role": "user", "content": ""}]
+
+    max_tokens = kwargs.get("max_tokens") or 1024
+    request_kwargs: Dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": convo}
+    if system:
+        request_kwargs["system"] = system
+    if kwargs.get("temperature") is not None:
+        request_kwargs["temperature"] = kwargs["temperature"]
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(**request_kwargs)
+    text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
+
+    return _CompatResponse(
+        content=text,
+        prompt_tokens=response.usage.input_tokens,
+        completion_tokens=response.usage.output_tokens,
+    )
 
 
 def ai_chat_completion(
@@ -151,34 +283,90 @@ def ai_chat_completion(
     agent: str,
     model: str,
     messages: List[Dict[str, str]],
-    provider: str = "openai",
+    provider: Optional[str] = None,
     **kwargs: Any,
 ):
     """Raw-client-style chat completion (mirrors openai's
     client.chat.completions.create signature/response shape) with key
-    resolution and usage logging built in. user_id falls back to the
-    current request's g.user_id if not given explicitly."""
+    resolution, provider routing, and usage logging built in. user_id
+    falls back to the current request's g.user_id if not given explicitly.
+
+    `model` is treated as this call site's default - if the project/user
+    has a Preferred Model set for the other provider (and a key for it),
+    that's used instead, unless this call uses an OpenAI-only feature
+    (functions/response_format) or an explicit `provider` is passed.
+    """
+    user_id = _current_user_id(user_id)
+
+    if provider is not None:
+        resolved_model, resolved_provider = model, provider
+    else:
+        allow_preferred = not any(k in kwargs for k in _OPENAI_ONLY_KWARGS)
+        resolved_model, resolved_provider = resolve_model_and_provider(user_id, project_id, model, allow_preferred)
+
+    api_key, key_source = resolve_api_key(user_id, project_id, resolved_provider)
+    if not api_key:
+        raise NoApiKeyConfigured(
+            f"No {resolved_provider} API key configured for this project or user, and no platform default is set."
+        )
+
+    if resolved_provider == "anthropic":
+        response = _anthropic_chat_completion(api_key, resolved_model, messages, **kwargs)
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
+    else:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(model=resolved_model, messages=messages, **kwargs)
+        usage = getattr(response, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+
+    log_ai_usage(
+        user_id=user_id,
+        project_id=project_id,
+        agent=agent,
+        provider=resolved_provider,
+        model=resolved_model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        key_source=key_source,
+    )
+    return response
+
+
+def ai_embeddings(
+    user_id: Optional[str],
+    project_id: Optional[str],
+    agent: str,
+    model: str,
+    input: Any,
+    **kwargs: Any,
+):
+    """Embeddings API (always OpenAI - Anthropic has no embeddings
+    endpoint) with the same key resolution + usage logging as
+    ai_chat_completion. Returns the raw OpenAI embeddings response."""
     import openai
 
     user_id = _current_user_id(user_id)
-    api_key, key_source = resolve_api_key(user_id, project_id, provider)
+    api_key, key_source = resolve_api_key(user_id, project_id, "openai")
     if not api_key:
         raise NoApiKeyConfigured(
-            f"No {provider} API key configured for this project or user, and no platform default is set."
+            "No OpenAI API key configured for this project or user, and no platform default is set."
         )
 
     client = openai.OpenAI(api_key=api_key)
-    response = client.chat.completions.create(model=model, messages=messages, **kwargs)
+    response = client.embeddings.create(model=model, input=input, **kwargs)
 
     usage = getattr(response, "usage", None)
     log_ai_usage(
         user_id=user_id,
         project_id=project_id,
         agent=agent,
-        provider=provider,
+        provider="openai",
         model=model,
         prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-        completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+        completion_tokens=0,
         key_source=key_source,
     )
     return response
@@ -190,24 +378,41 @@ def get_langchain_llm(
     model: str = "gpt-4",
     temperature: float = 0.7,
 ):
-    """Returns (llm, key_source) - a ChatOpenAI instance configured with
-    the resolved key. Caller must call log_langchain_usage() after
-    invoking it, since usage isn't logged automatically here (LangChain's
-    .invoke() returns before we'd have a chance to intercept)."""
-    from langchain_openai import ChatOpenAI
+    """Returns (llm, key_source, resolved_model) - a ChatOpenAI or
+    ChatAnthropic instance configured with the resolved key, honoring the
+    project's/user's Preferred Model setting when one is configured.
 
-    api_key, key_source = resolve_api_key(user_id, project_id, "openai")
+    Caller must call log_langchain_usage(..., model=resolved_model, ...)
+    after invoking it (using the returned resolved_model, not the model
+    passed in here) - usage isn't logged automatically since LangChain's
+    .invoke() returns before we'd have a chance to intercept.
+    """
+    user_id = _current_user_id(user_id)
+    resolved_model, provider = resolve_model_and_provider(user_id, project_id, model)
+
+    api_key, key_source = resolve_api_key(user_id, project_id, provider)
     if not api_key:
         raise NoApiKeyConfigured(
-            "No OpenAI API key configured for this project or user, and no platform default is set."
+            f"No {provider} API key configured for this project or user, and no platform default is set."
         )
-    return ChatOpenAI(model=model, temperature=temperature, api_key=api_key), key_source
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        llm = ChatAnthropic(model=resolved_model, temperature=temperature, api_key=api_key)
+    else:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model=resolved_model, temperature=temperature, api_key=api_key)
+
+    return llm, key_source, resolved_model
 
 
 def log_langchain_usage(ai_message, user_id: Optional[str], project_id: Optional[str], agent: str, model: str, key_source: str) -> None:
     """Extracts token usage from a LangChain AIMessage and logs it.
-    Handles both the modern `.usage_metadata` attribute and the older
-    `.response_metadata['token_usage']` shape."""
+    Handles both the modern `.usage_metadata` attribute (populated by both
+    ChatOpenAI and ChatAnthropic) and the older
+    `.response_metadata['token_usage']` shape. `model` should be the
+    resolved_model returned by get_langchain_llm - its provider is
+    inferred from the name for the usage log."""
     prompt_tokens = 0
     completion_tokens = 0
 
@@ -224,7 +429,7 @@ def log_langchain_usage(ai_message, user_id: Optional[str], project_id: Optional
         user_id=user_id,
         project_id=project_id,
         agent=agent,
-        provider="openai",
+        provider=infer_provider(model),
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,

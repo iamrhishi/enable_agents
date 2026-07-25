@@ -69,6 +69,7 @@ def create_project():
     project = CMProject(
         project_id=new_project_id,
         user_id=user_id,
+        platform_project_id=platform_project_id,
         project_name=project_name,
         description=data.get("description"),
         industry=data.get("industry"),

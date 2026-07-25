@@ -137,6 +137,10 @@ class Project(db.Model):
     status = db.Column(db.String(50), nullable=False, default="active", index=True)
     _agents = db.Column("agents", db.Text, nullable=False, default="[]")
     _data = db.Column("data", db.Text, nullable=False, default="{}")
+    monthly_budget_usd = db.Column(db.Float, nullable=True)
+    # "YYYY-MM" of the last month a budget-exceeded alert was sent, so we
+    # only email once per month even though usage is logged on every call.
+    budget_alert_month = db.Column(db.String(7), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -176,6 +180,7 @@ class Project(db.Model):
             "agents": self.agents,
             "status": self.status,
             "data": self.data,
+            "monthlyBudgetUsd": self.monthly_budget_usd,
             "createdAt": self.created_at.strftime("%Y-%m-%d") if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }

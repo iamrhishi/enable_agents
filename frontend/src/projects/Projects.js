@@ -110,6 +110,10 @@ function Projects() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsEditValues, setSettingsEditValues] = useState({});
   const [settingsSavingKey, setSettingsSavingKey] = useState('');
+  const [settingsTestingKey, setSettingsTestingKey] = useState('');
+  const [settingsTestResults, setSettingsTestResults] = useState({});
+  const [budgetInput, setBudgetInput] = useState('');
+  const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -263,6 +267,7 @@ function Projects() {
   const openProjectSettings = async (project) => {
     setSettingsProject(project);
     setSettingsEditValues({});
+    setBudgetInput(project.monthlyBudgetUsd != null ? String(project.monthlyBudgetUsd) : '');
     setSettingsLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/projects/${project.id}/settings`, {
@@ -322,6 +327,27 @@ function Projects() {
     }
   };
 
+  const handleTestProjectSetting = async (key) => {
+    const value = settingsEditValues[key];
+    if (!value || !value.trim()) return;
+
+    setSettingsTestingKey(key);
+    setSettingsTestResults(prev => ({ ...prev, [key]: null }));
+    try {
+      const res = await fetch(`${API_URL}/api/projects/${settingsProject.id}/settings/test`, {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ key, value: value.trim() }),
+      });
+      const data = await res.json();
+      setSettingsTestResults(prev => ({ ...prev, [key]: { success: data.success, message: data.message } }));
+    } catch {
+      setSettingsTestResults(prev => ({ ...prev, [key]: { success: false, message: 'Test request failed' } }));
+    } finally {
+      setSettingsTestingKey('');
+    }
+  };
+
   const handleRemoveProjectSetting = async (key) => {
     setSettingsSavingKey(key);
     try {
@@ -340,6 +366,30 @@ function Projects() {
       showToast('Failed to remove setting', 'error');
     } finally {
       setSettingsSavingKey('');
+    }
+  };
+
+  const handleSaveBudget = async () => {
+    setSavingBudget(true);
+    try {
+      const value = budgetInput.trim();
+      const res = await fetch(`${API_URL}/api/projects/${settingsProject.id}`, {
+        method: 'PUT',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ monthlyBudgetUsd: value === '' ? null : Number(value) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(value === '' ? 'Budget removed' : 'Monthly budget saved', 'success');
+        setSettingsProject(data.project);
+        fetchProjects();
+      } else {
+        showToast(data.error || 'Failed to save budget', 'error');
+      }
+    } catch {
+      showToast('Failed to save budget', 'error');
+    } finally {
+      setSavingBudget(false);
     }
   };
 
@@ -542,6 +592,34 @@ function Projects() {
                       ? 'Set a key here and every AI action inside this project uses it instead of a member\'s personal key or the platform default.'
                       : 'Only the project owner or a team admin can change these keys. Shown below is what this project currently uses.'}
                   </p>
+                  <div className="field">
+                    <label>Monthly AI Budget (USD)</label>
+                    {canManageSettings ? (
+                      <div className="project-setting-row">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="No budget set"
+                          value={budgetInput}
+                          onChange={(e) => setBudgetInput(e.target.value)}
+                        />
+                        <button type="button" className="btn-primary" onClick={handleSaveBudget} disabled={savingBudget}>
+                          {savingBudget ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="field-hint">
+                        {settingsProject.monthlyBudgetUsd != null
+                          ? `$${settingsProject.monthlyBudgetUsd} - only the project owner or a team admin can change this.`
+                          : 'No budget set.'}
+                      </p>
+                    )}
+                    <p className="field-hint">
+                      Informational only - AI actions are never blocked. The project owner gets a single email the first time spend crosses this in a calendar month.
+                    </p>
+                  </div>
+
                   {AI_KEY_FIELDS.map(field => {
                     const setting = projectSettings?.[field.key] || {};
                     const isEditing = field.key in settingsEditValues;
@@ -580,32 +658,50 @@ function Projects() {
                           </div>
                         ) : (
                           canManageSettings && (
-                            <div className="project-setting-row">
-                              <input
-                                type="password"
-                                placeholder={setting.configured ? setting.value : field.placeholder}
-                                value={settingsEditValues[field.key] || ''}
-                                onChange={(e) => setSettingsEditValues(prev => ({ ...prev, [field.key]: e.target.value }))}
-                              />
-                              <button
-                                type="button"
-                                className="btn-primary"
-                                onClick={() => handleSaveProjectSetting(field.key)}
-                                disabled={isSaving || !settingsEditValues[field.key]?.trim()}
-                              >
-                                {isSaving ? 'Saving...' : 'Save'}
-                              </button>
-                              {setting.configured && (
+                            <>
+                              <div className="project-setting-row">
+                                <input
+                                  type="password"
+                                  placeholder={setting.configured ? setting.value : field.placeholder}
+                                  value={settingsEditValues[field.key] || ''}
+                                  onChange={(e) => {
+                                    setSettingsEditValues(prev => ({ ...prev, [field.key]: e.target.value }));
+                                    setSettingsTestResults(prev => ({ ...prev, [field.key]: null }));
+                                  }}
+                                />
                                 <button
                                   type="button"
                                   className="btn-secondary"
-                                  onClick={() => handleRemoveProjectSetting(field.key)}
-                                  disabled={isSaving}
+                                  onClick={() => handleTestProjectSetting(field.key)}
+                                  disabled={settingsTestingKey === field.key || !settingsEditValues[field.key]?.trim()}
                                 >
-                                  Remove
+                                  {settingsTestingKey === field.key ? 'Testing...' : 'Test'}
                                 </button>
+                                <button
+                                  type="button"
+                                  className="btn-primary"
+                                  onClick={() => handleSaveProjectSetting(field.key)}
+                                  disabled={isSaving || !settingsEditValues[field.key]?.trim()}
+                                >
+                                  {isSaving ? 'Saving...' : 'Save'}
+                                </button>
+                                {setting.configured && (
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => handleRemoveProjectSetting(field.key)}
+                                    disabled={isSaving}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                              {settingsTestResults[field.key] && (
+                                <p className={`field-hint ${settingsTestResults[field.key].success ? 'test-success' : 'test-error'}`}>
+                                  {settingsTestResults[field.key].message}
+                                </p>
                               )}
-                            </div>
+                            </>
                           )
                         )}
                         {!canManageSettings && !setting.configured && (
