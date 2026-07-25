@@ -13,6 +13,7 @@ import uuid
 
 from core.database import db
 from core.models import Team, TeamMember, PendingInvite
+from core.email_sender import send_platform_email
 
 team_bp = Blueprint('team', __name__)
 
@@ -97,8 +98,6 @@ def invite_member():
     )
     db.session.add(new_member)
     db.session.commit()
-
-    from app import send_platform_email
 
     inviter_name = user_email.split('@')[0]
     subject = f"{inviter_name} added you to their team on Enable Agents"
