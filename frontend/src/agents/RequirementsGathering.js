@@ -552,9 +552,7 @@ function RequirementsGathering() {
 
       const response = await fetch(API_CONFIG.GENERATE_REQUIREMENTS, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -1453,9 +1451,7 @@ function RequirementsGathering() {
     try {
       const response = await fetch(API_CONFIG.GET_GOOGLE_BUSINESS_DATA, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authOptionalHeaders(),
       });
 
       if (response.ok) {

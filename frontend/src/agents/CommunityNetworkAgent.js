@@ -10,6 +10,11 @@ import { formatDate, formatTime, getRelativeDateLabel, isSameDay } from '../util
 import { useSelectedProjectId } from '../hooks/useSelectedProjectId';
 import { useMode } from '../contexts';
 
+// message.data.type values with their own rich renderer in the chat below -
+// any other type (e.g. csv_upload_success) still renders as a normal text
+// message, just with extra metadata attached.
+const RICH_MESSAGE_TYPES = ['search_results', 'user_favorites', 'profile_detail', 'cv_analysis'];
+
 // Demo network data
 const DEMO_NETWORK_DATA = [
   { name: 'Alex Chen', company: 'TechCorp', role: 'CTO', industry: 'Technology', location: 'San Francisco', email: 'alex@techcorp.com', linkedin: 'linkedin.com/in/alexchen', skills: ['AI', 'Cloud', 'Leadership'] },
@@ -196,11 +201,16 @@ function CommunityNetworkAgent() {
             profiles_count: loadResult.data.length
           })));
 
-          // Show a preview of the data structure
-          const sampleProfile = loadResult.data[0];
-          if (sampleProfile) {
-            const availableFields = Object.keys(sampleProfile);
-          }
+          addMessage(`Loaded ${loadResult.data.length} profiles from "${file.name}" (already processed previously).`, 'agent', {
+            type: 'csv_upload_success',
+            data: {
+              profiles_count: loadResult.data.length,
+              columns: Object.keys(loadResult.data[0] || {}),
+              file_type: fileExtension.substring(1).toUpperCase(),
+              json_saved: true,
+              json_file: jsonFileName,
+            }
+          }, 'markdown');
 
           setIsLoading(false);
           event.target.value = '';
@@ -850,7 +860,11 @@ function CommunityNetworkAgent() {
                   )}
                   <div className={`message ${message.sender}`}>
                     <div className={`message-content ${message.data?.type === 'profile_detail' ? 'has-card' : ''}`}>
-                      {message.text && !message.data?.type && <MessageContent message={message} />}
+                      {/* Only search_results/user_favorites/profile_detail/cv_analysis have their
+                          own rich renderer below - any other data.type (e.g. csv_upload_success,
+                          which just carries metadata alongside a normal text message) should still
+                          render its text, not disappear silently. */}
+                      {message.text && !RICH_MESSAGE_TYPES.includes(message.data?.type) && <MessageContent message={message} />}
 
                       {/* CV Analysis visualization */}
                       {message.data && message.data.type === 'search_results' && (
@@ -929,7 +943,7 @@ function CommunityNetworkAgent() {
                       )}
 
                       {/* Time for text-only messages */}
-                      {!message.data?.type && <span className="message-time">{formatTime(message.timestamp)}</span>}
+                      {!RICH_MESSAGE_TYPES.includes(message.data?.type) && <span className="message-time">{formatTime(message.timestamp)}</span>}
                     </div>
                   </div>
                 </React.Fragment>

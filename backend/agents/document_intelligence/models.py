@@ -81,8 +81,11 @@ class ProcessedDocument(db.Model):
         # Real confidence derived from the extracted entities' own confidence
         # scores (set by the extraction pipeline) - not a placeholder.
         confidence = None
+        entities_by_type: Dict[str, List[str]] = {}
         if self.entities:
             confidence = sum(e.confidence for e in self.entities) / len(self.entities)
+            for e in self.entities:
+                entities_by_type.setdefault(e.entity_type, []).append(e.entity_name)
 
         return {
             "document_id": self.document_id,
@@ -99,6 +102,7 @@ class ProcessedDocument(db.Model):
             "word_count": self.word_count,
             "chunk_count": self.chunk_count,
             "entity_count": self.entity_count,
+            "entities": entities_by_type,
             "confidence": confidence,
             "document_type": self.document_type,
             "metadata": self.metadata_dict,

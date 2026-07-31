@@ -184,11 +184,6 @@
   justify-content: center;
 }
 
-/* Only modal buttons are full width */
-.campaign-modal .btn-primary {
-  width: 100%;
-}
-
 .btn-primary:hover:not(:disabled) {
   background: var(--color-accent-dark, #9a3412);
 }
@@ -196,20 +191,6 @@
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: var(--color-border);
-  color: var(--color-primary);
-  width: 100%;
-  justify-content: center;
-  margin-top: var(--space-4);
-  font-weight: var(--font-semibold);
-}
-
-.btn-secondary:hover {
-  background: var(--color-accent);
-  color: var(--color-background);
 }
 
 /* ========== UPLOAD AREA ========== */

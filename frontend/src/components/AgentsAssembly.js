@@ -375,12 +375,10 @@ function AgentsAssembly() {
 
   const handleBuyModule = async (module) => {
     console.log('Requesting demo for:', module.name);
-    await showAlert({
-      title: 'Request a Demo',
-      message: `Interested in ${module.name}? We'd love to show you how it can help your business.\n\nContact our sales team:\n📧 sales@enableagents.com\n🌐 enableagents.com/demo`,
-      confirmLabel: 'Got it',
-      variant: 'primary',
-    });
+    await showAlert(
+      `Interested in ${module.name}? We'd love to show you how it can help your business.\n\nContact our sales team:\n📧 sales@enableagents.com\n🌐 enableagents.com/demo`,
+      'Request a Demo'
+    );
   };
 
 

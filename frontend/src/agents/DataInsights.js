@@ -781,6 +781,7 @@ function DataInsights() {
 
   // State for live mode entities
   const [liveEntities, setLiveEntities] = useState([]);
+  const [liveEntitiesByType, setLiveEntitiesByType] = useState(null);
 
   // Fetch entities for document (live mode)
   const fetchDocumentEntities = async (documentId) => {
@@ -804,6 +805,10 @@ function DataInsights() {
             }))
           );
           setLiveEntities(formatted);
+          setLiveEntitiesByType(data.entities);
+        } else {
+          setLiveEntities([]);
+          setLiveEntitiesByType(null);
         }
       }
     } catch (err) {
@@ -924,9 +929,57 @@ function DataInsights() {
   }, [isHistoryView, stageData]);
 
   // Get graph for selected document
+  // Builds a real graph from the document's extracted entities (grouped by
+  // type, e.g. email/money/date) when there's no demo data to fall back on.
+  // There's no LLM-derived relationship data to draw on, so edges connect
+  // each entity to a hub node for its type rather than asserting a
+  // specific (and potentially false) relationship between entities.
+  const buildLiveGraph = (entitiesByType) => {
+    const types = Object.keys(entitiesByType || {}).filter(t => entitiesByType[t]?.length > 0).slice(0, 5);
+    if (types.length === 0) return null;
+
+    const centerX = 200;
+    const centerY = 175;
+    const hubRadius = 90;
+    const leafRadius = 150;
+    const nodes = [];
+    const edges = [];
+
+    types.forEach((type, typeIdx) => {
+      const typeAngle = (typeIdx / types.length) * 2 * Math.PI;
+      const hubId = `hub-${type}`;
+      nodes.push({
+        id: hubId,
+        label: type.charAt(0).toUpperCase() + type.slice(1),
+        type,
+        x: Math.round(centerX + hubRadius * Math.cos(typeAngle)),
+        y: Math.round(centerY + hubRadius * Math.sin(typeAngle)),
+      });
+
+      const names = [...new Set(entitiesByType[type])].slice(0, 4);
+      const spread = Math.PI / 4;
+      names.forEach((name, nameIdx) => {
+        const offset = names.length > 1 ? (nameIdx / (names.length - 1) - 0.5) * spread : 0;
+        const angle = typeAngle + offset;
+        const leafId = `${type}-${nameIdx}`;
+        nodes.push({
+          id: leafId,
+          label: name.length > 18 ? `${name.slice(0, 16)}…` : name,
+          type,
+          x: Math.round(centerX + leafRadius * Math.cos(angle)),
+          y: Math.round(centerY + leafRadius * Math.sin(angle)),
+        });
+        edges.push({ source: hubId, target: leafId, label: '' });
+      });
+    });
+
+    return { nodes, edges };
+  };
+
   const getDocumentGraph = () => {
-    if (!selectedDocument || !isDemoMode) return null;
-    return DEMO_GRAPHS[selectedDocument.id] || null;
+    if (!selectedDocument) return null;
+    if (isDemoMode) return DEMO_GRAPHS[selectedDocument.id] || null;
+    return buildLiveGraph(liveEntitiesByType);
   };
 
   const stats = getTotalStats();
@@ -1369,10 +1422,12 @@ function DataInsights() {
                           </svg>
                         </div>
                         <div className="di-graph-legend">
-                          <span><span className="di-legend-dot di-legend-dot--metric"></span> Metric</span>
-                          <span><span className="di-legend-dot di-legend-dot--value"></span> Value</span>
-                          <span><span className="di-legend-dot di-legend-dot--period"></span> Period</span>
-                          <span><span className="di-legend-dot di-legend-dot--segment"></span> Segment</span>
+                          {[...new Set(getDocumentGraph().nodes.map(n => n.type))].map(type => (
+                            <span key={type}>
+                              <span className={`di-legend-dot di-legend-dot--${type}`}></span>
+                              {' '}{type.charAt(0).toUpperCase() + type.slice(1)}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     ) : (

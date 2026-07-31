@@ -851,6 +851,14 @@
 .di-graph-node--growth { fill: rgba(236, 72, 153, 0.15); stroke: #ec4899; }
 .di-graph-node--category { fill: rgba(107, 114, 128, 0.15); stroke: #6b7280; }
 
+/* Real (non-demo) entity types extracted from uploaded documents */
+.di-graph-node--email { fill: rgba(59, 130, 246, 0.15); stroke: #3b82f6; }
+.di-graph-node--phone { fill: rgba(139, 92, 246, 0.15); stroke: #8b5cf6; }
+.di-graph-node--url { fill: rgba(107, 114, 128, 0.15); stroke: #6b7280; }
+.di-graph-node--money { fill: rgba(22, 163, 74, 0.15); stroke: #16a34a; }
+.di-graph-node--percentage { fill: rgba(236, 72, 153, 0.15); stroke: #ec4899; }
+.di-graph-node--date { fill: rgba(194, 65, 12, 0.15); stroke: var(--color-accent); }
+
 .di-graph-node-label {
   font-size: var(--text-xs);
   fill: var(--color-text);
@@ -879,6 +887,12 @@
 .di-legend-dot--value { background: rgba(22, 163, 74, 0.5); }
 .di-legend-dot--period { background: rgba(59, 130, 246, 0.5); }
 .di-legend-dot--segment { background: rgba(139, 92, 246, 0.5); }
+.di-legend-dot--email { background: rgba(59, 130, 246, 0.5); }
+.di-legend-dot--phone { background: rgba(139, 92, 246, 0.5); }
+.di-legend-dot--url { background: rgba(107, 114, 128, 0.5); }
+.di-legend-dot--money { background: rgba(22, 163, 74, 0.5); }
+.di-legend-dot--percentage { background: rgba(236, 72, 153, 0.5); }
+.di-legend-dot--date { background: rgba(194, 65, 12, 0.5); }
 
 /* Sources Panel */
 .di-sources-panel h5 {

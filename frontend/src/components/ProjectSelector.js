@@ -14,6 +14,11 @@ import { authOptionalHeaders } from '../core/authHeaders';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const PROJECTS_STORAGE_KEY = 'enableAgentsProjects';
+// Remembers the last project picked in ANY agent, so navigating to a
+// different agent (or leaving and coming back) restores it instead of
+// requiring the user to pick a project again every time - the `?project=`
+// URL param alone doesn't survive a plain nav-link click to another agent.
+const LAST_PROJECT_STORAGE_KEY = 'enableAgentsLastProjectId';
 
 // Helper to get projects from localStorage
 const getStoredProjects = () => {
@@ -62,18 +67,35 @@ function ProjectSelector({ agentKey, onProjectChange }) {
           notifiedProjectIdRef.current = project.id;
           onProjectChange?.(project);
         }
+        // Remember it even when it arrived via a deep link (e.g. opened from
+        // the Projects page) rather than a manual dropdown pick, so the next
+        // agent visited without its own `?project=` can still restore it.
+        if (!isDemoMode) localStorage.setItem(LAST_PROJECT_STORAGE_KEY, project.id);
       }
       return;
     }
 
-    if (isDemoMode && !projectIdFromUrl && projects.length > 0 && !loading) {
-      const first = projects[0];
-      const currentPath = window.location.pathname;
+    if (!projectIdFromUrl && projects.length > 0 && !loading) {
       // Preserve existing params (e.g. workflow/stage/view when opened from a
       // workflow) - only add `project`, don't clobber the whole query string.
+      const currentPath = window.location.pathname;
       const newParams = new URLSearchParams(window.location.search);
-      newParams.set('project', first.id);
-      navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
+
+      if (isDemoMode) {
+        newParams.set('project', projects[0].id);
+        navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
+        return;
+      }
+
+      // Live mode: restore the last project selected in any agent, if it's
+      // still one this agent has access to, instead of making the user pick
+      // a project again every time they open a different agent.
+      const rememberedId = localStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+      const remembered = rememberedId && projects.find(p => p.id === rememberedId);
+      if (remembered) {
+        newParams.set('project', remembered.id);
+        navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
+      }
     }
   }, [projectIdFromUrl, projects, isDemoMode, loading, navigate]);
 
@@ -123,6 +145,7 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     const newParams = new URLSearchParams(window.location.search);
     newParams.set('project', project.id);
     navigate(`${currentPath}?${newParams.toString()}`, { replace: true });
+    localStorage.setItem(LAST_PROJECT_STORAGE_KEY, project.id);
 
     notifiedProjectIdRef.current = project.id;
     onProjectChange?.(project);
@@ -138,6 +161,7 @@ function ProjectSelector({ agentKey, onProjectChange }) {
     newParams.delete('project');
     const qs = newParams.toString();
     navigate(qs ? `${currentPath}?${qs}` : currentPath, { replace: true });
+    localStorage.removeItem(LAST_PROJECT_STORAGE_KEY);
 
     notifiedProjectIdRef.current = null;
     onProjectChange?.(null);

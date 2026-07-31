@@ -782,7 +782,11 @@
 
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr), not plain 1fr - grid tracks default to min-width:auto
+     (content-based), so a long nowrap task title would otherwise force
+     the whole column to grow instead of the card's own ellipsis truncation
+     ever engaging. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
   min-height: 300px;
 }
@@ -792,6 +796,7 @@
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 200px;
   transition: background 0.15s ease;
 }
