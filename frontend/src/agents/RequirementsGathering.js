@@ -451,6 +451,19 @@ function RequirementsGathering() {
     setAnalysisFrameworks(e.target.value);
   };
 
+  // Wipes every piece of state a previous research run could have left behind,
+  // regardless of which research type produced it, so a new run (or a type switch)
+  // never renders alongside stale results.
+  const clearResearchResults = () => {
+    setCustomerResearchResults(null);
+    setAiRequirements([]);
+    setShowCustomerResearchTable(false);
+    setMinimizedCustomerResearch(false);
+    setActiveSavedList(null);
+    setActiveSavedListLeads([]);
+    setShowSavedListsView(false);
+  };
+
   const handleGenerate = async () => {
     try {
       // Check if Customer Research or Supplier Research format is selected
@@ -463,6 +476,9 @@ function RequirementsGathering() {
           showToast('Please fill in Overview, Industries, and Region/Countries for research', 'warning');
           return;
         }
+
+        // A search result should never render alongside a leftover result of any kind.
+        clearResearchResults();
 
         // In demo mode, use mock data instead of API call
         if (isDemoMode) {
@@ -550,6 +566,8 @@ function RequirementsGathering() {
       }
 
       // Original behavior for other response formats
+      // A report should never render alongside a leftover result of any kind.
+      clearResearchResults();
       setIsLoadingResearch(true);
       const googleData = await fetchGoogleBusinessData();
 
@@ -1706,7 +1724,12 @@ ${getCurrentUsername() || 'Your Name'}`);
               <label>Research Type</label>
               <select
                 value={responseFormat}
-                onChange={(e) => setResponseFormat(e.target.value)}
+                onChange={(e) => {
+                  setResponseFormat(e.target.value);
+                  // Switching research type starts a clean results panel -
+                  // a leads table from one type shouldn't linger under a report from another.
+                  clearResearchResults();
+                }}
                 disabled={isHistoryView}
               >
                  <option value="">Select research type...</option>
