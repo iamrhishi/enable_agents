@@ -285,6 +285,36 @@
   justify-content: flex-end;
 }
 
+/* Research Type caption - explains what the selected type will actually do,
+   since "Customer/Supplier Research" run a real business search while every
+   other option generates a written report; shown full-width below the
+   toolbar row rather than crammed under the narrow select itself. */
+.research-type-caption {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.research-type-kind {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 999px);
+  font-size: var(--text-caption);
+  font-weight: var(--font-semibold);
+  margin-right: var(--space-2);
+}
+
+.research-type-kind--search {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.research-type-kind--report {
+  background: var(--color-accent-bg, rgba(194, 65, 12, 0.12));
+  color: var(--color-accent);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    BUTTONS - Consistent styling
    ═══════════════════════════════════════════════════════════════════════════════ */

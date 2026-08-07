@@ -4299,6 +4299,55 @@ def yfinance_test():
 
     return jsonify(financial_KPIs)
 
+# Each Research Type produces a genuinely different structure, not just a
+# label appended to the same generic prompt - keep these in sync with the
+# <option> values in RequirementsGathering.js's Research Type select.
+RESEARCH_TYPE_STRUCTURES = {
+    "Detailed PRD": (
+        "Produce a formal Product Requirements Document with these exact sections: "
+        "1) Problem Statement, 2) Goals & Success Metrics, 3) Target User Personas, "
+        "4) Functional Requirements (numbered list), 5) Non-Functional Requirements "
+        "(performance, security, scalability), 6) Out of Scope, 7) Open Questions."
+    ),
+    "Supplier Research": (
+        "Produce a supplier evaluation with these exact sections: "
+        "1) Candidate Suppliers (name, what they offer, notable strength, notable risk - as a table), "
+        "2) Qualification Criteria to screen them on, 3) Key Risk Factors (financial, quality, geopolitical, "
+        "single-source dependency), 4) Typical Pricing/Cost Benchmarks for this category, "
+        "5) Recommended Shortlist with a one-line rationale for each."
+    ),
+    "Customer Research": (
+        "Produce customer/market research with these exact sections: "
+        "1) Target Customer Segments / Ideal Customer Profile, 2) Core Pain Points & Unmet Needs, "
+        "3) Buying Triggers (what causes them to seek a solution now), 4) Common Objections & Hesitations, "
+        "5) Messaging Recommendations that speak directly to the pain points identified."
+    ),
+    "Industry Use Cases": (
+        "Produce an industry use-case survey with these exact sections: "
+        "1) Common Use Cases in this industry today (as a list, each with a one-line description), "
+        "2) Real-World Examples or case studies illustrating each use case, "
+        "3) Adoption Patterns (who adopts first, typical rollout path), "
+        "4) Emerging/Next-Wave Use Cases worth watching, 5) Concrete Opportunities this suggests."
+    ),
+    "Product Requirements": (
+        "Produce a lightweight product requirements brief with these exact sections: "
+        "1) Core Features (prioritized, MoSCoW: Must/Should/Could/Won't), 2) User Stories for the top "
+        "3-5 features (\"As a [user], I want [goal] so that [benefit]\"), 3) Dependencies & Constraints, "
+        "4) Acceptance Criteria for the Must-have features."
+    ),
+    "Competitive Research": (
+        "Produce competitive research with these exact sections: "
+        "1) Competitor Landscape (name, positioning, target segment - as a table), "
+        "2) Feature & Pricing Comparison, 3) Differentiation Opportunities (gaps competitors leave open), "
+        "4) SWOT relative to the strongest competitor, 5) Recommended Positioning."
+    ),
+}
+DEFAULT_RESEARCH_STRUCTURE = (
+    "Structure your response as a general research brief: key findings, supporting data, "
+    "and recommended next steps."
+)
+
+
 @app.route('/generate-requirements', methods=['POST'])
 @require_auth
 def generate_requirements():
@@ -4312,15 +4361,8 @@ def generate_requirements():
     function = data.get('businessFunction', '')
     frameworks = data.get('frameworks', [])
 
-    format = data.get('responseFormat', '')
-    
-
-    # prompt = f"""
-    # Draft requirements based on the requirements {overview} that are specific, measurable, achievable, relevant, and time-bound (SMART).
-    # Consider {context} as context for the requirements being asked for, focus on the market in {country} or region, 
-    # consider {industries} for industry related insights, consider {function} as the role or business function of the requester,
-    # and without mentioning the framework in the final response, conduct research taking into account these analysis frameworks: {frameworks} for one valuable and rare resource each using the VRIO, market forces for and against the startup using PESTLE, and product readiness using Mckinsey's 3 Horizon and use response format as reference: {format}.
-    # """
+    research_type = data.get('responseFormat', '')
+    structure_instruction = RESEARCH_TYPE_STRUCTURES.get(research_type, DEFAULT_RESEARCH_STRUCTURE)
 
     prompt = f"""
     You are a research assistant tasked with producing high-quality, insightful, and well-structured research on business opportunitiesand growth prospects. Your output should include a curated but accessible for free list of relevant academic papers, industry articles, expert quotations, market data, and other authoritative sources.
@@ -4337,7 +4379,7 @@ def generate_requirements():
 
     Strategic Frameworks: Incorporate or structure your research using the following analytical frameworks: {frameworks}.
 
-    Use the following format as a guide for structuring your response: {format}.
+    {structure_instruction}
 
     Your response should:
 

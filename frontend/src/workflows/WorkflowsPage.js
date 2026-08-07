@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
 import { BackButton, EmptyState, ProjectSelector } from '../components';
 import { API_CONFIG } from '../config/apiConfig';
@@ -26,6 +27,10 @@ const DEMO_TEMPLATES = [
     category: 'procurement',
     icon: 'truck',
     stageCount: 6,
+    stages: [
+      { name: 'Requirement Capture' }, { name: 'Supplier Research' }, { name: 'Document Analysis' },
+      { name: 'RFQ Outreach' }, { name: 'Response Analysis' }, { name: 'Final Selection' },
+    ],
     isSystem: true,
   },
   {
@@ -35,6 +40,9 @@ const DEMO_TEMPLATES = [
     category: 'marketing',
     icon: 'users',
     stageCount: 4,
+    stages: [
+      { name: 'Lead Research' }, { name: 'Content Personalization' }, { name: 'Outreach' }, { name: 'Follow-up' },
+    ],
     isSystem: true,
   },
   {
@@ -44,6 +52,9 @@ const DEMO_TEMPLATES = [
     category: 'marketing',
     icon: 'rocket',
     stageCount: 3,
+    stages: [
+      { name: 'Market Research' }, { name: 'Content Creation' }, { name: 'Outreach' },
+    ],
     isSystem: true,
   },
   {
@@ -53,6 +64,9 @@ const DEMO_TEMPLATES = [
     category: 'procurement',
     icon: 'clipboard-check',
     stageCount: 4,
+    stages: [
+      { name: 'Vendor Discovery' }, { name: 'Document Review' }, { name: 'Comparison & Scoring' }, { name: 'Recommendation' },
+    ],
     isSystem: true,
   },
 ];
@@ -105,6 +119,7 @@ const DEMO_INSTANCES = [
 ];
 
 function WorkflowsPage() {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
   const [instances, setInstances] = useState([]);
   const [activeTab, setActiveTab] = useState('templates');
@@ -167,11 +182,13 @@ function WorkflowsPage() {
 
   const handleStartWorkflow = async (templateId) => {
     if (!selectedProjectId) {
-      showToast('Select a project first', 'warning');
+      showToast('Pick a project from the dropdown above first (or create one if you don\'t have one yet)', 'warning');
       return;
     }
 
-    // Demo mode: simulate starting workflow
+    // Demo mode: simulate starting workflow, then go straight into it - a
+    // template card should feel like "enter this workflow", not "create a
+    // list item I then have to click again to actually begin."
     if (isDemoMode) {
       const template = templates.find((t) => t.id === templateId);
       const newInstance = {
@@ -187,8 +204,7 @@ function WorkflowsPage() {
         createdAt: new Date().toISOString(),
       };
       setInstances((prev) => [newInstance, ...prev]);
-      showToast('Demo workflow created', 'success');
-      setActiveTab('active');
+      navigate(`/workflows/${newInstance.id}`);
       return;
     }
 
@@ -203,9 +219,10 @@ function WorkflowsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Workflow started', 'success');
-        setInstances((prev) => [data.instance, ...prev]);
-        setActiveTab('active');
+        // Go straight into the runner instead of parking the user on this
+        // list with a "Workflow started" toast that's immediately
+        // contradicted by the instance card still saying "Not Started."
+        navigate(`/workflows/${data.instance.id}`);
       } else {
         showToast(data.error || 'Failed to start workflow', 'error');
       }
@@ -332,9 +349,17 @@ function WorkflowsPage() {
                       </div>
                       <h3>{template.name}</h3>
                       <p>{template.description}</p>
-                      <div className="template-stages">
-                        {template.stageCount} stages
-                      </div>
+                      {template.stages?.length > 0 ? (
+                        <ol className="template-stage-list">
+                          {template.stages.map((stage, idx) => (
+                            <li key={stage.stage_id || stage.id || idx}>{stage.name}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <div className="template-stages">
+                          {template.stageCount} stages
+                        </div>
+                      )}
                       <button
                         className="btn btn-primary"
                         onClick={() => handleStartWorkflow(template.id)}

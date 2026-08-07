@@ -138,6 +138,40 @@
   flex: 1;
 }
 
+.workflows-page .template-stage-list {
+  list-style: none;
+  counter-reset: stage-num;
+  margin: var(--space-2) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workflows-page .template-stage-list li {
+  counter-increment: stage-num;
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workflows-page .template-stage-list li::before {
+  content: counter(stage-num);
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(30, 58, 95, 0.1);
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: var(--font-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .workflows-page .template-stages {
   display: inline-block;
   font-size: var(--text-small);

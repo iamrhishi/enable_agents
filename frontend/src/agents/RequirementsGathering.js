@@ -66,6 +66,22 @@ const fillTemplate = (template, vars = {}) => {
   return out;
 };
 
+// Research Type options - these drive two genuinely different behaviors,
+// not just a text label passed to one generic prompt:
+//   - 'search' types (Customer/Supplier Research) look up real businesses
+//     via Google Business Search and return a results table you can save,
+//     enrich, and outreach to.
+//   - 'report' types generate a written, AI-structured document (each with
+//     its own section structure - see RESEARCH_TYPE_STRUCTURES in app.py).
+const RESEARCH_TYPE_OPTIONS = [
+  { value: 'Customer Research', kind: 'search', description: 'Finds real prospect businesses matching your product and region, as a table you can save and reach out to.' },
+  { value: 'Supplier Research', kind: 'search', description: 'Finds real supplier/vendor businesses matching your criteria, as a table you can save and send RFQs to.' },
+  { value: 'Detailed PRD', kind: 'report', description: 'A formal PRD: problem statement, goals, personas, functional & non-functional requirements.' },
+  { value: 'Product Requirements', kind: 'report', description: 'A lighter product brief: prioritized features, user stories, dependencies, acceptance criteria.' },
+  { value: 'Industry Use Cases', kind: 'report', description: 'A survey of how this industry uses solutions like this today, with real-world examples and emerging trends.' },
+  { value: 'Competitive Research', kind: 'report', description: 'A competitor landscape: feature & pricing comparison, differentiation gaps, SWOT, positioning.' },
+];
+
 // Demo mode mock data - realistic examples (persisted in sessionStorage)
 const DEMO_MOCK_DATA = {
   overview: 'B2B SaaS platform for HR automation',
@@ -1687,19 +1703,16 @@ ${getCurrentUsername() || 'Your Name'}`);
               />
             </div>
             <div className="input-block">
-              <label>Format</label>
+              <label>Research Type</label>
               <select
                 value={responseFormat}
                 onChange={(e) => setResponseFormat(e.target.value)}
                 disabled={isHistoryView}
               >
-                 <option value="">Select format...</option>
-                 <option value="Detailed PRD">Detailed PRD</option>
-                 <option value="Supplier Research">Supplier Research</option>
-                 <option value="Customer Research">Customer Research</option>
-                 <option value="Industry Use Cases">Industry Use Cases</option>
-                 <option value="Product Requirements">Product Requirements</option>
-                 <option value="Competitive Research">Competitive Research</option>
+                 <option value="">Select research type...</option>
+                 {RESEARCH_TYPE_OPTIONS.map((opt) => (
+                   <option key={opt.value} value={opt.value}>{opt.value}</option>
+                 ))}
               </select>
             </div>
             <div className="input-block button-block">
@@ -1723,6 +1736,14 @@ ${getCurrentUsername() || 'Your Name'}`);
               </button>
             </div>
           </div>
+          {responseFormat && (
+            <p className="research-type-caption">
+              <span className={`research-type-kind research-type-kind--${RESEARCH_TYPE_OPTIONS.find(o => o.value === responseFormat)?.kind}`}>
+                {RESEARCH_TYPE_OPTIONS.find(o => o.value === responseFormat)?.kind === 'search' ? 'Finds real businesses' : 'Generates a written report'}
+              </span>
+              {' '}{RESEARCH_TYPE_OPTIONS.find(o => o.value === responseFormat)?.description}
+            </p>
+          )}
         </div>
 
         <div className="main-workspace-area">
@@ -2107,7 +2128,9 @@ ${getCurrentUsername() || 'Your Name'}`);
                       </div>
                       <h3 className="empty-state-title">Ready to Research</h3>
                       <p className="empty-state-description">
-                        Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.
+                        {responseFormat
+                          ? RESEARCH_TYPE_OPTIONS.find(o => o.value === responseFormat)?.description
+                          : 'Describe your product or service, select an industry and region, then click "Get Research Insights" to discover leads, competitors, and market opportunities.'}
                       </p>
                       <div className="empty-state-steps">
                         <div className="empty-state-step">
@@ -2116,7 +2139,7 @@ ${getCurrentUsername() || 'Your Name'}`);
                         </div>
                         <div className="empty-state-step">
                           <span className="step-number">2</span>
-                          <span className="step-text">Select industry & region</span>
+                          <span className="step-text">Select industry, region & research type</span>
                         </div>
                         <div className="empty-state-step">
                           <span className="step-number">3</span>
