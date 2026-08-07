@@ -267,7 +267,7 @@ function RequirementsGathering() {
     try {
       const resp = await fetch(`${API_CONFIG.GET_CAMPAIGNS}?username=${encodeURIComponent(getCurrentUsername())}`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: authOptionalHeaders(),
       });
       if (resp.ok) {
         const data = await resp.json();
@@ -386,7 +386,7 @@ function RequirementsGathering() {
     // Fetch pre-configured Google credentials from .env
     const fetchCredentials = async () => {
       try {
-        const response = await fetch(API_CONFIG.GET_GOOGLE_CREDENTIALS);
+        const response = await fetch(API_CONFIG.GET_GOOGLE_CREDENTIALS, { headers: authOptionalHeaders() });
         const data = await response.json();
         
         if (data.success && data.credentials) {
@@ -411,7 +411,7 @@ function RequirementsGathering() {
     const fetchEmailUsage = async () => {
       try {
         const username = getCurrentUsername();
-        const response = await fetch(`${API_CONFIG.EMAIL_EXTRACTION_USAGE}?username=${encodeURIComponent(username)}`);
+        const response = await fetch(`${API_CONFIG.EMAIL_EXTRACTION_USAGE}?username=${encodeURIComponent(username)}`, { headers: authOptionalHeaders() });
 
         const data = await response.json();
         if (response.ok && data.success && data.usageSummary) {
@@ -481,9 +481,7 @@ function RequirementsGathering() {
         // Call the search-google-businesses API
         const searchResponse = await fetch(API_CONFIG.SEARCH_GOOGLE_BUSINESSES, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: authJsonHeaders(),
           body: JSON.stringify({
             query: overview, // Use overview as the search query
             location: countries, // Use countries as location
@@ -578,6 +576,7 @@ function RequirementsGathering() {
     try {
       const response = await fetch(API_CONFIG.PREVIOUS_PROMPTS, {
         method: 'GET',
+        headers: authOptionalHeaders(),
       });
 
       if (!response.ok) {
@@ -610,9 +609,7 @@ function RequirementsGathering() {
     try {
       const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           businesses: customerResearchResults.businesses,
           username: getCurrentUsername()
@@ -673,7 +670,7 @@ function RequirementsGathering() {
 
       const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_LINKEDIN, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ businesses: [business], username: getCurrentUsername() }),
         signal: controller.signal
       });
@@ -765,9 +762,7 @@ function RequirementsGathering() {
       
       const response = await fetch(API_CONFIG.ENRICH_BUSINESSES_WITH_EMAILS, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           businesses: [business],
           username: getCurrentUsername()
@@ -1092,7 +1087,7 @@ function RequirementsGathering() {
 
       const response = await fetch(API_CONFIG.SCORE_LEADS, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({ username: getCurrentUsername(), requirement: text, businesses: payload })
       });
       let data;
@@ -1420,9 +1415,7 @@ function RequirementsGathering() {
       // Server uses its own credentials from .env - don't send secrets from frontend
       const response = await fetch(API_CONFIG.CONNECT_GOOGLE_BUSINESS, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           clientId: googleBusinessForm.clientId,
           redirectUri: googleBusinessForm.redirectUri
@@ -1498,7 +1491,7 @@ ${getCurrentUsername() || 'Your Name'}`);
 
       const response = await fetch(API_CONFIG.GENERATE_EMAIL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           business: business,
           sender_name: getCurrentUsername()
@@ -1586,9 +1579,9 @@ ${getCurrentUsername() || 'Your Name'}`);
 
     setIsSendingEmails(true);
     try {
-      const response = await fetch(API_CONFIG.SEND_BULK_EMAILS, {  
+      const response = await fetch(API_CONFIG.SEND_BULK_EMAILS, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           userId: localStorage.getItem("firstName") || "",
           userEmail: registeredEmail,

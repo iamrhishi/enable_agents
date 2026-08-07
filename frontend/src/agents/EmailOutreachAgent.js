@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import Header from '../core/Header';
 import { BackButton, ProjectGate, ProjectSelector, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
 import { API_CONFIG } from '../config/apiConfig';
-import { authJsonHeaders } from '../core/authHeaders';
+import { authJsonHeaders, authOptionalHeaders } from '../core/authHeaders';
 import { showToast } from '../core/toast';
 import { useMode } from '../contexts';
 import { useWorkflowContext } from '../hooks';
@@ -46,7 +46,7 @@ function EmailOutreachAgent() {
 
   const fetchSavedProjects = async () => {
     try {
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(getCurrentUserIdentifier())}`);
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECTS}?username=${encodeURIComponent(getCurrentUserIdentifier())}`, { headers: authOptionalHeaders() });
       const result = await response.json();
       if (result.success && Array.isArray(result.projects)) {
         setSavedProjects(result.projects);
@@ -64,7 +64,7 @@ function EmailOutreachAgent() {
     }
     try {
       setIsLoadingLeads(true);
-      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(getCurrentUserIdentifier())}`);
+      const response = await fetch(`${API_CONFIG.GET_SAVED_PROJECT_LEADS}/${projectId}/leads?username=${encodeURIComponent(getCurrentUserIdentifier())}`, { headers: authOptionalHeaders() });
       const result = await response.json();
       if (result.success) {
         setSelectedSavedProject(result.project);
@@ -189,7 +189,7 @@ function EmailOutreachAgent() {
     try {
       const response = await fetch(API_CONFIG.SEND_BULK_EMAILS, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           subject: emailSubject,
           body: emailBody,
