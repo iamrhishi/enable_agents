@@ -1,5 +1,54 @@
 # Enable Agents — Work Backlog
 
+## CI: E2E Tests always failing — ROOT-CAUSED AND FIXED (2026-08-22)
+
+Fixed in this pass. Root cause: `backend/app.py:256` read `os.getenv('DATABASE_URI')` only, with no fallback to `DATABASE_URL` — inconsistent with `backend/core/config.py`, `backend/core/database.py`, and `backend/core/celery_app.py`, which all correctly accept either name. CI's E2E job (`.github/workflows/ci.yml`) sets `DATABASE_URL`, so the Flask app raised `ValueError` at import time before a single test could run — every one of the 37 E2E tests failed identically for this one reason, not for 37 separate reasons.
+
+This was invisible until 2026-08-07 (commit `c479e17d`, this session), when the Frontend Build job's own separate bug (`CI=true` promoting every ESLint warning to a hard failure) was fixed — E2E Tests depends on Frontend Build succeeding, so E2E had literally never run before that, and this bug sat hidden underneath it the whole time.
+
+Fix: `app.py:256` now falls back to `DATABASE_URL` like the other three modules do. Not yet pushed/verified green in CI as of this note — do that before considering it closed.
+
+---
+
+## Agentic Engineering Maturity (2026-08-22) — ACTIVE
+
+Full codebase graded against a 17-section agentic-AI production checklist (business fit, agent/workflow design, orchestration & state, context, tool/MCP design, model strategy, prompts, guardrails, evaluation, observability, security, reliability, cost, human-in-the-loop, production engineering, UAT, monitoring). Verified against actual code, not generic best-practice guessing.
+
+**DRAFT — priorities below are Claude's proposal pending your review, not a locked decision.** Full detail, per-section status, and recommended first step for each: `docs/Enable Agents Bugs.xlsx` → "Agentic Engineering Checklist" tab (also carries a banner to this effect).
+
+**Where the platform is already solid:** auth enforcement, per-call cost/token tracking (`AIUsageLog`), CI/CD with e2e tests, multi-provider model support, and genuine RAG in Data Insights + a real embedding/LLM hybrid in Sales Helper's lead scoring.
+
+**Confirmed 2026-08-22 — co-top-priority, run in parallel, neither blocks the other:**
+- **Orchestration & State (Section 3).** Workflows track progress but never invoke an agent automatically or pipe one stage's output into the next — a human manually runs every stage. Same gap already flagged under "Potential LangGraph Migration" further down this doc and in `docs/context.md`.
+- **Evaluation (Section 9).** No evaluation dataset or regression testing exists anywhere — there's currently no way to know if a prompt/model change made an agent better or worse besides a human noticing in production. Start with 10-15 real input/output pairs per agent as a CI regression fixture.
+
+**Dependency chain from those two — flagged now so it doesn't need re-asking later:**
+- Once Orchestration ships: **Tool/MCP governance (Section 5)** and **Guardrails (Section 8)** both jump from low-urgency to urgent — today's implicit safety net ("a human clicks every step") disappears the moment agents can be invoked automatically. **Human-in-the-Loop autonomy levels (Section 14)** must be built as part of the *same* Orchestration change, not a follow-up, or that safety margin is lost silently rather than deliberately.
+- **Found 2026-08-22, feeds Section 8 directly:** the chat-first entry point being designed calls existing agent APIs, so any failure (no project selected, quota exceeded, provider timeout) needs classified backend error codes + one shared "chat error card" component that offers an inline fix — not a raw error with nowhere to route to. Full detail on the Section 8 row of the xlsx tab.
+- Once Evaluation exists: **UAT failure categorization (Section 16)** and **Post-Production Monitoring (Section 17)** both become buildable — they're blocked on it today, not independently deferrable.
+- Independent of both, no dependency, can start immediately: rate limiting, flipping Trivy's CI scan to actually gate the build (`exit-code: '0'` today means it never fails), and a retry/backoff wrapper around LLM calls.
+
+---
+
+## Chat-First Redesign — Design Exploration (2026-08-22) — NOT YET BUILT
+
+A full visual/interaction redesign exists as a Design Components canvas (Figma-style mockup, not code) — kept in `internal/designs/enable-agents-chat-first-redesign/` (gitignored, not committed) rather than in the repo proper, since it's a discussion draft, not a spec that's been agreed on with the team yet.
+
+**Core idea:** chat becomes the default entry point instead of the empty dashboard — user describes a task in plain English, the assistant asks at most one clarifying question, recaps what it understood, then routes to either a single agent (pre-filled) or a guided Workflow. Grounded in two rounds of published agentic-UX research (Eleken's agentic UX examples, Mantlr's 10 UX patterns, Fuselab's agent interface patterns) rather than aesthetic preference — sources are cited on the canvas itself.
+
+**Directly answers two open feature requests already in the bugs tracker** (`internal/Enable Agents Bugs.xlsx`, Sheet 1):
+- "Agents Assembly — first-time login routing / AI Assistant panel / Search Agents bar" row — the chat entry point + describe-to-recommend search bar is a concrete design answer to this.
+- "Workflows — AI should recommend/configure agents based on context" row — the Workflow Runner redesign's Autonomy Slider (Suggest/Co-pilot/Autopilot), activity log with Approve/Edit/Skip on proposed actions, and concrete action previews are a concrete design answer to this. Still assumes the Section 3 (Orchestration) backend work above — the design shows the target experience, it doesn't change what the backend does today.
+
+**Also worth the team's attention when reviewing:**
+- A persistent left sidebar nav (Home/Agents/Workflows/Projects) replaces the logo-only header everywhere — a real, cheap navigation-coherence fix independent of the rest of the chat-first idea, closes a gap the original UX audit flagged (B3/C4 in Sheet 1).
+- An always-visible pause control ("kill switch") and a 3-way autonomy control are new UI concepts with no backend equivalent today — worth discussing whether/how far actual autonomy should go before committing to the UI promising it.
+- A `Foundations` page on the canvas documents the actual font/color/spacing values in use (16 colors, 2 fonts, audited from the files directly) — useful as a starting point for a real design-token discussion, not a finished system.
+
+Not committed to git, not yet actioned as engineering work — this is explicitly a draft for the team conversation the user is planning, not a decision.
+
+---
+
 ## Phase 1 — Testable MVP ✅ COMPLETE
 
 ### All Working

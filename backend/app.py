@@ -253,9 +253,9 @@ if os.getenv('ENVIRONMENT') != 'production':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # allow HTTP for local dev only
 
 # Database config (env override + local fallback)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI') or os.getenv('DATABASE_URL')
 if not app.config['SQLALCHEMY_DATABASE_URI']:
-    raise ValueError("DATABASE_URI environment variable is required. PostgreSQL connection string expected.")
+    raise ValueError("DATABASE_URI or DATABASE_URL environment variable is required. PostgreSQL connection string expected.")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize shared db instance from core.database
