@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from '../core/Header';
 import '../styles/ExecutiveAssistantPage.css';
 import { showToast } from '../core/toast';
-import { Input, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
+import { Input, Textarea, BackButton, ProjectSelector, LiveModeHint, AgentOutcomesStrip, EmptyState, ProjectGate, WorkflowExecutionBanner, WorkflowContextCard } from '../components';
 import ReminderModal from '../components/ReminderModal';
 import { setAgentData, AGENT_KEYS } from '../utils';
 import { formatDate } from '../utils/dateFormat';
@@ -193,6 +193,8 @@ function ExecutiveAssistantPage() {
   }, [projects, tasks, people, isDemoMode, hasGlobalProject, selectedProjectId]);
 
   // Add Task
+  const quickAddTextareaRef = useRef(null);
+
   const handleAddTask = () => {
     if (newTask.title.trim()) {
       const task = {
@@ -211,6 +213,9 @@ function ExecutiveAssistantPage() {
         priority: 'Medium',
         status: 'Pending'
       });
+      if (quickAddTextareaRef.current) {
+        quickAddTextareaRef.current.style.height = 'auto';
+      }
     }
   };
 
@@ -427,13 +432,24 @@ function ExecutiveAssistantPage() {
           <div className="ea-content projects-tasks-section">
             {/* Quick Add Bar */}
             <div className="quick-add-bar">
-              <Input
+              <Textarea
+                ref={quickAddTextareaRef}
+                rows={1}
+                className="quick-add-textarea"
                 placeholder={isHistoryView ? "Viewing completed stage - inputs disabled" : "Add a new task..."}
                 value={newTask.title}
-                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                onChange={(e) => {
+                  setNewTask({ ...newTask, title: e.target.value });
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newTask.title.trim() && !isHistoryView) {
-                    handleAddTask();
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (newTask.title.trim() && !isHistoryView) {
+                      handleAddTask();
+                    }
                   }
                 }}
                 disabled={isHistoryView}

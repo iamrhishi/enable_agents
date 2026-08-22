@@ -700,6 +700,23 @@
   box-shadow: none;
 }
 
+.quick-add-bar .quick-add-textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-body);
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.4;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.quick-add-bar .quick-add-textarea:focus {
+  box-shadow: none;
+}
+
 .assignee-pills {
   display: flex;
   gap: 4px;
@@ -913,9 +930,9 @@
   font-weight: var(--font-medium);
   color: var(--color-text);
   line-height: var(--leading-snug);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .kanban-card-meta {
