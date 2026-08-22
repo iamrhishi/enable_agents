@@ -7547,7 +7547,17 @@ def enrich_businesses_with_emails():
             }), 401
         
         print(f"[EMAIL_ENRICHMENT] Enriching {len(businesses)} businesses with emails")
-        
+
+        # Each business needing real enrichment can take up to ~20s (scrap.io
+        # retries + a website scrape) run serially in this one request, so an
+        # uncapped batch of the ~100-200 businesses a search can return
+        # reliably blows through the proxy's read timeout and comes back as
+        # an unhandled 504. Bound how many get *newly* processed per call;
+        # already-enriched businesses are skipped near-instantly below, so
+        # calling this again on the same list makes forward progress on the
+        # remainder instead of redoing finished work.
+        MAX_BUSINESSES_PER_REQUEST = 25
+
         def extract_emails_from_text(text):
             """Extract email addresses from text using regex"""
             if not text:
@@ -7735,17 +7745,33 @@ def enrich_businesses_with_emails():
         
         enriched_businesses = []
         scrap_io_endpoint = "https://scrap.io/api/v1/gmap/enrich"
-        
+        newly_processed_count = 0
+
         for business in businesses:
+            # Already enriched (e.g. from a prior call on this same list) -
+            # keep it as-is without spending another slow lookup on it.
+            if _is_billable_email(business.get('email')):
+                enriched_businesses.append(business.copy())
+                continue
+
             website = business.get('website')
-            
-            # If no website, add business as-is with empty email
+
+            # No website means no slow lookup is possible anyway - resolve it
+            # for free instead of spending cap budget meant for real lookups.
             if not website:
                 business_copy = business.copy()
                 business_copy['email'] = 'N/A'
                 enriched_businesses.append(business_copy)
                 continue
-            
+
+            if newly_processed_count >= MAX_BUSINESSES_PER_REQUEST:
+                # Over the per-request cap - pass remaining businesses through
+                # unchanged so the caller can retry and pick up where this left off.
+                enriched_businesses.append(business.copy())
+                continue
+
+            newly_processed_count += 1
+
             # Extract domain from website URL
             domain = website.replace('https://', '').replace('http://', '').split('/')[0]
             business_name = business.get('name', '')
@@ -7798,6 +7824,7 @@ def enrich_businesses_with_emails():
         billable_count = sum(
             1 for business in enriched_businesses if _is_billable_email(business.get('email'))
         )
+        remaining_unenriched_count = processed_count - billable_count
         charged_count = min(billable_count, usage_before['remainingCount'])
         quota.emails_used_this_month += charged_count
         db.session.add(quota)
@@ -7824,6 +7851,8 @@ def enrich_businesses_with_emails():
             'success': True,
             'businesses': enriched_businesses,
             'enrichedCount': processed_count,
+            'newlyProcessedCount': newly_processed_count,
+            'remainingUnenrichedCount': remaining_unenriched_count,
             'billableEmailCount': billable_count,
             'chargedEmailCount': charged_count,
             'costThisRequest': cost_this_request,

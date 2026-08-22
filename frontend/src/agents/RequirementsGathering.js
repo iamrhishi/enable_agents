@@ -651,8 +651,20 @@ function RequirementsGathering() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to enrich businesses with emails');
+        // A gateway timeout (or any proxy-level failure) returns an HTML
+        // error page, not JSON - parsing that as JSON throws a confusing
+        // raw SyntaxError instead of telling the user what happened.
+        if (response.status === 504) {
+          throw new Error('This is taking longer than expected. Click Extract Emails again in a moment - already-found emails are kept, so it will pick up where it left off.');
+        }
+        let errorMessage = 'Failed to enrich businesses with emails';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          // Non-JSON error body (e.g. an HTML error page) - keep the generic message.
+        }
+        throw new Error(errorMessage);
       }
 
       const enrichedData = await response.json();
@@ -669,7 +681,11 @@ function RequirementsGathering() {
         const usageLine = enrichedData.usageSummary
           ? ` (Used: ${enrichedData.usageSummary.usedCount}/${enrichedData.usageSummary.totalAllowed})`
           : '';
-        showToast(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`, 'success');
+        if (enrichedData.remainingUnenrichedCount > 0) {
+          showToast(`Enriched ${enrichedData.newlyProcessedCount} more businesses.${usageLine} ${enrichedData.remainingUnenrichedCount} still need emails - click Extract Emails again to continue.`, 'info');
+        } else {
+          showToast(`Successfully enriched ${enrichedData.enrichedCount} businesses with email data!${usageLine}`, 'success');
+        }
       } else {
         showToast('Failed to enrich businesses with emails', 'error');
       }
