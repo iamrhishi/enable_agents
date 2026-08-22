@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../core/Header';
 import { API_CONFIG } from '../config/apiConfig';
 import { authJsonHeaders } from '../core/authHeaders';
+import { getAllAgents } from '../config/agentsConfig';
 import './Dashboard.css';
 
 // Featured agents for quick actions - top 4 most used
@@ -44,9 +45,9 @@ const QUICK_ACTION_AGENTS = [
 function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
-    activeWorkflows: 0,
-    completedWorkflows: 0,
-    availableAgents: QUICK_ACTION_AGENTS.length
+    projectCount: 0,
+    totalWorkflows: 0,
+    availableAgents: getAllAgents().length
   });
   const [featuredTemplates, setFeaturedTemplates] = useState([]);
   const [recentWorkflows, setRecentWorkflows] = useState([]);
@@ -59,8 +60,19 @@ function Dashboard() {
   const loadDashboardData = async () => {
     try {
       const headers = authJsonHeaders();
-      let activeCount = 0;
-      let completedCount = 0;
+      let totalWorkflowCount = 0;
+      let projectCount = 0;
+
+      // Load project count
+      try {
+        const projectsRes = await fetch(`${API_CONFIG.BASE_URL}/api/projects`, { headers });
+        if (projectsRes.ok) {
+          const data = await projectsRes.json();
+          projectCount = Array.isArray(data.projects) ? data.projects.length : 0;
+        }
+      } catch (err) {
+        console.error('[Dashboard] Error loading projects:', err);
+      }
 
       // Load workflow templates
       try {
@@ -97,11 +109,7 @@ function Dashboard() {
           const instances = data.instances || data;
 
           if (Array.isArray(instances)) {
-            const active = instances.filter(w => ['pending', 'in_progress'].includes(w.status));
-            const completed = instances.filter(w => w.status === 'completed');
-
-            activeCount = active.length;
-            completedCount = completed.length;
+            totalWorkflowCount = instances.length;
 
             const recent = [...instances]
               .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -114,9 +122,9 @@ function Dashboard() {
       }
 
       setStats({
-        activeWorkflows: activeCount,
-        completedWorkflows: completedCount,
-        availableAgents: QUICK_ACTION_AGENTS.length
+        projectCount,
+        totalWorkflows: totalWorkflowCount,
+        availableAgents: getAllAgents().length
       });
 
     } catch (err) {
@@ -181,27 +189,23 @@ function Dashboard() {
       <div className="dashboard-page">
         {/* Page Header */}
         <div className="dashboard-header">
-          <div className="dashboard-greeting">
-            <h1 className="greeting-title">Welcome back, {firstName}</h1>
-            <p className="greeting-subtitle">Here's what's happening with your workspace today.</p>
+          <div className="dashboard-greeting-row">
+            <div className="dashboard-greeting">
+              <h1 className="greeting-title">Welcome back, {firstName}</h1>
+              <p className="greeting-subtitle">Here's what's happening with your workspace today.</p>
+            </div>
+            <button type="button" className="btn-primary btn-create-project" onClick={() => navigate('/projects?new=true')}>
+              + Create New Project
+            </button>
           </div>
           <div className="stats-container">
             <div className="stat-card">
-              <div className="stat-icon-wrapper stat-icon-wrapper-workflows">
-                <img src="/assets/icons/process.png" alt="" className="stat-icon-img" />
+              <div className="stat-icon-wrapper stat-icon-wrapper-projects">
+                <img src="/assets/icons/document.png" alt="" className="stat-icon-img" />
               </div>
               <div className="stat-info">
-                <div className="stat-value">{stats.activeWorkflows}</div>
-                <div className="stat-label">Active Workflows</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon-wrapper stat-icon-wrapper-completed">
-                <img src="/assets/icons/checklist.png" alt="" className="stat-icon-img" />
-              </div>
-              <div className="stat-info">
-                <div className="stat-value">{stats.completedWorkflows}</div>
-                <div className="stat-label">Completed</div>
+                <div className="stat-value">{stats.projectCount}</div>
+                <div className="stat-label">Projects</div>
               </div>
             </div>
             <div className="stat-card">
@@ -211,6 +215,15 @@ function Dashboard() {
               <div className="stat-info">
                 <div className="stat-value">{stats.availableAgents}</div>
                 <div className="stat-label">AI Agents</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon-wrapper stat-icon-wrapper-workflows">
+                <img src="/assets/icons/process.png" alt="" className="stat-icon-img" />
+              </div>
+              <div className="stat-info">
+                <div className="stat-value">{stats.totalWorkflows}</div>
+                <div className="stat-label">Workflows</div>
               </div>
             </div>
           </div>

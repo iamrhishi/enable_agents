@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import './Projects.css';
 import { showToast } from '../core/toast';
 import Header from '../core/Header';
@@ -88,6 +88,7 @@ const AI_KEY_FIELDS = [
 
 function Projects() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const userEmail = localStorage.getItem('userEmail') || '';
   const { isDemoMode } = useMode();
 
@@ -118,6 +119,16 @@ function Projects() {
   useEffect(() => {
     fetchProjects();
   }, [isDemoMode]);
+
+  // Deep link from the Dashboard's "Create New Project" button.
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      setShowCreateModal(true);
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch teams when create modal opens
   useEffect(() => {

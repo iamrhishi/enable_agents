@@ -14,8 +14,28 @@
 }
 
 /* Greeting */
-.dashboard-page .dashboard-greeting {
+.dashboard-page .dashboard-greeting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
   margin: 0 0 var(--space-5);
+}
+
+.dashboard-page .dashboard-greeting {
+  margin: 0;
+}
+
+.dashboard-page .btn-create-project {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .dashboard-page .dashboard-greeting-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .dashboard-page .greeting-title {
@@ -74,7 +94,7 @@
   background: rgba(30, 58, 95, 0.12);
 }
 
-.dashboard-page .stat-icon-wrapper-completed {
+.dashboard-page .stat-icon-wrapper-projects {
   background: rgba(22, 163, 74, 0.12);
 }
 
