@@ -979,7 +979,23 @@ function DataInsights() {
   const getDocumentGraph = () => {
     if (!selectedDocument) return null;
     if (isDemoMode) return DEMO_GRAPHS[selectedDocument.id] || null;
-    return buildLiveGraph(liveEntitiesByType);
+    if (liveEntitiesByType && Object.keys(liveEntitiesByType).length > 0) {
+      return buildLiveGraph(liveEntitiesByType);
+    }
+    // The backend only returns a structured entities-by-type map when its
+    // extraction step produced clean entity rows; a document can finish
+    // processing with only flat key facts. Group whatever getDocumentEntities()
+    // already surfaces (which has its own keyFacts fallback) so the graph tab
+    // isn't empty whenever the Key Facts tab has content.
+    const flatEntities = getDocumentEntities();
+    if (flatEntities.length === 0) return null;
+    const groupedByType = flatEntities.reduce((acc, entity) => {
+      const key = entity.type || 'other';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(entity.name);
+      return acc;
+    }, {});
+    return buildLiveGraph(groupedByType);
   };
 
   const stats = getTotalStats();
