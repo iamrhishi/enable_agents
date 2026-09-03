@@ -38,3 +38,16 @@ psutil
 celery[redis]
 redis
 gunicorn
+
+# Workflow orchestration (Supplier Qualification Pipeline - agents/workflow_orchestration/)
+# Pinned explicitly rather than left transitive: previously only pulled in
+# incidentally via langchain's own dependency tree, which is not safe once
+# this is load-bearing orchestration infra. Spiked 2026-08-22 against the
+# full requirements.txt set on Python 3.11 (the Docker/CI target) - clean
+# install, `pip check` reports no broken requirements.
+# Note: langgraph-checkpoint-postgres depends on psycopg (v3), a different
+# driver than psycopg2-binary used elsewhere in this file - both coexist
+# fine (separate import namespaces), just don't assume they're the same.
+langgraph==1.2.10
+langgraph-checkpoint==4.1.1
+langgraph-checkpoint-postgres==3.1.2
