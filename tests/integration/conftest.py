@@ -92,9 +92,13 @@ def _build_test_app():
 
     app.register_blueprint(registry_bp)
 
+    from routes.workflows import workflows_bp
+    app.register_blueprint(workflows_bp)
+
     with app.app_context():
         # Ensure all models are imported so db.create_all() sees their tables
         import core.models  # noqa: F401 — registers User, GoogleOAuthToken
+        import models.workflow  # noqa: F401 — registers WorkflowTemplate, WorkflowInstance
         db.create_all()
 
     return app
