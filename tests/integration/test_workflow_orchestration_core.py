@@ -149,3 +149,99 @@ def test_create_task_route_regression(client, flask_app):
     data = res.get_json()
     assert data["success"] is True
     assert data["task"]["title"] == "Schedule kickoff call"
+
+
+# ── send_bulk_emails_core ────────────────────────────────────────────────────
+# Note: send_bulk_emails_core lazily imports helpers still owned by app.py
+# (GoogleOAuthToken, SCOPES, etc.) - matching this file's pre-existing
+# lazy-import pattern for send_campaign/generate_email/send_bulk. Calling it
+# for the first time in a process therefore imports the full app.py module
+# (chromadb/faiss/selenium and all), which conftest.py's minimal test app
+# otherwise deliberately avoids. That's an accepted cost of this extraction,
+# not a defect - it mirrors what already happens in production, where app.py
+# is the running module and the import is a free self-reference.
+
+def test_send_bulk_emails_core_missing_subject_body(flask_app):
+    from agents.email_outreach.service import send_bulk_emails_core
+
+    with flask_app.app_context():
+        result, error, status = send_bulk_emails_core(
+            None, None, [{"email": "a@b.com", "name": "A"}],
+            "sender@example.com", "sender@example.com",
+        )
+
+    assert result is None
+    assert status == 400
+    assert "Subject and body" in error
+
+
+def test_send_bulk_emails_core_no_valid_emails(flask_app):
+    from agents.email_outreach.service import send_bulk_emails_core
+
+    with flask_app.app_context():
+        result, error, status = send_bulk_emails_core(
+            "Hi", "Body", [{"email": "N/A", "name": "A"}],
+            "sender@example.com", "sender@example.com",
+        )
+
+    assert result is None
+    assert status == 400
+    assert "No valid emails" in error
+
+
+def test_send_bulk_emails_core_missing_user_email(flask_app):
+    from agents.email_outreach.service import send_bulk_emails_core
+
+    with flask_app.app_context():
+        result, error, status = send_bulk_emails_core(
+            "Hi", "Body", [{"email": "a@b.com"}], "", "",
+        )
+
+    assert result is None
+    assert status == 400
+    assert "Registered user email" in error
+
+
+def test_send_bulk_emails_core_smtp_fallback(flask_app, monkeypatch):
+    """No GoogleOAuthToken row for this sender -> falls back to SMTP.
+    smtplib.SMTP is faked out entirely so this never touches the network."""
+    from agents.email_outreach.service import send_bulk_emails_core
+
+    monkeypatch.setenv("EMAIL_HOST", "smtp.test.local")
+    monkeypatch.setenv("EMAIL_PORT", "587")
+    monkeypatch.setenv("EMAIL_USER", "system@enable-agents.local")
+    monkeypatch.setenv("EMAIL_PASS", "test-pass")
+
+    sent_messages = []
+
+    class _FakeSMTP:
+        def __init__(self, host, port):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def send_message(self, msg):
+            sent_messages.append(msg)
+
+        def quit(self):
+            pass
+
+    monkeypatch.setattr("smtplib.SMTP", _FakeSMTP)
+
+    with flask_app.app_context():
+        result, error, status = send_bulk_emails_core(
+            "Hello {{name}}", "Body for {{name}}",
+            [{"email": "lead@example.com", "name": "Lead Co"}],
+            "sender-smtp-test@example.com", "sender-smtp-test@example.com",
+        )
+
+    assert error is None
+    assert status == 200
+    assert result["success"] is True
+    assert result["count"] == 1
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["Subject"] == "Hello Lead Co"

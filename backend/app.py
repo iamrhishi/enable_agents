@@ -6924,198 +6924,26 @@ def send_bulk_emails():
     Uses user's Google OAuth credentials if available, otherwise falls back to system SMTP.
     Expects JSON: { subject: str, body: str, businesses: list, userEmail: str }
     """
-    import smtplib
-    from email.message import EmailMessage
-    import traceback
-    
-    try:
-        data = request.get_json()
-        subject = data.get('subject')
-        body = data.get('body')
-        businesses = data.get('businesses', [])
-        # The sender identity (which Google OAuth token gets used, whose
-        # name the campaign is filed under) must come from the verified
-        # session, never from the request body - otherwise any caller could
-        # supply someone else's email and send through their connected
-        # Gmail account without their consent.
-        user_email = g.user_id
-        campaign_name = data.get('campaignName', 'Untitled Campaign')
-        username = _normalize_username(g.user_id)
+    from agents.email_outreach.service import send_bulk_emails_core
 
-        if not user_email or '@' not in str(user_email):
-            return jsonify({'success': False, 'error': 'Registered user email is required to send campaign mail.'}), 400
-
-        use_ai_personalization = data.get('use_ai_personalization', False)
-        if not use_ai_personalization and (not subject or not body):
-            return jsonify({'success': False, 'error': 'Subject and body are required unless using AI personalization'}), 400
-
-        valid_emails = [b.get('email') for b in businesses if b.get('email') and b.get('email') != 'N/A' and '@' in b.get('email')]
-
-        if not valid_emails:
-            return jsonify({'success': False, 'error': 'No valid emails found to send to'}), 400
-
-        # Initialize DB tables and apply lightweight runtime migrations if needed.
-        _ensure_email_usage_tables()
-        _ensure_campaign_reply_tracking_columns()
-        
-        # Create Campaign Record
-        import uuid
-        campaign_id = str(uuid.uuid4())
-        campaign = EmailCampaign(
-            id=campaign_id,
-            name=campaign_name,
-            subject=subject,
-            username=username,
-            sender_email=user_email
-        )
-        db.session.add(campaign)
-        db.session.commit()
-        
-        # Check if user has Google credentials connected
-        token_record = None
-        if user_email:
-            token_record = GoogleOAuthToken.query.filter_by(username=user_email).first()
-        
-        service = None
-        server = None
-        smtp_sender_email = os.getenv('EMAIL_USER') or user_email or ''
-
-        def _connect_smtp_server():
-            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-            email_port = int(os.getenv('EMAIL_PORT', 587))
-            email_user = os.getenv('EMAIL_USER')
-            email_pass = os.getenv('EMAIL_PASS')
-            if not email_user or not email_pass:
-                return None, None, 'Email credentials are not configured. Please sign in with Google or configure system SMTP.'
-
-            smtp_server = smtplib.SMTP(email_host, email_port)
-            smtp_server.starttls()
-            smtp_server.login(email_user, email_pass)
-            return smtp_server, email_user, None
-        
-        if token_record and token_record.token:
-            # Use Gmail API
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
-            import googleapiclient.discovery
-            
-            creds = Credentials(
-                token=token_record.token,
-                refresh_token=token_record.refresh_token,
-                token_uri=token_record.token_uri,
-                client_id=token_record.client_id,
-                client_secret=token_record.client_secret,
-                scopes=token_record.scopes.split(',') if token_record.scopes else SCOPES
-            )
-            if creds.refresh_token and (not creds.valid or creds.expired):
-                creds.refresh(Request())
-                token_record.token = creds.token
-                db.session.commit()
-            service = googleapiclient.discovery.build('gmail', 'v1', credentials=creds)
-        else:
-            # Fallback to system SMTP
-            server, email_user, smtp_err = _connect_smtp_server()
-            if smtp_err:
-                return jsonify({'success': False, 'error': smtp_err}), 500
-
-        sent_count = 0
-        for b in businesses:
-            recipient = b.get('email')
-            if not recipient or recipient == 'N/A' or '@' not in recipient:
-                continue
-
-            business_name = b.get('name', 'Business Owner')
-            
-            # Message personalization
-            current_body = body
-            if use_ai_personalization:
-                try:
-                    result = generate_email_content(b, username)
-                    current_subject = result.get('subject', subject or 'Exclusive Offer')
-                    current_body = result.get('body', current_body or '')
-                except Exception as e:
-                    print("Failed AI personalization for", business_name, e)
-                    current_subject = subject or 'Exclusive Offer'
-            else:
-                current_subject = subject.replace('{{name}}', business_name) if subject else subject
-                if current_body:
-                    current_body = current_body.replace('{{name}}', business_name)
-
-            msg = EmailMessage()
-            msg.set_content(current_body)
-            msg['Subject'] = current_subject
-            msg['To'] = recipient
-
-            def _set_from_header(message, sender_value):
-                if 'From' in message:
-                    del message['From']
-                message['From'] = sender_value
-
-            def _set_reply_to_header(message, reply_to_value):
-                if 'Reply-To' in message:
-                    del message['Reply-To']
-                message['Reply-To'] = reply_to_value
-            
-            thread_id = None
-            msg_id = None
-            generated_message_id = f"<{uuid.uuid4().hex}@enable-agents.local>"
-            _set_from_header(msg, user_email or smtp_sender_email or recipient)
-            _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
-            msg['Message-ID'] = generated_message_id
-            if service:
-                try:
-                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-                    create_message = {'raw': encoded_message}
-                    sent_msg = service.users().messages().send(userId="me", body=create_message).execute()
-                    thread_id = sent_msg.get('threadId')
-                    msg_id = sent_msg.get('id')
-                except Exception as send_error:
-                    # Any Gmail API failure (expired/invalid creds, API not
-                    # enabled on the project, quota, etc.) should fall back to
-                    # SMTP rather than only specific credential error strings -
-                    # narrowly matching text meant only one failure mode ever
-                    # got a second chance.
-                    print(f"[SEND_EMAILS] Gmail API failed, falling back to SMTP: {send_error}")
-                    gmail_error_summary = str(send_error).split('.', 1)[0][:200]
-                    service = None
-                    server, smtp_sender_email, smtp_err = _connect_smtp_server()
-                    if smtp_err:
-                        return jsonify({'success': False, 'error': f'Gmail send failed ({gmail_error_summary}) and SMTP fallback is unavailable: {smtp_err}'}), 500
-                    _set_from_header(msg, user_email or smtp_sender_email or recipient)
-                    _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
-                    server.send_message(msg)
-            else:
-                _set_from_header(msg, user_email or smtp_sender_email or recipient)
-                _set_reply_to_header(msg, smtp_sender_email or user_email or recipient)
-                server.send_message(msg)
-                
-            sent_count += 1
-            
-            # Record recipient for tracking
-            recipient_record = EmailCampaignRecipient(
-                campaign_id=campaign_id,
-                receiver_email=recipient,
-                receiver_name=business_name,
-                status='SENT',
-                reply_status='No Reply',
-                message_id=msg_id or generated_message_id,
-                thread_id=thread_id
-            )
-            db.session.add(recipient_record)
-
-        db.session.commit()
-        
-        if server:
-            server.quit()
-            
-        # Commit any leftover recipient records
-        db.session.commit()
-        
-        return jsonify({'success': True, 'count': sent_count, 'message': 'Emails successfully sent via user account!' if service else 'Emails sent via system account.'})
-    except Exception as e:
-        db.session.rollback()
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    data = request.get_json()
+    # The sender identity (which Google OAuth token gets used, whose name
+    # the campaign is filed under) must come from the verified session,
+    # never from the request body - otherwise any caller could supply
+    # someone else's email and send through their connected Gmail account
+    # without their consent.
+    result, error, status = send_bulk_emails_core(
+        data.get('subject'),
+        data.get('body'),
+        data.get('businesses', []),
+        g.user_id,
+        g.user_id,
+        campaign_name=data.get('campaignName', 'Untitled Campaign'),
+        use_ai_personalization=data.get('use_ai_personalization', False),
+    )
+    if error:
+        return jsonify({'success': False, 'error': error}), status
+    return jsonify(result), status
 
 @app.route('/api/webhook/zapier/email-reply', methods=['POST'])
 @cross_origin()
