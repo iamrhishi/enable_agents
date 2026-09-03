@@ -245,3 +245,85 @@ def test_send_bulk_emails_core_smtp_fallback(flask_app, monkeypatch):
     assert result["count"] == 1
     assert len(sent_messages) == 1
     assert sent_messages[0]["Subject"] == "Hello Lead Co"
+
+
+# ── score_leads_core ─────────────────────────────────────────────────────────
+
+def test_score_leads_core_missing_requirement(flask_app):
+    from agents.sales_helper_core import score_leads_core
+
+    with flask_app.app_context():
+        results, error, status = score_leads_core("   ", [{"name": "Acme"}], "user_1")
+
+    assert results is None
+    assert error == "Missing requirement text"
+    assert status == 400
+
+
+def test_score_leads_core_no_openai_key_fallback(flask_app, monkeypatch):
+    """With no OPENAI_API_KEY configured, scoring degrades to a
+    zero-score/no-embeddings fallback rather than erroring - and must not
+    make any network call."""
+    from agents.sales_helper_core import _extract_two_line_summary, score_leads_core
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    lead = {"name": "Acme Cleaning", "summary": "Commercial cleaning services"}
+
+    with flask_app.app_context():
+        results, error, status = score_leads_core(
+            "Need a commercial cleaning supplier", [lead], "user_1",
+        )
+
+    assert error is None
+    assert status == 200
+    assert results == [{"index": 0, "match_score": 0, "short_summary": _extract_two_line_summary(lead)}]
+
+
+def test_score_leads_core_embedding_and_llm_blend(flask_app, monkeypatch):
+    """Full path with OPENAI_API_KEY set: embeddings rank the list, then
+    the (mocked) LLM refines the top candidates and its score is blended
+    in. Both app.get_embeddings_batch and ai_chat_completion are faked out
+    so this never calls a real API."""
+    import json as _json
+
+    import app as app_module
+    import core.ai_client as ai_client_module
+    from agents.sales_helper_core import score_leads_core
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def _fake_get_embeddings_batch(phrases):
+        # requirement first, then one vector per lead - identical vectors
+        # give a deterministic, maximal cosine similarity (=100).
+        return [[1.0, 0.0]] * len(phrases)
+
+    class _FakeChoice:
+        def __init__(self, content):
+            self.message = type("M", (), {"content": content})()
+
+    class _FakeLLMResponse:
+        def __init__(self, content):
+            self.choices = [_FakeChoice(content)]
+
+    def _fake_ai_chat_completion(user_id, project_id, agent, model, messages, **kwargs):
+        return _FakeLLMResponse(_json.dumps([
+            {"index": 0, "match_score": 90, "short_summary": "Acme Cleaning is a strong match."},
+        ]))
+
+    monkeypatch.setattr(app_module, "get_embeddings_batch", _fake_get_embeddings_batch)
+    monkeypatch.setattr(ai_client_module, "ai_chat_completion", _fake_ai_chat_completion)
+
+    with flask_app.app_context():
+        results, error, status = score_leads_core(
+            "Need a commercial cleaning supplier",
+            [{"name": "Acme Cleaning", "summary": "Commercial cleaning services"}],
+            "user_1",
+        )
+
+    assert error is None
+    assert status == 200
+    assert len(results) == 1
+    # base_score=100 (identical embedding vectors) blended with llm_score=90:
+    # round(100*0.45 + 90*0.55) = round(94.5) = 94 (Python's round-half-to-even)
+    assert results[0]["match_score"] == 94
+    assert results[0]["short_summary"] == "Acme Cleaning is a strong match."
